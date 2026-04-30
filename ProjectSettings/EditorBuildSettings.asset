@@ -8,6 +8,15 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/SampleScene.unity
     guid: 8c9cfa26abfee488c85f1582747f6a02
+  - enabled: 1
+    path: Assets/Scenes/MainMenu.unity
+    guid: 5eb859c4007bf654da0d4f877d19f5b4
+  - enabled: 1
+    path: Assets/Scenes/WorldMap.unity
+    guid: 73c3414c6694ee54eaad37e7bbc6ba85
+  - enabled: 1
+    path: Assets/Scenes/EmailSwiper.unity
+    guid: ff38238b6b9b91d47868f7efbc45e503
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
   m_UseUCBPForAssetBundles: 0
