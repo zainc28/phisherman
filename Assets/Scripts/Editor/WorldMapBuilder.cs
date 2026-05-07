@@ -368,7 +368,7 @@ public static class WorldMapBuilder
     private static void BuildHelperHUD(RectTransform parent)
     {
         var hint = AddText(parent, "ControlsHint",
-            "Click to walk, or use WASD / arrow keys. Click an NPC to talk.",
+            "",
             22, Color.white, TextAlignmentOptions.MidlineLeft);
         hint.fontStyle = FontStyles.Bold;
         var rt = hint.rectTransform;

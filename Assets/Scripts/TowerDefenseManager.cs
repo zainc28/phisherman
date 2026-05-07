@@ -92,6 +92,21 @@ public class TowerDefenseManager : MonoBehaviour
         new ED("letmein", true),
         new ED("welcome", true),
         new ED("monkey", true),
+        new ED("dragon", true),
+        new ED("master", true),
+        new ED("hello", true),
+        new ED("login", true),
+        new ED("admin", true),
+        new ED("baseball", true),
+        new ED("shadow", true),
+        new ED("trustno1", true),
+        new ED("12345678", true),
+        new ED("princess", true),
+        new ED("sunshine", true),
+        new ED("superman", true),
+        new ED("football", true),
+        new ED("charlie", true),
+        new ED("donald", true),
     };
 
     ED[] safes = {
@@ -103,6 +118,18 @@ public class TowerDefenseManager : MonoBehaviour
         new ED("Sun$Rise2024!", false),
         new ED("Wr9#mK!6Lp", false),
         new ED("Cat!Rain$42X", false),
+        new ED("Gr@pe!Vine88", false),
+        new ED("Z3br@Dance#7", false),
+        new ED("Moon&Star99#", false),
+        new ED("P@rrot3!Wing", false),
+        new ED("B3eHoney$44!", false),
+        new ED("Night#Sky25!", false),
+        new ED("W1nt3r!Sun##", false),
+        new ED("x9K!mPqR2@L", false),
+        new ED("J@zz7Beat!99", false),
+        new ED("Cr0wn$Eagle#5", false),
+        new ED("H0r1zon&Sun2!", false),
+        new ED("R@inB0w!77Frg", false),
     };
 
     struct Wave
@@ -112,15 +139,16 @@ public class TowerDefenseManager : MonoBehaviour
     }
 
     Wave[] waves = {
-        new Wave(6,  0.5f, 1.0f, 1.8f),
-        new Wave(8,  0.5f, 1.4f, 1.4f),
-        new Wave(10, 0.6f, 1.8f, 1.1f),
+        new Wave(14, 0.5f, 1.0f, 1.8f),   // Wave 1 — slow intro, half and half
+        new Wave(18, 0.55f, 1.3f, 1.4f),  // Wave 2 — slightly more scams, faster
+        new Wave(22, 0.6f,  1.6f, 1.1f),  // Wave 3 — scam heavy, quick
+        new Wave(26, 0.65f, 2.0f, 0.85f), // Wave 4 — hardest, lots of scams fast
     };
 
     string[] tutTitles = { "Phish Patrol: Password Edition", "Your mission" };
     string[] tutBodies = {
-        "Weak passwords are flying at your computer.\n\nClick the RED ones to destroy them before they hit your tower.\n\nLet the GREEN strong passwords pass through safely.",
-        "RED = Weak password (destroy it!)\nexamples: password123, qwerty, 123456\n\nGREEN = Strong password (let it pass!)\nexamples: K#9mP!2xL, Blue$Tree47!\n\nYour computer has 5 lives. Don't let it crack apart."
+        "Weak passwords are flying at your computer.\n\nClick the weak passwords to destroy them before they hit your tower.\n\nLet the strong passwords pass through safely.",
+        "RED FLAG = Weak password (destroy it!)\nexamples: password123, qwerty, 123456\n\nGREEN FLAG = Strong password (let it pass!)\nexamples: K#9mP!2xL, Blue$Tree47!\n\nYour computer has 5 lives. Don't let it crack apart."
     };
 
     // =========================================================================
@@ -140,6 +168,19 @@ public class TowerDefenseManager : MonoBehaviour
     void Update()
     {
         if (!gameActive) return;
+
+        // Catch enemies that destroyed themselves without calling EnemyGone —
+        // most commonly safe (strong) passwords that flew past the tower and
+        // called Destroy(gameObject) in EnemyEmail without a manager callback.
+        int before = liveEnemies.Count;
+        liveEnemies.RemoveAll(e => e == null);
+        int vanished = before - liveEnemies.Count;
+        if (vanished > 0)
+        {
+            enemiesRemaining = Mathf.Max(0, enemiesRemaining - vanished);
+            if (!spawning && enemiesRemaining <= 0) TryAdvanceWave();
+        }
+
         if (Input.GetMouseButtonDown(0))
         {
             Vector2 wp = Camera.main.ScreenToWorldPoint(Input.mousePosition);
@@ -254,11 +295,8 @@ public class TowerDefenseManager : MonoBehaviour
         go.transform.position = new Vector3(spawnPoint.position.x, Random.Range(-1.8f, 1.8f), 0f);
         go.transform.localScale = new Vector3(3.8f, 1.4f, 1f);
 
-        SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = WhitePix;
-        sr.color = data.isScam ? WEAK_BG : STRONG_BG;
-        sr.sortingOrder = 1;
-
+        // No SpriteRenderer — the colored rectangle was covering the password text.
+        // The BoxCollider2D below still makes the area clickable.
         go.AddComponent<BoxCollider2D>().size = Vector2.one;
 
         // World-space label
@@ -266,6 +304,7 @@ public class TowerDefenseManager : MonoBehaviour
         cGO.transform.SetParent(go.transform, false);
         Canvas c = cGO.AddComponent<Canvas>();
         c.renderMode = RenderMode.WorldSpace;
+        c.sortingOrder = 5;
         cGO.transform.localScale = new Vector3(0.008f, 0.011f, 1f);
         cGO.GetComponent<RectTransform>().sizeDelta = new Vector2(220, 80);
 
@@ -274,7 +313,7 @@ public class TowerDefenseManager : MonoBehaviour
         TextMeshProUGUI tmp = tGO.AddComponent<TextMeshProUGUI>();
         tmp.text = data.label;
         tmp.fontSize = 22;
-        tmp.color = Color.white;
+        tmp.color = Color.white;   // no colour cue — player reads the password
         tmp.fontStyle = FontStyles.Bold;
         tmp.alignment = TextAlignmentOptions.Center;
         RectTransform tRT = tGO.GetComponent<RectTransform>();
@@ -343,6 +382,16 @@ public class TowerDefenseManager : MonoBehaviour
                 "Watch out — they're tricky!"
             });
         }
+    }
+
+    /// <summary>
+    /// Called by EnemyEmail when a SAFE (strong) password reaches the tower.
+    /// Safe passwords pass through harmlessly — no damage, just count them out.
+    /// </summary>
+    public void OnSafeReachedTower()
+    {
+        EnemyGone();
+        UpdateHUD();
     }
 
     IEnumerator RocketThenDamage(Vector3 from)
@@ -602,14 +651,26 @@ public class TowerDefenseManager : MonoBehaviour
 
     void EnemyGone()
     {
-        enemiesRemaining--;
+        enemiesRemaining = Mathf.Max(0, enemiesRemaining - 1);
         liveEnemies.RemoveAll(e => e == null);
-        if (!spawning && enemiesRemaining <= 0)
-        {
-            currentWave++;
-            if (currentWave >= waves.Length) WinGame();
-            else StartCoroutine(WaveDelay(2f));
-        }
+        if (!spawning && enemiesRemaining <= 0) TryAdvanceWave();
+    }
+
+    private bool advancingWave;
+    void TryAdvanceWave()
+    {
+        if (advancingWave || !gameActive) return;
+        advancingWave = true;
+        currentWave++;
+        if (currentWave >= waves.Length) WinGame();
+        else StartCoroutine(NextWaveRoutine());
+    }
+
+    IEnumerator NextWaveRoutine()
+    {
+        yield return new WaitForSeconds(2f);
+        advancingWave = false;
+        StartCoroutine(SpawnWave(waves[currentWave]));
     }
 
     void GameOver()

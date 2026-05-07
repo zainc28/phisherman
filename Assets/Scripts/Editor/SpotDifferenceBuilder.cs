@@ -9,34 +9,41 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 /// <summary>
-/// Builds (and rebuilds) the Spot the Difference scene from scratch.
+/// Builds the Spot the Difference scene from scratch.
 ///
 /// Run via:    Phisherman > Build Spot the Difference Scene
-///
 /// Output:     Assets/Scenes/SpotDifference.unity
 ///
-/// Pattern matches EmailSwiperBuilder / TowerDefenseBuilder. Re-running
-/// fully overwrites the scene, so the source of truth is this file —
-/// edit the email content / red flags / explanations here, then re-run.
+/// Each email panel now looks like a real Gmail open-email view — subject
+/// header, avatar + sender row, scrollable body — mirroring the Email
+/// Swiper detail format. Both emails are long enough that the player must
+/// scroll to read the full message.
 /// </summary>
 public static class SpotDifferenceBuilder
 {
     private const string ScenesDir = "Assets/Scenes";
     private const string ScenePath = "Assets/Scenes/SpotDifference.unity";
 
-    // === Visual constants ===
-    private static readonly Color BgColor = Hex("#FFE9C4"); // warm cream backdrop
-    private static readonly Color HudColor = Hex("#5DA831"); // green HUD bar
+    // ===== Palette =====
+    private static readonly Color BgColor = Hex("#F6F8FC");
+    private static readonly Color HudColor = Hex("#2E3A59");
     private static readonly Color HudText = Color.white;
-    private static readonly Color EmailBg = Color.white;
-    private static readonly Color HeaderScam = Hex("#C7503A"); // red strip on scam panel
-    private static readonly Color HeaderReal = Hex("#3A8DC7"); // blue strip on real panel
-    private static readonly Color BodyText = Hex("#222222");
-    private static readonly Color MutedText = Hex("#555555");
-    private static readonly Color CtaScam = Hex("#C7503A");
-    private static readonly Color CtaReal = Hex("#FF9900"); // amazon-ish orange
     private static readonly Color OverlayColor = new Color(0f, 0f, 0f, 0.65f);
     private static readonly Color HintText = Hex("#553311");
+
+    // Gmail panel
+    private static readonly Color PanelBg = Color.white;
+    private static readonly Color LabelRealBg = Hex("#E8F5E9");
+    private static readonly Color LabelScamBg = Hex("#FCE8E6");
+    private static readonly Color LabelRealText = Hex("#0D652D");
+    private static readonly Color LabelScamText = Hex("#C5221F");
+    private static readonly Color DividerColor = Hex("#E0E0E0");
+    private static readonly Color BodyText = Hex("#202124");
+    private static readonly Color MutedText = Hex("#5F6368");
+    private static readonly Color ScamRed = Hex("#C5221F");
+    private static readonly Color AmazonOrange = Hex("#E37400");
+    private static readonly Color CtaReal = Hex("#0061D5");
+    private static readonly Color CtaScam = Hex("#C5221F");
 
     [MenuItem("Phisherman/Build Spot the Difference Scene")]
     public static void Build()
@@ -55,8 +62,6 @@ public static class SpotDifferenceBuilder
         cam.orthographic = true;
 
         // === EventSystem ===
-        // NOTE: uses legacy StandaloneInputModule. If your project uses the
-        // new Input System exclusively, swap this for InputSystemUIInputModule.
         var es = new GameObject("EventSystem");
         es.AddComponent<EventSystem>();
         es.AddComponent<StandaloneInputModule>();
@@ -83,81 +88,77 @@ public static class SpotDifferenceBuilder
 
         // === HUD strip across the top ===
         var hud = AddImage(canvasRT, "HUD", HudColor);
-        AnchorTopStretch(hud.rectTransform, height: 120);
+        AnchorTopStretch(hud.rectTransform, height: 110);
         hud.raycastTarget = false;
 
         var title = AddText(hud.rectTransform, "Title",
             "Spot the Phishing Red Flags",
-            48, HudText, TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
+            44, HudText, TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
         AnchorRect(title.rectTransform,
-            new Vector2(0, 0), new Vector2(0.55f, 1),
-            new Vector2(40, 0), Vector2.zero);
+            new Vector2(0, 0), new Vector2(0.5f, 1),
+            new Vector2(36, 0), Vector2.zero);
 
         var counter = AddText(hud.rectTransform, "Counter",
             "Found: 0 / 5",
-            40, HudText, TextAlignmentOptions.Midline, FontStyles.Bold);
+            36, HudText, TextAlignmentOptions.Midline, FontStyles.Bold);
         AnchorRect(counter.rectTransform,
-            new Vector2(0.55f, 0), new Vector2(0.78f, 1),
+            new Vector2(0.5f, 0), new Vector2(0.76f, 1),
             Vector2.zero, Vector2.zero);
 
         var score = AddText(hud.rectTransform, "Score",
             "Score: 0",
-            40, HudText, TextAlignmentOptions.MidlineRight, FontStyles.Bold);
+            36, HudText, TextAlignmentOptions.MidlineRight, FontStyles.Bold);
         AnchorRect(score.rectTransform,
-            new Vector2(0.78f, 0), new Vector2(1, 1),
-            Vector2.zero, new Vector2(-40, 0));
+            new Vector2(0.76f, 0), new Vector2(1, 1),
+            Vector2.zero, new Vector2(-36, 0));
 
-        // === Floating feedback popup just below the HUD ===
+        // === Feedback popup below HUD ===
         var feedback = AddText(canvasRT, "Feedback",
             string.Empty,
-            52, Color.green, TextAlignmentOptions.Center, FontStyles.Bold);
+            46, Color.green, TextAlignmentOptions.Center, FontStyles.Bold);
         var fbRT = feedback.rectTransform;
         fbRT.anchorMin = new Vector2(0.5f, 1f);
         fbRT.anchorMax = new Vector2(0.5f, 1f);
         fbRT.pivot = new Vector2(0.5f, 1f);
-        fbRT.sizeDelta = new Vector2(1100, 70);
-        fbRT.anchoredPosition = new Vector2(0, -135);
+        fbRT.sizeDelta = new Vector2(1100, 64);
+        fbRT.anchoredPosition = new Vector2(0, -124);
         feedback.raycastTarget = false;
 
-        // === Email panels: real on the left (reference), scam on the right (interactive) ===
+        // === Email panels — real (left) and phishing (right) ===
         BuildEmailPanel(canvasRT, manager, isScam: false,
-            anchorMin: new Vector2(0.04f, 0.10f),
-            anchorMax: new Vector2(0.49f, 0.85f));
+            new Vector2(0.025f, 0.07f), new Vector2(0.487f, 0.895f));
 
         BuildEmailPanel(canvasRT, manager, isScam: true,
-            anchorMin: new Vector2(0.51f, 0.10f),
-            anchorMax: new Vector2(0.96f, 0.85f));
+            new Vector2(0.513f, 0.07f), new Vector2(0.975f, 0.895f));
 
         // === Hint at the bottom ===
         var hint = AddText(canvasRT, "Hint",
-            "Click the 5 phishing red flags in the email on the right.",
-            32, HintText, TextAlignmentOptions.Center, FontStyles.Italic);
+            "Find all 5 phishing red flags in the email on the right.  Scroll to read the full message.",
+            26, HintText, TextAlignmentOptions.Center, FontStyles.Italic);
         var hintRT = hint.rectTransform;
         hintRT.anchorMin = new Vector2(0, 0);
         hintRT.anchorMax = new Vector2(1, 0);
         hintRT.pivot = new Vector2(0.5f, 0);
-        hintRT.sizeDelta = new Vector2(0, 50);
-        hintRT.anchoredPosition = new Vector2(0, 30);
+        hintRT.sizeDelta = new Vector2(0, 44);
+        hintRT.anchoredPosition = new Vector2(0, 12);
         hint.raycastTarget = false;
 
         // === Result panel (initially hidden) ===
         var resultPanel = BuildResultPanel(canvasRT, manager);
 
-        // === Wire up manager refs ===
+        // === Wire manager refs ===
         manager.scoreText = score;
         manager.counterText = counter;
         manager.feedbackText = feedback;
         manager.resultPanel = resultPanel;
 
-        // Commentator (grandma's reactive speech bubble in bottom-left)
+        // Grandma commentator (bottom-left)
         manager.commentator = BuildCommentator(canvasRT);
 
         // === Save ===
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, ScenePath);
-
         AddSceneToBuildSettings(ScenePath);
-
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
 
@@ -165,182 +166,415 @@ public static class SpotDifferenceBuilder
     }
 
     // ======================================================================
-    // Email panel
+    // Gmail-styled email panel
     // ======================================================================
 
-    /// <summary>
-    /// Builds one of the two email panels. The real panel is non-interactive
-    /// reference. The scam panel has invisible DifferenceMarker click zones
-    /// over each red flag, plus a PanelClickReceiver that catches misses.
-    /// </summary>
     private static void BuildEmailPanel(
         RectTransform parent, SpotDifferenceManager manager, bool isScam,
         Vector2 anchorMin, Vector2 anchorMax)
     {
-        var panel = AddImage(parent, isScam ? "ScamEmail" : "RealEmail", EmailBg);
+        var panel = AddImage(parent, isScam ? "ScamEmail" : "RealEmail", PanelBg);
         var rt = panel.rectTransform;
         rt.anchorMin = anchorMin;
         rt.anchorMax = anchorMax;
-        rt.offsetMin = Vector2.zero;
-        rt.offsetMax = Vector2.zero;
-        panel.raycastTarget = false; // header & padding don't trigger wrong-click
+        rt.offsetMin = rt.offsetMax = Vector2.zero;
+        panel.raycastTarget = false;
 
-        // --- Colored header strip ---
-        var header = AddImage(rt, "Header", isScam ? HeaderScam : HeaderReal);
-        AnchorTopStretch(header.rectTransform, height: 60);
-        header.raycastTarget = false;
+        // --- Label strip (real vs phishing indicator) ---
+        var labelBar = AddImage(rt, "LabelBar", isScam ? LabelScamBg : LabelRealBg);
+        AnchorTopStretch(labelBar.rectTransform, height: 42);
+        labelBar.raycastTarget = false;
+        var labelText = AddText(labelBar.rectTransform, "LabelText",
+            isScam ? "PHISHING EXAMPLE — find 5 red flags"
+                   : "LEGITIMATE EMAIL — for comparison",
+            20, isScam ? LabelScamText : LabelRealText,
+            TextAlignmentOptions.Center, FontStyles.Bold);
+        Stretch(labelText.rectTransform);
+        labelText.raycastTarget = false;
 
-        var headerLabel = AddText(header.rectTransform, "HeaderLabel",
-            isScam ? "PHISHING EXAMPLE — find 5 red flags" : "LEGITIMATE EMAIL — for comparison",
-            26, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
-        Stretch(headerLabel.rectTransform);
-        headerLabel.raycastTarget = false;
+        // --- Subject area (big, outside scroll) ---
+        var subjectArea = AddImage(rt, "SubjectArea", PanelBg);
+        var sart = subjectArea.rectTransform;
+        sart.anchorMin = new Vector2(0, 1);
+        sart.anchorMax = new Vector2(1, 1);
+        sart.pivot = new Vector2(0.5f, 1);
+        sart.sizeDelta = new Vector2(0, 70);
+        sart.anchoredPosition = new Vector2(0, -42);
+        subjectArea.raycastTarget = false;
 
-        // --- Body content area (the "wrong click" zone for scam panel) ---
-        var content = AddImage(rt, "Content", new Color(1f, 1f, 1f, 0f));
-        var crt = content.rectTransform;
-        crt.anchorMin = new Vector2(0, 0);
-        crt.anchorMax = new Vector2(1, 1);
-        crt.offsetMin = new Vector2(30, 30);
-        crt.offsetMax = new Vector2(-30, -90); // 60 header + 30 padding
-        content.raycastTarget = isScam;
+        string subjectStr = isScam
+            ? "URGENT: Account suspended in 24 hours!"
+            : "Your package will arrive Friday";
+        var subjectTmp = AddText(subjectArea.rectTransform, "SubjectText",
+            subjectStr, 30, BodyText,
+            TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
+        var strt = subjectTmp.rectTransform;
+        strt.anchorMin = Vector2.zero; strt.anchorMax = Vector2.one;
+        strt.offsetMin = new Vector2(24, 0);
+        strt.offsetMax = Vector2.zero;
+        subjectTmp.raycastTarget = false;
 
         if (isScam)
         {
-            var receiver = content.gameObject.AddComponent<PanelClickReceiver>();
-            receiver.manager = manager;
+            AddMarker(subjectArea.gameObject, manager,
+                "Urgency and threat language",
+                "'URGENT', 'suspended', and '24 hours' are designed to create panic. Real companies describe what the email is about calmly — they never threaten you in the subject line.");
         }
 
-        // Stack rows top-to-bottom. y is distance from top of `content`.
-        float y = 0;
-        const float rowGap = 12;
+        // --- Sender row (avatar + name + email + timestamp, outside scroll) ---
+        var senderRow = AddImage(rt, "SenderRow", PanelBg);
+        var srrt = senderRow.rectTransform;
+        srrt.anchorMin = new Vector2(0, 1);
+        srrt.anchorMax = new Vector2(1, 1);
+        srrt.pivot = new Vector2(0.5f, 1);
+        srrt.sizeDelta = new Vector2(0, 68);
+        srrt.anchoredPosition = new Vector2(0, -112);
+        senderRow.raycastTarget = false;
 
-        // ============ Row 1: Sender ============
-        string sender = isScam
-            ? "From: Amaz0n Security <security@amaz0n-shipping.net>"
-            : "From: Amazon Shipping <ship-confirm@amazon.com>";
-        var senderRow = AddRow(crt, "Sender", sender, 28, MutedText, FontStyles.Normal, ref y, 50);
+        // Avatar circle
+        var avatar = AddImage(senderRow.rectTransform, "Avatar", AmazonOrange);
+        avatar.sprite = TryGetCircleSprite();
+        avatar.preserveAspect = true;
+        var avrt = avatar.rectTransform;
+        avrt.anchorMin = new Vector2(0, 0.5f);
+        avrt.anchorMax = new Vector2(0, 0.5f);
+        avrt.pivot = new Vector2(0, 0.5f);
+        avrt.sizeDelta = new Vector2(50, 50);
+        avrt.anchoredPosition = new Vector2(22, 0);
+        avatar.raycastTarget = false;
+        var avLetter = AddText(avatar.rectTransform, "Letter", "A",
+            28, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
+        Stretch(avLetter.rectTransform);
+        avLetter.raycastTarget = false;
+
+        // Sender name
+        string senderName = isScam ? "Amaz0n Security" : "Amazon";
+        var nameT = AddText(senderRow.rectTransform, "SenderName", senderName,
+            22, BodyText, TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
+        var ntrt = nameT.rectTransform;
+        ntrt.anchorMin = new Vector2(0, 0.5f); ntrt.anchorMax = new Vector2(0, 1);
+        ntrt.pivot = new Vector2(0, 0.5f);
+        ntrt.sizeDelta = new Vector2(360, 0);
+        ntrt.anchoredPosition = new Vector2(86, -4);
+        nameT.raycastTarget = false;
+
+        // Sender email
+        string senderEmail = isScam
+            ? "<security@amaz0n-shipping.net>"
+            : "<ship-confirm@amazon.com>";
+        var emailT = AddText(senderRow.rectTransform, "SenderEmail", senderEmail,
+            17, MutedText, TextAlignmentOptions.MidlineLeft);
+        var etrt = emailT.rectTransform;
+        etrt.anchorMin = new Vector2(0, 0); etrt.anchorMax = new Vector2(0, 0.5f);
+        etrt.pivot = new Vector2(0, 0.5f);
+        etrt.sizeDelta = new Vector2(420, 0);
+        etrt.anchoredPosition = new Vector2(86, 4);
+        emailT.raycastTarget = false;
+
+        // Timestamp
+        var tsT = AddText(senderRow.rectTransform, "Timestamp", "May 5, 4:03 PM",
+            17, MutedText, TextAlignmentOptions.MidlineRight);
+        var tsrt = tsT.rectTransform;
+        tsrt.anchorMin = new Vector2(1, 0); tsrt.anchorMax = new Vector2(1, 1);
+        tsrt.pivot = new Vector2(1, 0.5f);
+        tsrt.sizeDelta = new Vector2(200, 0);
+        tsrt.anchoredPosition = new Vector2(-22, 0);
+        tsT.raycastTarget = false;
+
         if (isScam)
-            AddMarker(senderRow, manager,
+        {
+            AddMarker(senderRow.gameObject, manager,
                 "Spoofed sender domain",
-                "Real Amazon emails come from amazon.com. Lookalike domains like 'amaz0n-shipping.net' (note the zero, and the unfamiliar suffix) are a classic phishing tactic. Always check the full domain after the @ symbol.");
-        y += rowGap;
+                "The address ends in 'amaz0n-shipping.net' — note the zero instead of 'o', and an unfamiliar domain suffix. Real Amazon emails come from @amazon.com. Always check the full address after the @ symbol.");
+        }
 
-        // ============ Row 2: Subject ============
-        string subject = isScam
-            ? "Subject: URGENT: Account suspended in 24 hours!"
-            : "Subject: Your package will arrive Friday";
-        var subjectRow = AddRow(crt, "Subject", subject, 30, BodyText, FontStyles.Bold, ref y, 55);
+        // --- Thin divider ---
+        var div = AddImage(rt, "HeaderDivider", DividerColor);
+        var drt = div.rectTransform;
+        drt.anchorMin = new Vector2(0, 1); drt.anchorMax = new Vector2(1, 1);
+        drt.pivot = new Vector2(0.5f, 1);
+        drt.sizeDelta = new Vector2(0, 1);
+        drt.anchoredPosition = new Vector2(0, -180);
+        div.raycastTarget = false;
+
+        // --- Scrollable body ---
+        float headerHeight = 181f;  // 42 + 70 + 68 + 1
+        var scrollGo = new GameObject("BodyScroll", typeof(RectTransform));
+        scrollGo.transform.SetParent(rt, false);
+        var scrollRT = scrollGo.GetComponent<RectTransform>();
+        scrollRT.anchorMin = new Vector2(0, 0);
+        scrollRT.anchorMax = new Vector2(1, 1);
+        scrollRT.offsetMin = Vector2.zero;
+        scrollRT.offsetMax = new Vector2(0, -headerHeight);
+
+        var scrollImg = scrollGo.AddComponent<Image>();
+        scrollImg.color = PanelBg;
+        scrollImg.raycastTarget = false;
+
+        var scrollRect = scrollGo.AddComponent<ScrollRect>();
+        scrollRect.horizontal = false;
+        scrollRect.vertical = true;
+        scrollRect.scrollSensitivity = 35;
+        scrollRect.movementType = ScrollRect.MovementType.Clamped;
+
+        // Viewport (with mask + wrong-click receiver on scam side)
+        var vpGo = new GameObject("Viewport", typeof(RectTransform));
+        vpGo.transform.SetParent(scrollRT, false);
+        Stretch(vpGo.GetComponent<RectTransform>());
+
+        var vpImg = vpGo.AddComponent<Image>();
+        vpImg.color = PanelBg;
+        vpImg.raycastTarget = isScam;
         if (isScam)
-            AddMarker(subjectRow, manager,
-                "Urgency and threat language",
-                "Words like 'URGENT', 'suspended', and time pressure ('24 hours') are designed to short-circuit your judgment. Real companies describe what the message is about ('Your package shipped'); they don't threaten you in subject lines.");
-        y += rowGap * 1.5f;
+        {
+            var recv = vpGo.AddComponent<PanelClickReceiver>();
+            recv.manager = manager;
+        }
+        var mask = vpGo.AddComponent<Mask>();
+        mask.showMaskGraphic = false;
 
-        // ============ Divider ============
-        var divider = AddImage(crt, "Divider", new Color(0, 0, 0, 0.15f));
-        AnchorTopStretch(divider.rectTransform, height: 2, topInset: y);
-        divider.raycastTarget = false;
-        y += 2 + rowGap;
+        // Content (VerticalLayoutGroup + ContentSizeFitter)
+        var contentGo = new GameObject("BodyContent", typeof(RectTransform));
+        contentGo.transform.SetParent(vpGo.transform, false);
+        var contentRT = contentGo.GetComponent<RectTransform>();
+        contentRT.anchorMin = new Vector2(0, 1);
+        contentRT.anchorMax = new Vector2(1, 1);
+        contentRT.pivot = new Vector2(0.5f, 1);
+        contentRT.sizeDelta = new Vector2(0, 0);
+        contentRT.anchoredPosition = Vector2.zero;
 
-        // ============ Row 3: Greeting ============
+        var vlg = contentGo.AddComponent<VerticalLayoutGroup>();
+        vlg.childAlignment = TextAnchor.UpperLeft;
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+        vlg.spacing = 6;
+        vlg.padding = new RectOffset(28, 28, 22, 32);
+
+        var csf = contentGo.AddComponent<ContentSizeFitter>();
+        csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        scrollRect.viewport = vpGo.GetComponent<RectTransform>();
+        scrollRect.content = contentRT;
+
+        BuildEmailBody(contentGo.transform, manager, isScam);
+    }
+
+    // ======================================================================
+    // Email body content
+    // ======================================================================
+
+    private static void BuildEmailBody(
+        Transform content, SpotDifferenceManager manager, bool isScam)
+    {
+        // ---- Greeting ----
         string greeting = isScam ? "Dear Valued Customer," : "Hi John,";
-        var greetingRow = AddRow(crt, "Greeting", greeting, 28, BodyText, FontStyles.Normal, ref y, 45);
+        var greetingRow = BodyRow(content, "Greeting", greeting,
+            26, BodyText, FontStyles.Normal);
         if (isScam)
             AddMarker(greetingRow, manager,
                 "Generic greeting",
-                "'Dear Valued Customer' suggests the sender doesn't actually know who you are. Companies you have accounts with normally use your real name. A generic greeting on an 'urgent' email is a strong red flag.");
-        y += rowGap;
+                "'Dear Valued Customer' shows the sender doesn't actually know who you are. Real companies with your account on file use your real name. A generic greeting on an 'urgent' security email is a strong red flag.");
+        Spacer(content, 8);
 
-        // ============ Row 4: Body line 1 (no flag) ============
-        AddRow(crt, "BodyLine1", "Your order has shipped! Track your", 26, BodyText, FontStyles.Normal, ref y, 38);
+        // ---- Opening paragraph ----
+        if (!isScam)
+        {
+            BodyRow(content, "OpenPara",
+                "Great news! Your recent order has shipped and is on its way to you. " +
+                "We wanted to give you a quick update on your delivery.",
+                24, BodyText, FontStyles.Normal);
+        }
+        else
+        {
+            var body1 = BodyRow(content, "OpenPara",
+                "We have detected suspecious activity on your account and have " +
+                "temporarily suspended your access as a precautionary measure. " +
+                "You must verify your identity immediately to restore full account access.",
+                24, BodyText, FontStyles.Normal);
+            AddMarker(body1, manager,
+                "Spelling error",
+                "'Suspecious' is a misspelling of 'suspicious'. Real corporate communications are professionally written and proofread. Typos and awkward phrasing are common in phishing messages, often written quickly or in a second language.");
+        }
+        Spacer(content, 10);
 
-        // ============ Row 5: Body line 2 (spelling error on scam) ============
-        string body2 = isScam ? "pakage at the link below." : "package at the link below.";
-        var body2Row = AddRow(crt, "BodyLine2", body2, 26, BodyText, FontStyles.Normal, ref y, 38);
-        if (isScam)
-            AddMarker(body2Row, manager,
-                "Spelling / grammar errors",
-                "'Pakage' is misspelled. Real companies proofread their communications. Misspellings, awkward grammar, or odd capitalization are common in scams — attackers often work in a hurry or in a second language.");
-        y += rowGap;
+        // ---- Order summary section ----
+        BodyRow(content, "OrderLabel", "Order Summary:", 21, MutedText, FontStyles.Bold);
+        Spacer(content, 2);
+        BodyRow(content, "OrderItem", "    Echo Dot (5th Gen) — Charcoal × 1",
+            22, BodyText, FontStyles.Normal);
+        BodyRow(content, "OrderNum", "    Order #: 113-4567890",
+            22, MutedText, FontStyles.Italic);
+        if (!isScam)
+        {
+            BodyRow(content, "OrderDate", "    Estimated Delivery: Friday, May 10, 2024",
+                22, MutedText, FontStyles.Italic);
+            BodyRow(content, "OrderAddr", "    Shipping to: 142 Maple Street, Edmonton, AB",
+                22, MutedText, FontStyles.Italic);
+        }
+        Spacer(content, 12);
 
-        // ============ Row 6: Order line (no flag, identical) ============
-        AddRow(crt, "OrderLine", "Order #: 113-4567890", 24, MutedText, FontStyles.Italic, ref y, 38);
-        y += rowGap * 2;
+        // ---- Second paragraph ----
+        if (!isScam)
+        {
+            BodyRow(content, "Para2",
+                "You can track your package in real time using the button below. " +
+                "Our delivery partner will send you a separate notification when your " +
+                "order is out for delivery.",
+                24, BodyText, FontStyles.Normal);
+        }
+        else
+        {
+            BodyRow(content, "Para2",
+                "To restore your account, click the button below and complete identity " +
+                "verification. Failure to respond within 24 hours will result in " +
+                "permanent account deletion and cancellation of all pending orders.",
+                24, BodyText, FontStyles.Normal);
+        }
+        Spacer(content, 14);
 
-        // ============ Row 7: CTA button ============
-        var ctaContainer = AddImage(crt, "CtaContainer", new Color(1, 1, 1, 0));
-        var ccRT = ctaContainer.rectTransform;
-        ccRT.anchorMin = new Vector2(0.5f, 1);
-        ccRT.anchorMax = new Vector2(0.5f, 1);
-        ccRT.pivot = new Vector2(0.5f, 1);
-        ccRT.sizeDelta = new Vector2(420, 75);
-        ccRT.anchoredPosition = new Vector2(0, -y);
-        ctaContainer.raycastTarget = false;
+        // ---- CTA button ----
+        var ctaHolder = new GameObject("CtaHolder", typeof(RectTransform));
+        ctaHolder.transform.SetParent(content, false);
+        var ctaHolderImg = ctaHolder.AddComponent<Image>();
+        ctaHolderImg.color = new Color(0, 0, 0, 0);
+        ctaHolderImg.raycastTarget = false;
+        var ctaLE = ctaHolder.AddComponent<LayoutElement>();
+        ctaLE.preferredHeight = 72;
 
-        var cta = AddImage(ccRT, "CtaButton", isScam ? CtaScam : CtaReal);
-        Stretch(cta.rectTransform);
-        cta.raycastTarget = false;
-        var ctaLabel = AddText(cta.rectTransform, "CtaLabel",
+        var ctaBtn = AddImage(ctaHolder.GetComponent<RectTransform>(), "CtaBtn",
+            isScam ? CtaScam : CtaReal);
+        var cbrt = ctaBtn.rectTransform;
+        cbrt.anchorMin = new Vector2(0.5f, 0.5f);
+        cbrt.anchorMax = new Vector2(0.5f, 0.5f);
+        cbrt.pivot = new Vector2(0.5f, 0.5f);
+        cbrt.sizeDelta = new Vector2(340, 56);
+        cbrt.anchoredPosition = Vector2.zero;
+        ctaBtn.raycastTarget = false;
+
+        var ctaLabel = AddText(ctaBtn.rectTransform, "Label",
             isScam ? "VERIFY ACCOUNT NOW" : "View Order Details",
-            26, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
+            23, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
         Stretch(ctaLabel.rectTransform);
         ctaLabel.raycastTarget = false;
 
         if (isScam)
-            AddMarker(ctaContainer.gameObject, manager,
+        {
+            AddMarker(ctaHolder, manager,
                 "Suspicious call to action",
-                "'VERIFY ACCOUNT NOW' demands urgent, vague action — a hallmark of phishing. Legitimate buttons describe a specific task ('View Order Details', 'Track Package'). If a button is pressuring you, hover over the link before clicking and check where it actually goes.");
+                "'VERIFY ACCOUNT NOW' uses vague urgent language to pressure you into clicking. Legitimate email buttons describe specific tasks — 'View Order Details', 'Track Package'. Urgent, non-specific action buttons are a major phishing sign.");
+        }
+        Spacer(content, 14);
 
-        y += 75 + rowGap;
+        // ---- Additional paragraphs (making email longer / scrollable) ----
+        if (!isScam)
+        {
+            BodyRow(content, "Para3",
+                "If you have any questions about your order or delivery, our customer " +
+                "support team is available 24 hours a day, 7 days a week through the Amazon Help Center.",
+                24, BodyText, FontStyles.Normal);
+            Spacer(content, 10);
+            BodyRow(content, "Para4",
+                "As an Amazon Prime member, your package is eligible for our A-to-Z " +
+                "Guarantee. If anything is wrong with your order upon arrival, we will " +
+                "make it right — no questions asked.",
+                24, BodyText, FontStyles.Normal);
+            Spacer(content, 10);
+            BodyRow(content, "Para5",
+                "You have 30 days from the delivery date to initiate a return if needed. " +
+                "Visit our Returns Center to get started.",
+                24, BodyText, FontStyles.Normal);
+            Spacer(content, 16);
+            BodyRow(content, "Sig", "Thank you for shopping with Amazon!", 24, BodyText, FontStyles.Normal);
+            BodyRow(content, "SigName", "— The Amazon Team", 22, MutedText, FontStyles.Italic);
+        }
+        else
+        {
+            BodyRow(content, "Para3",
+                "For the verification process you will be required to confirm your Amazon " +
+                "account password and provide your full billing information including credit " +
+                "card details. This is a mandatory step that cannot be skipped.",
+                24, BodyText, FontStyles.Normal);
+            Spacer(content, 10);
+            BodyRow(content, "Para4",
+                "Please note: this is the only notice you will receive. We are unable to " +
+                "process account recovery requests or refunds for accounts that have not " +
+                "been verified within the required time window.",
+                24, BodyText, FontStyles.Normal);
+            Spacer(content, 10);
+            BodyRow(content, "Para5",
+                "Do not share this email or the verification link with anyone. This " +
+                "link is unique to your account and expires in exactly 24 hours from " +
+                "the time of this notice.",
+                24, BodyText, FontStyles.Normal);
+            Spacer(content, 16);
+            BodyRow(content, "Sig", "— Amaz0n Security Team", 22, MutedText, FontStyles.Italic);
+            BodyRow(content, "SigDept", "Account Protection Division", 20, MutedText, FontStyles.Normal);
+        }
 
-        // ============ Row 8: Footer (identical, no flag) ============
-        AddRow(crt, "Footer", "Need help? Visit our Help Center.", 22, MutedText, FontStyles.Italic, ref y, 36);
+        // ---- Footer divider and footer text ----
+        Spacer(content, 16);
+        var footerDiv = AddImage(content, "FooterDiv", DividerColor);
+        var fdLE = footerDiv.GetComponent<LayoutElement>() ?? footerDiv.gameObject.AddComponent<LayoutElement>();
+        fdLE.preferredHeight = 1;
+        footerDiv.raycastTarget = false;
+        Spacer(content, 10);
+
+        string footerStr = isScam
+            ? "Questions? Contact us at: support@amaz0n-security.tk"
+            : "Need help? Visit our Help Center   |   Manage your account";
+        BodyRow(content, "Footer", footerStr, 18, MutedText, FontStyles.Normal);
     }
 
-    /// <summary>
-    /// Adds a horizontally-stretched row anchored to the top of `parent`,
-    /// with a TMP text inside. Advances `y` by the row height so the next
-    /// row lands directly below.
-    /// </summary>
-    private static GameObject AddRow(
-        RectTransform parent, string name, string text,
-        int fontSize, Color color, FontStyles style,
-        ref float y, float height)
+    // ---- Body row helpers ----
+
+    private static GameObject BodyRow(Transform parent, string name, string text,
+        int fontSize, Color color, FontStyles style)
     {
-        var row = AddImage(parent, name, new Color(1, 1, 1, 0));
-        var rrt = row.rectTransform;
-        rrt.anchorMin = new Vector2(0, 1);
-        rrt.anchorMax = new Vector2(1, 1);
-        rrt.pivot = new Vector2(0.5f, 1);
-        rrt.sizeDelta = new Vector2(0, height);
-        rrt.anchoredPosition = new Vector2(0, -y);
-        row.raycastTarget = false;
-
-        var t = AddText(rrt, "Text", text, fontSize, color, TextAlignmentOptions.MidlineLeft, style);
-        Stretch(t.rectTransform);
+        var go = new GameObject(name, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var t = go.AddComponent<TextMeshProUGUI>();
+        t.text = text;
+        t.fontSize = fontSize;
+        t.color = color;
+        t.fontStyle = style;
+        t.alignment = TextAlignmentOptions.TopLeft;
+        t.textWrappingMode = TextWrappingModes.Normal;
         t.raycastTarget = false;
-
-        y += height;
-        return row.gameObject;
+        var le = go.AddComponent<LayoutElement>();
+        le.flexibleWidth = 1;
+        return go;
     }
 
-    /// <summary>
-    /// Drops an invisible click-zone child onto a row that contains a red
-    /// flag. The zone is sized to fully cover its parent row and registered
-    /// with the manager.
-    /// </summary>
-    private static void AddMarker(
-        GameObject parent, SpotDifferenceManager manager,
+    private static void Spacer(Transform parent, float height)
+    {
+        var go = new GameObject("Spacer", typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var le = go.AddComponent<LayoutElement>();
+        le.preferredHeight = height;
+        le.flexibleWidth = 1;
+    }
+
+    private static Image AddImage(Transform parent, string name, Color color)
+    {
+        var go = new GameObject(name, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var img = go.AddComponent<Image>();
+        img.color = color;
+        return img;
+    }
+
+    private static void AddMarker(GameObject parent, SpotDifferenceManager manager,
         string flagName, string explanation)
     {
         var go = new GameObject("DiffMarker_" + Sanitize(flagName), typeof(RectTransform));
         go.transform.SetParent(parent.transform, false);
+        Stretch(go.GetComponent<RectTransform>());
 
         var img = go.AddComponent<Image>();
-        img.color = new Color(1, 0, 0, 0); // invisible until found
+        img.color = new Color(1, 0, 0, 0);
         img.raycastTarget = true;
-        Stretch(img.rectTransform);
 
         var marker = go.AddComponent<DifferenceMarker>();
         marker.flagName = flagName;
@@ -351,14 +585,14 @@ public static class SpotDifferenceBuilder
     }
 
     // ======================================================================
-    // Result panel (full-screen overlay shown when all flags are found)
+    // Result panel
     // ======================================================================
 
     private static GameObject BuildResultPanel(RectTransform parent, SpotDifferenceManager manager)
     {
         var overlay = AddImage(parent, "ResultOverlay", OverlayColor);
         Stretch(overlay.rectTransform);
-        overlay.raycastTarget = true; // blocks clicks behind
+        overlay.raycastTarget = true;
 
         var panel = AddImage(overlay.rectTransform, "ResultPanel", Color.white);
         var prt = panel.rectTransform;
@@ -367,55 +601,49 @@ public static class SpotDifferenceBuilder
         prt.pivot = new Vector2(0.5f, 0.5f);
         prt.sizeDelta = new Vector2(1100, 800);
 
-        var title = AddText(prt, "Title",
+        var header = AddImage(prt, "Header", HudColor);
+        AnchorTopStretch(header.rectTransform, height: 90);
+        var hLabel = AddText(header.rectTransform, "Title",
             "You spotted all the red flags!",
-            54, Hex("#222222"), TextAlignmentOptions.Center, FontStyles.Bold);
-        var trt = title.rectTransform;
-        trt.anchorMin = new Vector2(0, 1);
-        trt.anchorMax = new Vector2(1, 1);
-        trt.pivot = new Vector2(0.5f, 1);
-        trt.sizeDelta = new Vector2(-80, 80);
-        trt.anchoredPosition = new Vector2(0, -40);
+            44, HudText, TextAlignmentOptions.Center, FontStyles.Bold);
+        Stretch(hLabel.rectTransform);
+        hLabel.raycastTarget = false;
 
-        var breakdown = AddText(prt, "Breakdown",
-            string.Empty,
-            22, Hex("#333333"), TextAlignmentOptions.TopLeft, FontStyles.Normal);
+        var breakdown = AddText(prt, "Breakdown", string.Empty,
+            22, Hex("#333333"), TextAlignmentOptions.TopLeft);
         var brt = breakdown.rectTransform;
         brt.anchorMin = new Vector2(0, 0);
         brt.anchorMax = new Vector2(1, 1);
         brt.pivot = new Vector2(0.5f, 0.5f);
-        brt.offsetMin = new Vector2(60, 180);
-        brt.offsetMax = new Vector2(-60, -140);
+        brt.offsetMin = new Vector2(60, 190);
+        brt.offsetMax = new Vector2(-60, -130);
 
-        var scoreText = AddText(prt, "Score",
-            "Final Score: 0",
-            38, Hex("#222222"), TextAlignmentOptions.Center, FontStyles.Bold);
+        var scoreText = AddText(prt, "Score", "Final Score: 0",
+            36, Hex("#222222"), TextAlignmentOptions.Center, FontStyles.Bold);
         var srt = scoreText.rectTransform;
         srt.anchorMin = new Vector2(0, 0);
         srt.anchorMax = new Vector2(1, 0);
         srt.pivot = new Vector2(0.5f, 0);
-        srt.sizeDelta = new Vector2(-80, 60);
-        srt.anchoredPosition = new Vector2(0, 110);
+        srt.sizeDelta = new Vector2(-80, 56);
+        srt.anchoredPosition = new Vector2(0, 120);
 
-        var playAgain = AddButton(prt, "PlayAgainBtn", "Play Again", 28, Hex("#5DA831"), Color.white);
+        var playAgain = AddButton(prt, "PlayAgainBtn", "Play Again", 28, Hex("#2ECC71"), Color.white);
         var part = playAgain.GetComponent<RectTransform>();
-        part.anchorMin = new Vector2(0.5f, 0);
-        part.anchorMax = new Vector2(0.5f, 0);
+        part.anchorMin = new Vector2(0.5f, 0); part.anchorMax = new Vector2(0.5f, 0);
         part.pivot = new Vector2(1f, 0);
         part.sizeDelta = new Vector2(260, 70);
-        part.anchoredPosition = new Vector2(-20, 30);
+        part.anchoredPosition = new Vector2(-20, 32);
         playAgain.GetComponent<Button>().onClick.AddListener(manager.PlayAgain);
 
-        var menu = AddButton(prt, "MenuBtn", "Back to Map", 28, Hex("#777777"), Color.white);
+        var menu = AddButton(prt, "MenuBtn", "Back to Map", 28, Hex("#7F8C8D"), Color.white);
         var mrt = menu.GetComponent<RectTransform>();
-        mrt.anchorMin = new Vector2(0.5f, 0);
-        mrt.anchorMax = new Vector2(0.5f, 0);
+        mrt.anchorMin = new Vector2(0.5f, 0); mrt.anchorMax = new Vector2(0.5f, 0);
         mrt.pivot = new Vector2(0f, 0);
         mrt.sizeDelta = new Vector2(260, 70);
-        mrt.anchoredPosition = new Vector2(20, 30);
+        mrt.anchoredPosition = new Vector2(20, 32);
         menu.GetComponent<Button>().onClick.AddListener(manager.BackToWorldMap);
 
-        manager.resultTitle = title;
+        manager.resultTitle = hLabel;
         manager.resultBreakdown = breakdown;
         manager.resultScore = scoreText;
 
@@ -442,44 +670,35 @@ public static class SpotDifferenceBuilder
         portrait.sprite = TryGetCircleSprite();
         portrait.preserveAspect = true;
         var prt = portrait.rectTransform;
-        prt.anchorMin = new Vector2(0, 0);
-        prt.anchorMax = new Vector2(0, 1);
+        prt.anchorMin = new Vector2(0, 0); prt.anchorMax = new Vector2(0, 1);
         prt.pivot = new Vector2(0, 0.5f);
         prt.sizeDelta = new Vector2(120, 0);
         prt.anchoredPosition = Vector2.zero;
 
         var letter = AddText(portrait.rectTransform, "Letter", "G",
-            64, new Color(0.20f, 0.10f, 0.18f),
-            TextAlignmentOptions.Center, FontStyles.Bold);
+            64, new Color(0.20f, 0.10f, 0.18f), TextAlignmentOptions.Center, FontStyles.Bold);
         Stretch(letter.rectTransform);
 
         var bubble = AddImage(rrt, "Bubble", Color.white);
         var brt = bubble.rectTransform;
-        brt.anchorMin = new Vector2(0, 0);
-        brt.anchorMax = new Vector2(1, 1);
+        brt.anchorMin = new Vector2(0, 0); brt.anchorMax = new Vector2(1, 1);
         brt.pivot = new Vector2(0, 0.5f);
         brt.offsetMin = new Vector2(140, 0);
-        brt.offsetMax = new Vector2(0, 0);
+        brt.offsetMax = Vector2.zero;
 
-        var speakerLabel = AddText(bubble.rectTransform, "SpeakerLabel",
-            "Grandma", 18,
-            new Color(0.78f, 0.30f, 0.50f),
-            TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
+        var speakerLabel = AddText(bubble.rectTransform, "SpeakerLabel", "Grandma", 18,
+            new Color(0.78f, 0.30f, 0.50f), TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
         var slrt = speakerLabel.rectTransform;
-        slrt.anchorMin = new Vector2(0, 1);
-        slrt.anchorMax = new Vector2(1, 1);
+        slrt.anchorMin = new Vector2(0, 1); slrt.anchorMax = new Vector2(1, 1);
         slrt.pivot = new Vector2(0, 1);
         slrt.sizeDelta = new Vector2(0, 26);
         slrt.anchoredPosition = new Vector2(20, -8);
 
-        var bubbleText = AddText(bubble.rectTransform, "BubbleText",
-            "...", 22,
-            new Color(0.13f, 0.13f, 0.13f),
-            TextAlignmentOptions.MidlineLeft);
+        var bubbleText = AddText(bubble.rectTransform, "BubbleText", "...", 22,
+            new Color(0.13f, 0.13f, 0.13f), TextAlignmentOptions.MidlineLeft);
         bubbleText.textWrappingMode = TextWrappingModes.Normal;
         var btrt = bubbleText.rectTransform;
-        btrt.anchorMin = new Vector2(0, 0);
-        btrt.anchorMax = new Vector2(1, 1);
+        btrt.anchorMin = new Vector2(0, 0); btrt.anchorMax = new Vector2(1, 1);
         btrt.offsetMin = new Vector2(20, 8);
         btrt.offsetMax = new Vector2(-20, -32);
 
@@ -523,15 +742,6 @@ public static class SpotDifferenceBuilder
     // Tiny UI helpers
     // ======================================================================
 
-    private static Image AddImage(Transform parent, string name, Color color)
-    {
-        var go = new GameObject(name, typeof(RectTransform));
-        go.transform.SetParent(parent, false);
-        var img = go.AddComponent<Image>();
-        img.color = color;
-        return img;
-    }
-
     private static TMP_Text AddText(Transform parent, string name, string content,
         int fontSize, Color color, TextAlignmentOptions align,
         FontStyles style = FontStyles.Normal)
@@ -557,7 +767,6 @@ public static class SpotDifferenceBuilder
         img.color = bg;
         var btn = go.AddComponent<Button>();
         btn.targetGraphic = img;
-
         var t = AddText(go.transform, "Label", label, fontSize, textColor,
             TextAlignmentOptions.Center, FontStyles.Bold);
         Stretch(t.rectTransform);
@@ -568,8 +777,7 @@ public static class SpotDifferenceBuilder
     {
         rt.anchorMin = Vector2.zero;
         rt.anchorMax = Vector2.one;
-        rt.offsetMin = Vector2.zero;
-        rt.offsetMax = Vector2.zero;
+        rt.offsetMin = rt.offsetMax = Vector2.zero;
     }
 
     private static void AnchorTopStretch(RectTransform rt, float height, float topInset = 0)
