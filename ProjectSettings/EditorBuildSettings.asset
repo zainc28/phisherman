@@ -17,6 +17,12 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/EmailSwiper.unity
     guid: ff38238b6b9b91d47868f7efbc45e503
+  - enabled: 1
+    path: Assets/Scenes/SpotDifference.unity
+    guid: 9ad60a658bbecef4699c37925dc4c87a
+  - enabled: 1
+    path: Assets/Scenes/TowerDefense.unity
+    guid: dfc8d814fdf999c4eaff1fb2d852a0cf
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
   m_UseUCBPForAssetBundles: 0
