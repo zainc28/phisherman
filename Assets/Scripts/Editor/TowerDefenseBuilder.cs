@@ -9,66 +9,49 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 /// <summary>
-/// Builds the Tower Defense scene from scratch.
+/// Builds the Tower Defense scene.
 ///
-/// Run via:    Phisherman > Build Tower Defense Scene
-/// Output:     Assets/Scenes/TowerDefense.unity
+/// Run via:  Phisherman ▸ Build Tower Defense Scene
+/// Output:   Assets/Scenes/TowerDefense.unity
 ///
-/// Tower layout (world-space):
-///   TowerRoot
-///     ShakeRoot               ← shakes on impact
-///       [computer sprite OR rectangle tower]
-///       ScreenFlash           ← transparent overlay for red flash
-///       CrackContainer        ← crack sprites added here on damage
-///       Phisherman            ← placeholder character on top
-///         Body / Hat / Rod
-///
-/// Sprites are loaded automatically if present in Assets/Sprites/:
-///   computer.*              → tower body
-///   Free Fish Icons/*.png   → attached to each enemy
-///   Tower/*.png (or Kenney) → rocket / projectile
-///
-/// Re-running fully overwrites the scene.
+/// Auto-detects these sprites anywhere under Assets/:
+///   tower.png          → tower body
+///   phisherman.png     → character on tower top
+///   speargun.png       → weapon that rotates toward mouse
+///   td_hanging_fish.png → fish enemy sprite
+///   log.png            → log the fish holds (password text goes here)
 /// </summary>
 public static class TowerDefenseBuilder
 {
     private const string ScenesDir = "Assets/Scenes";
     private const string ScenePath = "Assets/Scenes/TowerDefense.unity";
 
-    private const float TowerX = 5.0f;
-    private const float TowerY = -0.5f;
-    private const float SpawnX = -8.0f;
+    // World-space layout
+    private const float TowerX = 5.2f;
+    private const float TowerY = -0.3f;
+    private const float SpawnX = -9.0f;
 
-    // ── Palette ──────────────────────────────────────────────────────────────
-    private static readonly Color BgColor = Hex("#3D2E5C");
-    private static readonly Color MonitorCase = Hex("#1A1D24");
-    private static readonly Color MonitorBezel = Hex("#0F1218");
-    private static readonly Color ScreenColor = Hex("#0A2D52");
-    private static readonly Color ScreenAccent = Hex("#22C2DD");
-    private static readonly Color StandColor = Hex("#2A2D34");
-
-    private static readonly Color HudBg = Hex("#1A1D2E");
-    private static readonly Color ScoreColor = Hex("#FFD93D");
-    private static readonly Color WaveColor = Color.white;
-    private static readonly Color ComboColor = Hex("#FF9F1C");
-
-    private static readonly Color PanelBg = Color.white;
-    private static readonly Color HeaderBlue = Hex("#1A73E8");
+    // ── Palette ──
+    private static readonly Color BgDeep = Hex("#1F1530");
+    private static readonly Color BgMid = Hex("#2E2050");
+    private static readonly Color PathColor = Hex("#1A1230");
+    private static readonly Color WaterColor = new Color(0.18f, 0.55f, 0.82f, 0.55f);
+    private static readonly Color WaterDark = new Color(0.10f, 0.35f, 0.60f, 0.75f);
+    private static readonly Color HudBg = new Color(0.08f, 0.07f, 0.15f, 0.88f);
+    private static readonly Color ScoreGold = Hex("#FFD93D");
+    private static readonly Color StreakOrange = Hex("#FF9F1C");
+    private static readonly Color WaveWhite = Color.white;
     private static readonly Color SafeGreen = Hex("#2ECC71");
     private static readonly Color RetryRed = Hex("#E74C3C");
     private static readonly Color MapGrey = Hex("#7F8C8D");
     private static readonly Color DarkText = Hex("#202124");
     private static readonly Color MutedText = Hex("#5F6368");
+    private static readonly Color PanelWhite = Color.white;
+    private static readonly Color HeaderBlue = Hex("#1A3A6B");
 
-    // Phisherman placeholder colours
-    private static readonly Color FishermanSkin = Hex("#F5C89A");
-    private static readonly Color FishermanJacket = Hex("#2A4FA8");
-    private static readonly Color FishermanHat = Hex("#8B5E1E");
-    private static readonly Color FishermanRod = Hex("#7A4E1A");
-
-    // =========================================================================
-    // Entry point
-    // =========================================================================
+    // =================================================================
+    // Build
+    // =================================================================
 
     [MenuItem("Phisherman/Build Tower Defense Scene")]
     public static void Build()
@@ -76,69 +59,63 @@ public static class TowerDefenseBuilder
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-        // White pixel sprite (used for primitives, cracks, fallback rocket)
-        var whiteSprite = EnsureWhitePixelSprite();
+        // ── White pixel (fallback for everything) ──
+        Sprite white = EnsureWhitePixel();
 
-        // ── Try to load user-imported game sprites ────────────────────────────
-        Sprite computerSprite = FindFirstSprite("computer");
-        Sprite fishSprite = FindFirstSprite("", "Assets/Sprites/Free Fish Icons")
-                             ?? FindFirstSprite("fish");
-        Sprite rocketSprite = FindFirstSprite("", "Assets/Sprites/Tower")
-                             ?? FindFirstSprite("rocket")
-                             ?? FindFirstSprite("", "Assets/Sprites/kenney_tower-defense-top-down");
+        // ── Auto-detect sprites ──
+        Sprite spTower = FindSprite("tower");
+        Sprite spPhisherman = FindSprite("phisherman");
+        Sprite spSpeargun = FindSprite("speargun");
+        Sprite spFish = FindSprite("td_hanging_fish");
+        Sprite spLog = FindSprite("log");
 
-        Debug.Log($"[TowerDefenseBuilder] Loaded sprites — " +
-                  $"computer:{computerSprite != null} " +
-                  $"fish:{fishSprite != null} " +
-                  $"rocket:{rocketSprite != null}");
+        LogFound("tower", spTower);
+        LogFound("phisherman", spPhisherman);
+        LogFound("speargun", spSpeargun);
+        LogFound("td_hanging_fish", spFish);
+        LogFound("log", spLog);
 
-        // ── Camera ────────────────────────────────────────────────────────────
+        // ── Tag setup ──
+        EnsureTag("Spear");
+
+        // ── Camera ──
         var camGo = new GameObject("Main Camera"); camGo.tag = "MainCamera";
         var cam = camGo.AddComponent<Camera>(); camGo.AddComponent<AudioListener>();
         cam.clearFlags = CameraClearFlags.SolidColor;
-        cam.backgroundColor = Hex("#1F1530");
+        cam.backgroundColor = BgDeep;
         cam.orthographic = true;
-        cam.orthographicSize = 4.5f;
+        cam.orthographicSize = 5f;
         camGo.transform.position = new Vector3(0, 0, -10);
 
-        // ── EventSystem ───────────────────────────────────────────────────────
+        // ── EventSystem ──
         var es = new GameObject("EventSystem");
         es.AddComponent<EventSystem>(); es.AddComponent<StandaloneInputModule>();
 
-        // ── Path background ───────────────────────────────────────────────────
-        CreateSpriteRect("PathBackground", whiteSprite, BgColor,
-            new Vector3(0, 0, 1), new Vector3(18f, 6f, 1f), sortingOrder: -10);
+        // ── Background ──
+        SprRect("BgFar", white, BgDeep, Vector3.zero, new Vector3(24, 12, 1), null, -20);
+        SprRect("BgMid", white, BgMid, new Vector3(0, -1, 0.5f), new Vector3(24, 8, 1), null, -15);
+        SprRect("Path", white, PathColor, new Vector3(0, 0, 0.2f), new Vector3(24, 3.2f, 1), null, -5);
 
-        // ── Spawn point ───────────────────────────────────────────────────────
-        var spawnGo = new GameObject("SpawnPoint", typeof(Transform));
-        spawnGo.transform.position = new Vector3(SpawnX, 0, 0);
+        // ── Spawn point ──
+        var spawnGo = new GameObject("SpawnPoint");
+        spawnGo.transform.position = new Vector3(SpawnX, TowerY, 0);
 
-        // ── Tower ─────────────────────────────────────────────────────────────
-        var towerRoot = new GameObject("Tower", typeof(Transform));
-        towerRoot.transform.position = new Vector3(TowerX, TowerY, 0);
-        var shakeRoot = new GameObject("ShakeRoot", typeof(Transform));
-        shakeRoot.transform.SetParent(towerRoot.transform, false);
+        // ── Tower ──
+        var towerRootGo = new GameObject("TowerRoot");
+        towerRootGo.transform.position = new Vector3(TowerX, TowerY, 0);
+        var shakeRoot = new GameObject("ShakeRoot");
+        shakeRoot.transform.SetParent(towerRootGo.transform, false);
 
-        SpriteRenderer screenSr;
-        Transform crackContainerT;
-        Transform fishermanT;
+        Transform crackContainer, towerFishCanvasRT, speargunPivot, spearSpawnPoint;
+        BuildTower(spTower, spPhisherman, spSpeargun, white,
+                   shakeRoot.transform,
+                   out crackContainer, out towerFishCanvasRT,
+                   out speargunPivot, out spearSpawnPoint);
 
-        if (computerSprite != null)
-        {
-            screenSr = BuildTowerWithSprite(computerSprite, whiteSprite, shakeRoot.transform,
-                                                 out crackContainerT, out fishermanT);
-        }
-        else
-        {
-            screenSr = BuildTowerRectangles(whiteSprite, shakeRoot.transform,
-                                                 out crackContainerT, out fishermanT);
-        }
-
-        // ── Canvas ────────────────────────────────────────────────────────────
+        // ── Canvas ──
         var canvasGo = new GameObject("Canvas");
         var canvas = canvasGo.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 0;
         var scaler = canvasGo.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);
@@ -146,568 +123,468 @@ public static class TowerDefenseBuilder
         canvasGo.AddComponent<GraphicRaycaster>();
         var canvasRT = canvasGo.GetComponent<RectTransform>();
 
-        // ── Manager ───────────────────────────────────────────────────────────
-        var managerGo = new GameObject("GameManager");
-        var manager = managerGo.AddComponent<TowerDefenseManager>();
-        manager.heartSprite = TryGetCircleSprite();
-        manager.whiteSprite = whiteSprite;
-        manager.fishSprite = fishSprite;
-        manager.rocketSprite = rocketSprite;
-        manager.spawnPoint = spawnGo.transform;
-        manager.towerTransform = towerRoot.transform;
-        manager.towerShakeRoot = shakeRoot.transform;
-        manager.towerScreenSr = screenSr;
-        manager.crackContainer = crackContainerT;
-        manager.fishermanTransform = fishermanT;
+        // ── Manager ──
+        var mgrGo = new GameObject("GameManager");
+        var mgr = mgrGo.AddComponent<TowerDefenseManager>();
+        mgr.fishSprite = spFish;
+        mgr.logSprite = spLog;
+        mgr.towerSprite = spTower;
+        mgr.phishermanSprite = spPhisherman;
+        mgr.speargunSprite = spSpeargun;
+        mgr.whiteSprite = white;
+        mgr.spawnPoint = spawnGo.transform;
+        mgr.towerRoot = towerRootGo.transform;
+        mgr.towerShakeRoot = shakeRoot.transform;
+        mgr.crackContainer = crackContainer;
+        mgr.towerWaterContainer = towerFishCanvasRT;
+        mgr.speargunPivot = speargunPivot;
+        mgr.spearSpawnPoint = spearSpawnPoint;
 
-        // ── UI panels ─────────────────────────────────────────────────────────
-        var hudPanel = BuildHud(canvasRT, manager);
-        var tutorialPanel = BuildTutorialPanel(canvasRT, manager);
-        var gameOverPanel = BuildGameOverPanel(canvasRT, manager);
-        var winPanel = BuildWinPanel(canvasRT, manager);
+        // ── UI panels ──
+        var hud = BuildHud(canvasRT, mgr);
+        var tutorial = BuildTutorialPanel(canvasRT, mgr);
+        var gameOver = BuildGameOverPanel(canvasRT, mgr);
+        var win = BuildWinPanel(canvasRT, mgr);
+        mgr.hudPanel = hud;
+        mgr.tutorialPanel = tutorial;
+        mgr.gameOverPanel = gameOver;
+        mgr.winPanel = win;
+        mgr.commentator = BuildCommentator(canvasRT);
 
-        manager.hudPanel = hudPanel;
-        manager.tutorialPanel = tutorialPanel;
-        manager.gameOverPanel = gameOverPanel;
-        manager.winPanel = winPanel;
-        manager.commentator = BuildCommentator(canvasRT);
-
-        hudPanel.SetActive(false);
-        gameOverPanel.SetActive(false);
-        winPanel.SetActive(false);
-        tutorialPanel.SetActive(true);
+        hud.SetActive(false); gameOver.SetActive(false);
+        win.SetActive(false); tutorial.SetActive(true);
 
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, ScenePath);
-        AddSceneToBuildSettings(ScenePath);
+        AddToBuild(ScenePath);
         AssetDatabase.SaveAssets(); AssetDatabase.Refresh();
-        Debug.Log($"[TowerDefenseBuilder] Scene built → {ScenePath}");
+        Debug.Log($"[TowerDefenseBuilder] Built → {ScenePath}");
     }
 
-    // =========================================================================
-    // Tower — uses the imported computer sprite as the body
-    // =========================================================================
+    // =================================================================
+    // Tower + Phisherman + Speargun
+    // =================================================================
 
-    private static SpriteRenderer BuildTowerWithSprite(
-        Sprite computerSprite, Sprite white, Transform shakeRoot,
-        out Transform crackContainer, out Transform fisherman)
+    static void BuildTower(
+        Sprite spTower, Sprite spPhisherman, Sprite spSpeargun, Sprite white,
+        Transform shakeRoot,
+        out Transform crackContainer,
+        out Transform towerFishRT,
+        out Transform speargunPivot,
+        out Transform spearSpawnPoint)
     {
-        // Computer image (fills the tower slot)
-        CreateSpriteRect("TowerComputer", computerSprite, Color.white,
-            new Vector3(0f, 0.6f, 0f), new Vector3(3.6f, 3.2f, 1f),
-            parent: shakeRoot, sortingOrder: 2);
+        // ── Tower body ──
+        if (spTower != null)
+        {
+            SprRect("TowerBody", spTower, Color.white,
+                new Vector3(0, 0.3f, 0), new Vector3(2.8f, 5.5f, 1),
+                shakeRoot, sortingOrder: 2);
+        }
+        else
+        {
+            // Fallback: rectangle tower
+            SprRect("TowerBody", white, Hex("#2D2040"),
+                new Vector3(0, 0.3f, 0), new Vector3(2.8f, 5.5f, 1),
+                shakeRoot, sortingOrder: 2);
+            SprRect("TowerScreen", white, Hex("#0A2D52"),
+                new Vector3(0, 0.8f, 0), new Vector3(2.2f, 2.5f, 1),
+                shakeRoot, sortingOrder: 3);
+        }
 
-        // Transparent overlay used for the screen-hit red flash
-        var flashSr = CreateSpriteRect("ScreenFlash", white,
-            new Color(1f, 1f, 1f, 0f),
-            new Vector3(0f, 0.8f, 0f), new Vector3(2.5f, 1.7f, 1f),
-            parent: shakeRoot, sortingOrder: 4);
+        // ── Water section (bottom of tower) ──
+        var waterBg = SprRect("TowerWaterBg", white, WaterDark,
+            new Vector3(0, -2.0f, 0), new Vector3(2.6f, 1.2f, 1),
+            shakeRoot, sortingOrder: 3);
 
-        // Screen text labels
-        CreateScreenLabel(shakeRoot, "ScreenLabel", "PHISHERMAN OS",
-            ScreenAccent, new Vector3(0f, 1.3f, -0.05f), 0.95f, 0.25f);
-        CreateScreenLabel(shakeRoot, "ScreenStatus", "[ ALIVE ]",
-            new Color(0.45f, 0.95f, 0.55f), new Vector3(0f, 0.3f, -0.05f), 0.7f, 0.18f);
+        SprRect("TowerWaterFill", white, WaterColor,
+            new Vector3(0, -2.0f, -0.1f), new Vector3(2.6f, 1.2f, 1),
+            shakeRoot, sortingOrder: 4);
 
-        // Crack container (children spawned here on damage, positioned over screen area)
-        var cc = new GameObject("CrackContainer", typeof(Transform));
-        cc.transform.SetParent(flashSr.transform, false);
-        cc.transform.localPosition = new Vector3(0, 0, -0.1f);
-        crackContainer = cc.transform;
+        // WorldSpace Canvas inside water for swimming fish UI
+        var waterCanvasGo = new GameObject("WaterCanvas");
+        waterCanvasGo.transform.SetParent(shakeRoot, false);
+        waterCanvasGo.transform.localPosition = new Vector3(0, -2.0f, -0.2f);
+        const float k = 0.01f;
+        waterCanvasGo.transform.localScale = new Vector3(k, k, 1f);
+        var wc = waterCanvasGo.AddComponent<Canvas>();
+        wc.renderMode = RenderMode.WorldSpace;
+        wc.sortingOrder = 6;
+        var wcRT = waterCanvasGo.GetComponent<RectTransform>();
+        wcRT.sizeDelta = new Vector2(260, 120);
 
-        // Phisherman on top of the computer
-        fisherman = BuildPhisherman(white, shakeRoot, topY: 2.8f);
-        return flashSr;
+        // Fish container inside canvas
+        var fishContGo = new GameObject("FishContainer", typeof(RectTransform));
+        fishContGo.transform.SetParent(waterCanvasGo.transform, false);
+        var fcRT = fishContGo.GetComponent<RectTransform>();
+        fcRT.anchorMin = Vector2.zero; fcRT.anchorMax = Vector2.one;
+        fcRT.offsetMin = fcRT.offsetMax = Vector2.zero;
+        towerFishRT = fcRT;
+
+        // ── Crack container (over tower body) ──
+        var ccGo = new GameObject("CrackContainer");
+        ccGo.transform.SetParent(shakeRoot, false);
+        ccGo.transform.localPosition = new Vector3(0, 0.3f, -0.3f);
+        crackContainer = ccGo.transform;
+
+        // ── Phisherman on top of tower ──
+        float towerTop = spTower != null ? 3.2f : 2.8f;
+        var phGo = new GameObject("Phisherman");
+        phGo.transform.SetParent(shakeRoot, false);
+        phGo.transform.localPosition = new Vector3(0f, towerTop, -0.5f);
+
+        if (spPhisherman != null)
+        {
+            SprRect("PhishermanSprite", spPhisherman, Color.white,
+                new Vector3(0, 0, 0), new Vector3(1.4f, 1.8f, 1),
+                phGo.transform, sortingOrder: 8);
+        }
+        else
+        {
+            // Placeholder body
+            SprRect("Body", white, Hex("#F5C89A"), Vector3.zero, new Vector3(0.5f, 0.7f, 1), phGo.transform, 8);
+            SprRect("Jacket", white, Hex("#2A4FA8"), new Vector3(0, -0.22f, 0), new Vector3(0.5f, 0.36f, 1), phGo.transform, 9);
+            SprRect("HatBrim", white, Hex("#8B5E1E"), new Vector3(0, 0.40f, 0), new Vector3(0.70f, 0.10f, 1), phGo.transform, 10);
+            SprRect("HatCrown", white, Hex("#8B5E1E"), new Vector3(0, 0.56f, 0), new Vector3(0.42f, 0.30f, 1), phGo.transform, 10);
+        }
+
+        // ── Speargun pivot (rotates to face mouse each frame) ──
+        // Pivot is at phisherman's hand position (left side, mid-height)
+        var pivotGo = new GameObject("SpeargunPivot");
+        pivotGo.transform.SetParent(phGo.transform, false);
+        pivotGo.transform.localPosition = new Vector3(-0.25f, 0.05f, -0.1f);
+        speargunPivot = pivotGo.transform;
+
+        // Speargun sprite — extends in +X from pivot
+        // (at 180° rotation it points LEFT toward fish)
+        if (spSpeargun != null)
+        {
+            SprRect("SpeargunSprite", spSpeargun, Color.white,
+                new Vector3(0.30f, 0, 0), new Vector3(1.1f, 0.45f, 1),
+                pivotGo.transform, sortingOrder: 9);
+        }
+        else
+        {
+            // Fallback speargun rect
+            SprRect("SpeargunBarrel", white, Hex("#4A3020"),
+                new Vector3(0.32f, 0, 0), new Vector3(0.9f, 0.14f, 1),
+                pivotGo.transform, sortingOrder: 9);
+            SprRect("SpeargunHandle", white, Hex("#6B4528"),
+                new Vector3(0.05f, -0.10f, 0), new Vector3(0.18f, 0.30f, 1),
+                pivotGo.transform, sortingOrder: 9);
+            SprRect("SpeargunTip", white, Hex("#C0A060"),
+                new Vector3(0.80f, 0, 0), new Vector3(0.12f, 0.12f, 1),
+                pivotGo.transform, sortingOrder: 10);
+        }
+
+        // Spear spawn point — tip of the speargun (+X direction from pivot)
+        var sspGo = new GameObject("SpearSpawnPoint");
+        sspGo.transform.SetParent(pivotGo.transform, false);
+        sspGo.transform.localPosition = new Vector3(0.85f, 0, 0);
+        spearSpawnPoint = sspGo.transform;
     }
 
-    // =========================================================================
-    // Tower — original rectangle-based construction (fallback, no sprite)
-    // =========================================================================
-
-    private static SpriteRenderer BuildTowerRectangles(
-        Sprite white, Transform shakeRoot,
-        out Transform crackContainer, out Transform fisherman)
-    {
-        // Monitor body
-        CreateSpriteRect("MonitorBody", white, MonitorCase,
-            new Vector3(0f, 1f, 0f), new Vector3(3.5f, 2.5f, 1f),
-            parent: shakeRoot, sortingOrder: 1);
-        CreateSpriteRect("MonitorBezel", white, MonitorBezel,
-            new Vector3(0f, 1f, 0f), new Vector3(3.2f, 2.2f, 1f),
-            parent: shakeRoot, sortingOrder: 2);
-
-        var screen = CreateSpriteRect("Screen", white, ScreenColor,
-            new Vector3(0f, 1f, 0f), new Vector3(3.0f, 2.0f, 1f),
-            parent: shakeRoot, sortingOrder: 3);
-
-        CreateScreenLabel(shakeRoot, "ScreenLabel", "PHISHERMAN OS",
-            ScreenAccent, new Vector3(0f, 1.78f, -0.05f), 0.95f, 0.25f);
-        CreateScreenLabel(shakeRoot, "ScreenStatus", "[ ALIVE ]",
-            new Color(0.45f, 0.95f, 0.55f), new Vector3(0f, 0.3f, -0.05f), 0.7f, 0.18f);
-
-        // Crack container
-        var cc = new GameObject("CrackContainer", typeof(Transform));
-        cc.transform.SetParent(screen.transform, false);
-        cc.transform.localPosition = new Vector3(0, 0, -0.1f);
-        crackContainer = cc.transform;
-
-        // Stand
-        CreateSpriteRect("StandNeck", white, StandColor,
-            new Vector3(0f, -0.6f, 0f), new Vector3(0.55f, 0.6f, 1f),
-            parent: shakeRoot, sortingOrder: 1);
-        CreateSpriteRect("StandBase", white, StandColor,
-            new Vector3(0f, -1.0f, 0f), new Vector3(1.7f, 0.22f, 1f),
-            parent: shakeRoot, sortingOrder: 1);
-
-        // Phisherman on top of monitor
-        fisherman = BuildPhisherman(white, shakeRoot, topY: 2.5f);
-        return screen;
-    }
-
-    // =========================================================================
-    // Phisherman placeholder
-    //   A simple "body + hat + fishing rod" figure that sits on top of the
-    //   tower. Replace these SpriteRenderers with a real sprite asset later.
-    // =========================================================================
-
-    private static Transform BuildPhisherman(Sprite white, Transform parent, float topY)
-    {
-        var root = new GameObject("Phisherman");
-        root.transform.SetParent(parent, false);
-        root.transform.localPosition = new Vector3(0f, topY, 0f);
-
-        // Body (skin-tone oval)
-        CreateSpriteRect("Body", white, FishermanSkin,
-            new Vector3(0f, 0f, 0f), new Vector3(0.52f, 0.72f, 1f),
-            parent: root.transform, sortingOrder: 5);
-
-        // Jacket / overalls (lower half)
-        CreateSpriteRect("Jacket", white, FishermanJacket,
-            new Vector3(0f, -0.22f, 0f), new Vector3(0.52f, 0.38f, 1f),
-            parent: root.transform, sortingOrder: 6);
-
-        // Hat brim
-        CreateSpriteRect("HatBrim", white, FishermanHat,
-            new Vector3(0f, 0.40f, 0f), new Vector3(0.74f, 0.11f, 1f),
-            parent: root.transform, sortingOrder: 7);
-
-        // Hat crown
-        CreateSpriteRect("HatCrown", white, FishermanHat,
-            new Vector3(0f, 0.58f, 0f), new Vector3(0.44f, 0.32f, 1f),
-            parent: root.transform, sortingOrder: 7);
-
-        // Fishing rod — extends LEFT toward enemies
-        var rodSr = CreateSpriteRect("FishingRod", white, FishermanRod,
-            new Vector3(-0.60f, 0.18f, 0f), new Vector3(1.15f, 0.065f, 1f),
-            parent: root.transform, sortingOrder: 6);
-        rodSr.transform.localRotation = Quaternion.Euler(0, 0, 12f); // slight upward angle
-
-        // Rod tip (small circle)
-        CreateSpriteRect("RodTip", white, new Color(0.85f, 0.65f, 0.15f),
-            new Vector3(-1.12f, 0.42f, 0f), new Vector3(0.12f, 0.12f, 1f),
-            parent: root.transform, sortingOrder: 7);
-
-        return root.transform;
-    }
-
-    // =========================================================================
+    // =================================================================
     // HUD
-    // =========================================================================
+    // =================================================================
 
-    private static GameObject BuildHud(RectTransform parent, TowerDefenseManager manager)
+    static GameObject BuildHud(RectTransform parent, TowerDefenseManager mgr)
     {
-        var hud = AddImage(parent, "HUD", new Color(0.10f, 0.11f, 0.18f, 0.85f));
-        AnchorTopStretch(hud.rectTransform, height: 80);
+        var hud = UImg(parent, "HUD", HudBg);
+        TopStretch(hud.rectTransform, 82); hud.raycastTarget = true;
 
         // Hearts (left)
-        var heartsHolder = new GameObject("HeartsHolder", typeof(RectTransform));
-        heartsHolder.transform.SetParent(hud.rectTransform, false);
-        var hhrt = heartsHolder.GetComponent<RectTransform>();
+        var hh = RT("HeartsHolder", hud.rectTransform);
+        var hhrt = hh.GetComponent<RectTransform>();
         hhrt.anchorMin = new Vector2(0, 0); hhrt.anchorMax = new Vector2(0, 1);
         hhrt.pivot = new Vector2(0, 0.5f);
-        hhrt.sizeDelta = new Vector2(280, 0);
-        hhrt.anchoredPosition = new Vector2(40, 0);
-        var hlg = heartsHolder.AddComponent<HorizontalLayoutGroup>();
+        hhrt.sizeDelta = new Vector2(280, 0); hhrt.anchoredPosition = new Vector2(30, 0);
+        var hlg = hh.AddComponent<HorizontalLayoutGroup>();
         hlg.childAlignment = TextAnchor.MiddleLeft;
         hlg.spacing = 6;
         hlg.childForceExpandWidth = hlg.childForceExpandHeight = false;
         hlg.childControlWidth = hlg.childControlHeight = false;
 
         // Score (centre)
-        var scoreText = AddText(hud.rectTransform, "ScoreText", "Score: 0",
-            42, ScoreColor, TextAlignmentOptions.Center, FontStyles.Bold);
-        var srt = scoreText.rectTransform;
+        var scoreTxt = UTxt(hud.rectTransform, "ScoreText", "Score: 0",
+            40, ScoreGold, TextAlignmentOptions.Center, FontStyles.Bold);
+        var srt = scoreTxt.rectTransform;
         srt.anchorMin = new Vector2(0.5f, 0); srt.anchorMax = new Vector2(0.5f, 1);
         srt.pivot = new Vector2(0.5f, 0.5f);
-        srt.sizeDelta = new Vector2(360, 0); srt.anchoredPosition = Vector2.zero;
+        srt.sizeDelta = new Vector2(360, 0);
 
         // Wave (right)
-        var waveText = AddText(hud.rectTransform, "WaveText", "Wave 1 / 4",
-            32, WaveColor, TextAlignmentOptions.MidlineRight, FontStyles.Bold);
-        var wrt = waveText.rectTransform;
+        var waveTxt = UTxt(hud.rectTransform, "WaveText", "Wave 1 / 4",
+            30, WaveWhite, TextAlignmentOptions.MidlineRight, FontStyles.Bold);
+        var wrt = waveTxt.rectTransform;
         wrt.anchorMin = new Vector2(1, 0); wrt.anchorMax = new Vector2(1, 1);
         wrt.pivot = new Vector2(1, 0.5f);
-        wrt.sizeDelta = new Vector2(280, 0); wrt.anchoredPosition = new Vector2(-40, 0);
+        wrt.sizeDelta = new Vector2(260, 0); wrt.anchoredPosition = new Vector2(-30, 0);
 
-        // Combo (overlay, below HUD)
-        var comboText = AddText(parent, "ComboText", "",
-            48, ComboColor, TextAlignmentOptions.Center, FontStyles.Bold);
-        var crt = comboText.rectTransform;
-        crt.anchorMin = new Vector2(0.5f, 0.5f); crt.anchorMax = new Vector2(0.5f, 0.5f);
+        // Combo (world overlay below hud)
+        var comboTxt = UTxt(parent, "ComboText", "",
+            44, StreakOrange, TextAlignmentOptions.Center, FontStyles.Bold);
+        var crt = comboTxt.rectTransform;
+        crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.5f);
         crt.pivot = new Vector2(0.5f, 0.5f);
-        crt.sizeDelta = new Vector2(600, 80); crt.anchoredPosition = new Vector2(0, -300);
-        comboText.raycastTarget = false;
+        crt.sizeDelta = new Vector2(500, 70); crt.anchoredPosition = new Vector2(0, -280);
+        comboTxt.raycastTarget = false;
 
-        manager.heartsContainer = heartsHolder.transform;
-        manager.scoreText = scoreText;
-        manager.waveText = waveText;
-        manager.comboText = comboText;
-
+        mgr.heartsContainer = hh.transform;
+        mgr.scoreText = scoreTxt; mgr.waveText = waveTxt; mgr.comboText = comboTxt;
         return hud.gameObject;
     }
 
-    // =========================================================================
-    // Tutorial panel
-    // =========================================================================
+    // =================================================================
+    // Tutorial
+    // =================================================================
 
-    private static GameObject BuildTutorialPanel(RectTransform parent, TowerDefenseManager manager)
+    static GameObject BuildTutorialPanel(RectTransform parent, TowerDefenseManager mgr)
     {
-        var overlay = AddImage(parent, "TutorialOverlay", new Color(0, 0, 0, 0.7f));
-        Stretch(overlay.rectTransform); overlay.raycastTarget = true;
+        var ov = UImg(parent, "TutorialOverlay", new Color(0, 0, 0, 0.72f));
+        Stretch(ov.rectTransform); ov.raycastTarget = true;
 
-        var card = AddImage(overlay.rectTransform, "Card", PanelBg);
+        var card = UImg(ov.rectTransform, "Card", PanelWhite);
         var crt = card.rectTransform;
-        crt.anchorMin = new Vector2(0.5f, 0.5f); crt.anchorMax = new Vector2(0.5f, 0.5f);
-        crt.pivot = new Vector2(0.5f, 0.5f); crt.sizeDelta = new Vector2(960, 640);
+        crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.5f);
+        crt.pivot = new Vector2(0.5f, 0.5f); crt.sizeDelta = new Vector2(960, 620);
 
-        var header = AddImage(crt, "Header", HeaderBlue);
-        AnchorTopStretch(header.rectTransform, height: 90);
-        var title = AddText(header.rectTransform, "Title",
-            "Phish Patrol: Password Edition",
-            36, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
-        Stretch(title.rectTransform); title.raycastTarget = false;
+        var hdr = UImg(crt, "Header", HeaderBlue);
+        TopStretch(hdr.rectTransform, 90);
+        var hLbl = UTxt(hdr.rectTransform, "Title", "Phish Patrol", 40,
+            Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
+        Stretch(hLbl.rectTransform); hLbl.raycastTarget = false;
 
-        var body = AddText(crt, "Body", "Tutorial body",
-            26, DarkText, TextAlignmentOptions.Center);
+        var body = UTxt(crt, "Body", "…", 25, DarkText, TextAlignmentOptions.Center);
+        body.textWrappingMode = TextWrappingModes.Normal;
         var brt = body.rectTransform;
-        brt.anchorMin = new Vector2(0, 0); brt.anchorMax = new Vector2(1, 1);
-        brt.offsetMin = new Vector2(50, 160); brt.offsetMax = new Vector2(-50, -110);
+        brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one;
+        brt.offsetMin = new Vector2(48, 155); brt.offsetMax = new Vector2(-48, -110);
 
-        var stepLabel = AddText(crt, "StepLabel", "1 of 2",
-            20, MutedText, TextAlignmentOptions.Center);
-        var slrt = stepLabel.rectTransform;
+        var stepLbl = UTxt(crt, "StepLabel", "1 of 2", 18, MutedText,
+            TextAlignmentOptions.Center);
+        var slrt = stepLbl.rectTransform;
         slrt.anchorMin = new Vector2(0, 0); slrt.anchorMax = new Vector2(1, 0);
         slrt.pivot = new Vector2(0.5f, 0);
-        slrt.sizeDelta = new Vector2(0, 30); slrt.anchoredPosition = new Vector2(0, 130);
+        slrt.sizeDelta = new Vector2(0, 28); slrt.anchoredPosition = new Vector2(0, 118);
 
-        var nextBtn = AddButton(crt, "NextBtn", "Next", 32, SafeGreen, Color.white);
-        var nbrt = nextBtn.GetComponent<RectTransform>();
-        nbrt.anchorMin = new Vector2(0.5f, 0); nbrt.anchorMax = new Vector2(0.5f, 0);
+        var btn = UBtn(crt, "NextBtn", "Next", 30, SafeGreen, Color.white);
+        var nbrt = btn.GetComponent<RectTransform>();
+        nbrt.anchorMin = nbrt.anchorMax = new Vector2(0.5f, 0);
         nbrt.pivot = new Vector2(0.5f, 0);
-        nbrt.sizeDelta = new Vector2(280, 80); nbrt.anchoredPosition = new Vector2(0, 30);
-        UnityEventTools.AddPersistentListener(nextBtn.GetComponent<Button>().onClick,
-            manager.OnTutorialNext);
+        nbrt.sizeDelta = new Vector2(260, 72); nbrt.anchoredPosition = new Vector2(0, 28);
+        UnityEventTools.AddPersistentListener(btn.GetComponent<Button>().onClick, mgr.OnTutorialNext);
 
-        manager.tutorialTitleText = title;
-        manager.tutorialBodyText = body;
-        manager.tutorialStepText = stepLabel;
-        manager.tutorialNextButton = nextBtn.GetComponent<Button>();
-        manager.tutorialNextButtonText = nextBtn.transform.Find("Label").GetComponent<TMP_Text>();
+        mgr.tutorialTitleText = hLbl;
+        mgr.tutorialBodyText = body;
+        mgr.tutorialStepText = stepLbl;
+        mgr.tutorialNextButton = btn.GetComponent<Button>();
+        mgr.tutorialNextButtonText = btn.transform.Find("Label").GetComponent<TMP_Text>();
 
-        return overlay.gameObject;
+        return ov.gameObject;
     }
 
-    // =========================================================================
-    // Game Over panel
-    // =========================================================================
+    // =================================================================
+    // Game Over
+    // =================================================================
 
-    private static GameObject BuildGameOverPanel(RectTransform parent, TowerDefenseManager manager)
+    static GameObject BuildGameOverPanel(RectTransform parent, TowerDefenseManager mgr)
     {
-        var overlay = AddImage(parent, "GameOverOverlay", new Color(0, 0, 0, 0.78f));
-        Stretch(overlay.rectTransform); overlay.raycastTarget = true;
+        var ov = UImg(parent, "GameOverOverlay", new Color(0, 0, 0, 0.78f));
+        Stretch(ov.rectTransform); ov.raycastTarget = true;
 
-        var card = AddImage(overlay.rectTransform, "Card", PanelBg);
+        var card = UImg(ov.rectTransform, "Card", PanelWhite);
         var crt = card.rectTransform;
-        crt.anchorMin = new Vector2(0.5f, 0.5f); crt.anchorMax = new Vector2(0.5f, 0.5f);
-        crt.pivot = new Vector2(0.5f, 0.5f); crt.sizeDelta = new Vector2(900, 600);
+        crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.5f);
+        crt.pivot = new Vector2(0.5f, 0.5f); crt.sizeDelta = new Vector2(860, 560);
 
-        var header = AddImage(crt, "Header", RetryRed);
-        AnchorTopStretch(header.rectTransform, height: 100);
-        var hLabel = AddText(header.rectTransform, "HLabel",
-            "Tower Cracked!", 48, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
-        Stretch(hLabel.rectTransform); hLabel.raycastTarget = false;
+        var hdr = UImg(crt, "Header", RetryRed);
+        TopStretch(hdr.rectTransform, 95);
+        var hLbl = UTxt(hdr.rectTransform, "HLabel", "Tower Cracked!", 44,
+            Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
+        Stretch(hLbl.rectTransform); hLbl.raycastTarget = false;
 
-        var scoreText = AddText(crt, "ScoreText", "Score: 0",
-            44, DarkText, TextAlignmentOptions.Center, FontStyles.Bold);
-        var srt = scoreText.rectTransform;
+        var sTxt = UTxt(crt, "ScoreText", "Score: 0", 42, DarkText,
+            TextAlignmentOptions.Center, FontStyles.Bold);
+        var srt = sTxt.rectTransform;
         srt.anchorMin = new Vector2(0, 1); srt.anchorMax = new Vector2(1, 1);
         srt.pivot = new Vector2(0.5f, 1);
-        srt.sizeDelta = new Vector2(0, 80); srt.anchoredPosition = new Vector2(0, -130);
+        srt.sizeDelta = new Vector2(0, 72); srt.anchoredPosition = new Vector2(0, -120);
 
-        var msg = AddText(crt, "Message", "",
-            22, MutedText, TextAlignmentOptions.Center);
+        var msg = UTxt(crt, "Message", "", 21, MutedText, TextAlignmentOptions.Center);
+        msg.textWrappingMode = TextWrappingModes.Normal;
         var mrt = msg.rectTransform;
-        mrt.anchorMin = new Vector2(0, 0); mrt.anchorMax = new Vector2(1, 1);
-        mrt.offsetMin = new Vector2(60, 160); mrt.offsetMax = new Vector2(-60, -240);
+        mrt.anchorMin = Vector2.zero; mrt.anchorMax = Vector2.one;
+        mrt.offsetMin = new Vector2(55, 145); mrt.offsetMax = new Vector2(-55, -230);
 
-        var retry = AddButton(crt, "RetryBtn", "Retry", 28, SafeGreen, Color.white);
-        var rrt = retry.GetComponent<RectTransform>();
-        rrt.anchorMin = new Vector2(0.5f, 0); rrt.anchorMax = new Vector2(0.5f, 0);
-        rrt.pivot = new Vector2(1, 0);
-        rrt.sizeDelta = new Vector2(260, 70); rrt.anchoredPosition = new Vector2(-20, 50);
-        UnityEventTools.AddPersistentListener(retry.GetComponent<Button>().onClick, manager.OnRetry);
+        var retry = UBtn(crt, "RetryBtn", "Retry", 26, SafeGreen, Color.white);
+        SetBtnPos(retry, new Vector2(-14, 40), new Vector2(240, 60), new Vector2(1, 0));
+        UnityEventTools.AddPersistentListener(retry.GetComponent<Button>().onClick, mgr.OnRetry);
 
-        var back = AddButton(crt, "BackBtn", "Back to Map", 28, MapGrey, Color.white);
-        var bart = back.GetComponent<RectTransform>();
-        bart.anchorMin = new Vector2(0.5f, 0); bart.anchorMax = new Vector2(0.5f, 0);
-        bart.pivot = new Vector2(0, 0);
-        bart.sizeDelta = new Vector2(260, 70); bart.anchoredPosition = new Vector2(20, 50);
-        UnityEventTools.AddPersistentListener(back.GetComponent<Button>().onClick, manager.OnReturnToMap);
+        var back = UBtn(crt, "BackBtn", "Back to Map", 26, MapGrey, Color.white);
+        SetBtnPos(back, new Vector2(14, 40), new Vector2(240, 60), new Vector2(0, 0));
+        UnityEventTools.AddPersistentListener(back.GetComponent<Button>().onClick, mgr.OnReturnToMap);
 
-        manager.gameOverScoreText = scoreText;
-        manager.gameOverMessageText = msg;
-
-        return overlay.gameObject;
+        mgr.gameOverScoreText = sTxt;
+        mgr.gameOverMessageText = msg;
+        return ov.gameObject;
     }
 
-    // =========================================================================
-    // Win panel
-    // =========================================================================
+    // =================================================================
+    // Win
+    // =================================================================
 
-    private static GameObject BuildWinPanel(RectTransform parent, TowerDefenseManager manager)
+    static GameObject BuildWinPanel(RectTransform parent, TowerDefenseManager mgr)
     {
-        var overlay = AddImage(parent, "WinOverlay", new Color(0, 0, 0, 0.7f));
-        Stretch(overlay.rectTransform); overlay.raycastTarget = true;
+        var ov = UImg(parent, "WinOverlay", new Color(0, 0, 0, 0.72f));
+        Stretch(ov.rectTransform); ov.raycastTarget = true;
 
-        var card = AddImage(overlay.rectTransform, "Card", PanelBg);
+        var card = UImg(ov.rectTransform, "Card", PanelWhite);
         var crt = card.rectTransform;
-        crt.anchorMin = new Vector2(0.5f, 0.5f); crt.anchorMax = new Vector2(0.5f, 0.5f);
-        crt.pivot = new Vector2(0.5f, 0.5f); crt.sizeDelta = new Vector2(900, 600);
+        crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.5f);
+        crt.pivot = new Vector2(0.5f, 0.5f); crt.sizeDelta = new Vector2(860, 560);
 
-        var header = AddImage(crt, "Header", SafeGreen);
-        AnchorTopStretch(header.rectTransform, height: 100);
-        var hLabel = AddText(header.rectTransform, "HLabel",
-            "Tower Defended!", 48, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
-        Stretch(hLabel.rectTransform); hLabel.raycastTarget = false;
+        var hdr = UImg(crt, "Header", SafeGreen);
+        TopStretch(hdr.rectTransform, 95);
+        var hLbl = UTxt(hdr.rectTransform, "HLabel", "Tower Defended!", 44,
+            Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
+        Stretch(hLbl.rectTransform); hLbl.raycastTarget = false;
 
-        var stars = AddText(crt, "Stars", "* * *",
-            72, ScoreColor, TextAlignmentOptions.Center, FontStyles.Bold);
+        var stars = UTxt(crt, "Stars", "★ ★ ★", 60, ScoreGold,
+            TextAlignmentOptions.Center, FontStyles.Bold);
         var stt = stars.rectTransform;
         stt.anchorMin = new Vector2(0, 1); stt.anchorMax = new Vector2(1, 1);
         stt.pivot = new Vector2(0.5f, 1);
-        stt.sizeDelta = new Vector2(0, 100); stt.anchoredPosition = new Vector2(0, -130);
+        stt.sizeDelta = new Vector2(0, 88); stt.anchoredPosition = new Vector2(0, -120);
 
-        var scoreText = AddText(crt, "ScoreText", "0 / 100",
-            44, DarkText, TextAlignmentOptions.Center, FontStyles.Bold);
-        var srt = scoreText.rectTransform;
-        srt.anchorMin = new Vector2(0, 1); srt.anchorMax = new Vector2(1, 1);
-        srt.pivot = new Vector2(0.5f, 1);
-        srt.sizeDelta = new Vector2(0, 80); srt.anchoredPosition = new Vector2(0, -270);
+        var sTxt = UTxt(crt, "ScoreText", "0 / 100", 40, DarkText,
+            TextAlignmentOptions.Center, FontStyles.Bold);
+        var scrt = sTxt.rectTransform;
+        scrt.anchorMin = new Vector2(0, 1); scrt.anchorMax = new Vector2(1, 1);
+        scrt.pivot = new Vector2(0.5f, 1);
+        scrt.sizeDelta = new Vector2(0, 66); scrt.anchoredPosition = new Vector2(0, -218);
 
-        var retry = AddButton(crt, "PlayAgainBtn", "Play Again", 28, SafeGreen, Color.white);
-        var rrt = retry.GetComponent<RectTransform>();
-        rrt.anchorMin = new Vector2(0.5f, 0); rrt.anchorMax = new Vector2(0.5f, 0);
-        rrt.pivot = new Vector2(1, 0);
-        rrt.sizeDelta = new Vector2(260, 70); rrt.anchoredPosition = new Vector2(-20, 50);
-        UnityEventTools.AddPersistentListener(retry.GetComponent<Button>().onClick, manager.OnRetry);
+        var retry = UBtn(crt, "PlayAgainBtn", "Play Again", 26, SafeGreen, Color.white);
+        SetBtnPos(retry, new Vector2(-14, 40), new Vector2(240, 60), new Vector2(1, 0));
+        UnityEventTools.AddPersistentListener(retry.GetComponent<Button>().onClick, mgr.OnRetry);
 
-        var back = AddButton(crt, "BackBtn", "Back to Map", 28, MapGrey, Color.white);
-        var bart = back.GetComponent<RectTransform>();
-        bart.anchorMin = new Vector2(0.5f, 0); bart.anchorMax = new Vector2(0.5f, 0);
-        bart.pivot = new Vector2(0, 0);
-        bart.sizeDelta = new Vector2(260, 70); bart.anchoredPosition = new Vector2(20, 50);
-        UnityEventTools.AddPersistentListener(back.GetComponent<Button>().onClick, manager.OnReturnToMap);
+        var back = UBtn(crt, "BackBtn", "Back to Map", 26, MapGrey, Color.white);
+        SetBtnPos(back, new Vector2(14, 40), new Vector2(240, 60), new Vector2(0, 0));
+        UnityEventTools.AddPersistentListener(back.GetComponent<Button>().onClick, mgr.OnReturnToMap);
 
-        manager.winScoreText = scoreText;
-        manager.winStarsText = stars;
-
-        return overlay.gameObject;
+        mgr.winScoreText = sTxt;
+        mgr.winStarsText = stars;
+        return ov.gameObject;
     }
 
-    // =========================================================================
+    // =================================================================
     // Commentator
-    // =========================================================================
+    // =================================================================
 
-    private static Commentator BuildCommentator(RectTransform parent)
+    static Commentator BuildCommentator(RectTransform parent)
     {
-        var root = new GameObject("CommentatorPanel", typeof(RectTransform));
-        root.transform.SetParent(parent, false);
+        var root = RT("Commentator", parent);
         var rrt = root.GetComponent<RectTransform>();
-        rrt.anchorMin = new Vector2(0, 0); rrt.anchorMax = new Vector2(0, 0);
-        rrt.pivot = new Vector2(0, 0);
-        rrt.sizeDelta = new Vector2(620, 140); rrt.anchoredPosition = new Vector2(30, 30);
+        rrt.anchorMin = rrt.anchorMax = Vector2.zero;
+        rrt.pivot = Vector2.zero;
+        rrt.sizeDelta = new Vector2(560, 128);
+        rrt.anchoredPosition = new Vector2(30, 30);
 
-        var portrait = AddImage(rrt, "Portrait", new Color(1f, 0.72f, 0.78f));
-        portrait.sprite = TryGetCircleSprite();
-        portrait.preserveAspect = true;
-        var prt = portrait.rectTransform;
-        prt.anchorMin = new Vector2(0, 0); prt.anchorMax = new Vector2(0, 1);
-        prt.pivot = new Vector2(0, 0.5f);
-        prt.sizeDelta = new Vector2(120, 0); prt.anchoredPosition = Vector2.zero;
+        var portrait = UImg(rrt, "Portrait", new Color(1f, 0.72f, 0.78f));
+        portrait.sprite = Circle(); portrait.preserveAspect = true;
+        var pr = portrait.rectTransform;
+        pr.anchorMin = new Vector2(0, 0); pr.anchorMax = new Vector2(0, 1);
+        pr.pivot = new Vector2(0, 0.5f); pr.sizeDelta = new Vector2(108, 0);
 
-        var letter = AddText(portrait.rectTransform, "Letter", "G",
-            64, new Color(0.20f, 0.10f, 0.18f), TextAlignmentOptions.Center, FontStyles.Bold);
+        var letter = UTxt(pr, "Letter", "G", 54,
+            new Color(0.2f, 0.1f, 0.18f), TextAlignmentOptions.Center, FontStyles.Bold);
         Stretch(letter.rectTransform);
 
-        var bubble = AddImage(rrt, "Bubble", Color.white);
-        var brt = bubble.rectTransform;
-        brt.anchorMin = new Vector2(0, 0); brt.anchorMax = new Vector2(1, 1);
-        brt.offsetMin = new Vector2(140, 0); brt.offsetMax = Vector2.zero;
+        var bubble = UImg(rrt, "Bubble", new Color(1, 1, 1, 0.92f));
+        var bbrt = bubble.rectTransform;
+        bbrt.anchorMin = Vector2.zero; bbrt.anchorMax = Vector2.one;
+        bbrt.offsetMin = new Vector2(120, 0); bbrt.offsetMax = Vector2.zero;
 
-        var speakerLabel = AddText(bubble.rectTransform, "SpeakerLabel", "Grandma",
-            18, new Color(0.78f, 0.30f, 0.50f), TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
-        var slrt = speakerLabel.rectTransform;
+        var speaker = UTxt(bbrt, "Speaker", "Grandma", 16,
+            new Color(0.78f, 0.3f, 0.5f), TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
+        var slrt = speaker.rectTransform;
         slrt.anchorMin = new Vector2(0, 1); slrt.anchorMax = new Vector2(1, 1);
         slrt.pivot = new Vector2(0, 1);
-        slrt.sizeDelta = new Vector2(0, 26); slrt.anchoredPosition = new Vector2(20, -8);
+        slrt.sizeDelta = new Vector2(0, 22); slrt.anchoredPosition = new Vector2(14, -5);
 
-        var bubbleText = AddText(bubble.rectTransform, "BubbleText", "...",
-            22, new Color(0.13f, 0.13f, 0.13f), TextAlignmentOptions.MidlineLeft);
-        bubbleText.textWrappingMode = TextWrappingModes.Normal;
-        var btrt = bubbleText.rectTransform;
-        btrt.anchorMin = new Vector2(0, 0); btrt.anchorMax = new Vector2(1, 1);
-        btrt.offsetMin = new Vector2(20, 8); btrt.offsetMax = new Vector2(-20, -32);
+        var bText = UTxt(bbrt, "BubbleText", "…", 20,
+            new Color(0.13f, 0.13f, 0.13f), TextAlignmentOptions.MidlineLeft);
+        bText.textWrappingMode = TextWrappingModes.Normal;
+        var btrt = bText.rectTransform;
+        btrt.anchorMin = Vector2.zero; btrt.anchorMax = Vector2.one;
+        btrt.offsetMin = new Vector2(14, 5); btrt.offsetMax = new Vector2(-14, -26);
 
         var comm = root.AddComponent<Commentator>();
-        comm.root = root; comm.portrait = portrait;
-        comm.portraitLetter = letter; comm.bubbleBg = bubble;
-        comm.bubbleText = bubbleText; comm.speakerLabel = speakerLabel;
-        comm.portraitSprite = TryGetCircleSprite();
-        comm.speakerName = "Grandma";
-        comm.portraitInitial = "G";
+        comm.root = root; comm.portrait = portrait; comm.portraitLetter = letter;
+        comm.bubbleBg = bubble; comm.bubbleText = bText; comm.speakerLabel = speaker;
+        comm.portraitSprite = Circle();
+        comm.speakerName = "Grandma"; comm.portraitInitial = "G";
         comm.portraitColor = new Color(1f, 0.72f, 0.78f);
-
         return comm;
     }
 
-    // =========================================================================
-    // Helpers — world-space
-    // =========================================================================
+    // =================================================================
+    // Sprite auto-detection
+    // =================================================================
 
-    private static SpriteRenderer CreateSpriteRect(string name, Sprite sprite, Color color,
-        Vector3 localPos, Vector3 scale,
-        Transform parent = null, int sortingOrder = 0)
+    static Sprite FindSprite(string name)
     {
-        var go = new GameObject(name);
-        if (parent != null) go.transform.SetParent(parent, false);
-        go.transform.localPosition = localPos;
-        go.transform.localScale = scale;
-        var sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = sprite;
-        sr.color = color;
-        sr.sortingOrder = sortingOrder;
-        return sr;
-    }
-
-    private static void CreateScreenLabel(Transform parent, string name, string text,
-        Color color, Vector3 localPos, float worldWidth, float worldHeight)
-    {
-        const float k = 0.008f;
-        var go = new GameObject(name);
-        go.transform.SetParent(parent, false);
-        go.transform.localPosition = localPos;
-        go.transform.localScale = new Vector3(k, k, 1f);
-        var c = go.AddComponent<Canvas>();
-        c.renderMode = RenderMode.WorldSpace;
-        c.sortingOrder = 4;
-        go.GetComponent<RectTransform>().sizeDelta = new Vector2(worldWidth / k, worldHeight / k);
-
-        var label = new GameObject("Label");
-        label.transform.SetParent(go.transform, false);
-        var tmp = label.AddComponent<TextMeshProUGUI>();
-        tmp.text = text; tmp.fontSize = 28; tmp.color = color;
-        tmp.fontStyle = FontStyles.Bold;
-        tmp.alignment = TextAlignmentOptions.Center;
-        tmp.raycastTarget = false;
-        var lrt = label.GetComponent<RectTransform>();
-        lrt.anchorMin = Vector2.zero; lrt.anchorMax = Vector2.one;
-        lrt.offsetMin = lrt.offsetMax = Vector2.zero;
-    }
-
-    // =========================================================================
-    // Helpers — UI
-    // =========================================================================
-
-    private static Image AddImage(Transform parent, string name, Color color)
-    {
-        var go = new GameObject(name, typeof(RectTransform));
-        go.transform.SetParent(parent, false);
-        var img = go.AddComponent<Image>(); img.color = color;
-        return img;
-    }
-
-    private static TMP_Text AddText(Transform parent, string name, string content,
-        int fontSize, Color color, TextAlignmentOptions align,
-        FontStyles style = FontStyles.Normal)
-    {
-        var go = new GameObject(name, typeof(RectTransform));
-        go.transform.SetParent(parent, false);
-        var t = go.AddComponent<TextMeshProUGUI>();
-        t.text = content; t.fontSize = fontSize; t.color = color;
-        t.alignment = align; t.fontStyle = style; t.raycastTarget = false;
-        return t;
-    }
-
-    private static GameObject AddButton(Transform parent, string name, string label,
-        int fontSize, Color bg, Color textColor)
-    {
-        var go = new GameObject(name, typeof(RectTransform));
-        go.transform.SetParent(parent, false);
-        var img = go.AddComponent<Image>(); img.color = bg;
-        var btn = go.AddComponent<Button>(); btn.targetGraphic = img;
-        var t = AddText(go.transform, "Label", label, fontSize, textColor,
-                          TextAlignmentOptions.Center, FontStyles.Bold);
-        Stretch(t.rectTransform);
-        return go;
-    }
-
-    private static void Stretch(RectTransform rt)
-    {
-        rt.anchorMin = rt.offsetMin = Vector2.zero;
-        rt.anchorMax = Vector2.one; rt.offsetMax = Vector2.zero;
-    }
-
-    private static void AnchorTopStretch(RectTransform rt, float height)
-    {
-        rt.anchorMin = new Vector2(0, 1); rt.anchorMax = new Vector2(1, 1);
-        rt.pivot = new Vector2(0.5f, 1);
-        rt.sizeDelta = new Vector2(0, height);
-        rt.anchoredPosition = Vector2.zero;
-    }
-
-    private static Color Hex(string hex)
-        => ColorUtility.TryParseHtmlString(hex, out var c) ? c : Color.magenta;
-
-    private static Sprite TryGetCircleSprite()
-    {
-        try { return AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd"); }
-        catch { return null; }
-    }
-
-    /// <summary>
-    /// Searches Assets/Sprites (and sub-folders) for the first sprite whose
-    /// asset name contains <paramref name="nameHint"/>. If nameHint is empty
-    /// all sprites in the folder are eligible (returns the first found).
-    /// </summary>
-    private static Sprite FindFirstSprite(string nameHint,
-        string searchFolder = "Assets/Sprites")
-    {
-        string query = string.IsNullOrEmpty(nameHint) ? "t:Sprite" : $"t:Sprite {nameHint}";
-        var guids = AssetDatabase.FindAssets(query, new[] { searchFolder });
-        foreach (var guid in guids)
+        // Try exact name match first
+        string[] guids = AssetDatabase.FindAssets(name + " t:Sprite");
+        foreach (string guid in guids)
         {
-            var path = AssetDatabase.GUIDToAssetPath(guid);
-            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-            if (sprite != null) return sprite;
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            if (System.IO.Path.GetFileNameWithoutExtension(path)
+                    .ToLower() == name.ToLower())
+            {
+                var s = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+                if (s != null) return s;
+            }
+        }
+        // Fallback: any sprite whose path contains the name
+        string[] texGuids = AssetDatabase.FindAssets(name + " t:Texture2D");
+        foreach (string guid in texGuids)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            if (System.IO.Path.GetFileNameWithoutExtension(path)
+                    .ToLower().Contains(name.ToLower()))
+            {
+                var s = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+                if (s != null) return s;
+            }
         }
         return null;
     }
 
-    // =========================================================================
-    // White-pixel sprite asset
-    // =========================================================================
+    static void LogFound(string name, Sprite s)
+        => Debug.Log($"[TDBuilder] {name}: " + (s != null ? "✓ found" : "✗ not found (using fallback)"));
 
-    private static Sprite EnsureWhitePixelSprite()
+    // =================================================================
+    // Tag helper
+    // =================================================================
+
+    static void EnsureTag(string tag)
+    {
+        var asset = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset");
+        if (asset.Length == 0) return;
+        var so = new SerializedObject(asset[0]);
+        var tags = so.FindProperty("tags");
+        for (int i = 0; i < tags.arraySize; i++)
+            if (tags.GetArrayElementAtIndex(i).stringValue == tag) return;
+        tags.arraySize++;
+        tags.GetArrayElementAtIndex(tags.arraySize - 1).stringValue = tag;
+        so.ApplyModifiedProperties();
+    }
+
+    // =================================================================
+    // White pixel helper
+    // =================================================================
+
+    static Sprite EnsureWhitePixel()
     {
         const string dir = "Assets/Sprites";
         const string path = "Assets/Sprites/td_white_pixel.png";
@@ -715,8 +592,7 @@ public static class TowerDefenseBuilder
         if (!File.Exists(path))
         {
             var tex = new Texture2D(8, 8);
-            var px = new Color[64];
-            for (int i = 0; i < 64; i++) px[i] = Color.white;
+            var px = new Color[64]; for (int i = 0; i < 64; i++) px[i] = Color.white;
             tex.SetPixels(px); tex.Apply();
             File.WriteAllBytes(path, tex.EncodeToPNG());
             AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
@@ -733,13 +609,85 @@ public static class TowerDefenseBuilder
         return AssetDatabase.LoadAssetAtPath<Sprite>(path);
     }
 
-    private static void AddSceneToBuildSettings(string path)
+    // =================================================================
+    // Low-level helpers
+    // =================================================================
+
+    static SpriteRenderer SprRect(string n, Sprite spr, Color col,
+        Vector3 localPos, Vector3 scale, Transform parent = null, int sortingOrder = 0)
+    {
+        var go = new GameObject(n);
+        if (parent != null) go.transform.SetParent(parent, false);
+        go.transform.localPosition = localPos;
+        go.transform.localScale = scale;
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = spr; sr.color = col; sr.sortingOrder = sortingOrder;
+        return sr;
+    }
+
+    static Image UImg(Transform p, string n, Color c)
+    {
+        var go = new GameObject(n, typeof(RectTransform));
+        go.transform.SetParent(p, false);
+        var img = go.AddComponent<Image>(); img.color = c; return img;
+    }
+
+    static TMP_Text UTxt(Transform p, string n, string c, int s, Color col,
+        TextAlignmentOptions a, FontStyles st = FontStyles.Normal)
+    {
+        var go = new GameObject(n, typeof(RectTransform));
+        go.transform.SetParent(p, false);
+        var t = go.AddComponent<TextMeshProUGUI>();
+        t.text = c; t.fontSize = s; t.color = col;
+        t.alignment = a; t.fontStyle = st; t.raycastTarget = false; return t;
+    }
+
+    static GameObject UBtn(Transform p, string n, string l, int fs, Color bg, Color tc)
+    {
+        var go = new GameObject(n, typeof(RectTransform));
+        go.transform.SetParent(p, false);
+        var img = go.AddComponent<Image>(); img.color = bg;
+        var btn = go.AddComponent<Button>(); btn.targetGraphic = img;
+        var t = UTxt(go.transform, "Label", l, fs, tc,
+            TextAlignmentOptions.Center, FontStyles.Bold);
+        Stretch(t.rectTransform); return go;
+    }
+
+    static GameObject RT(string n, Transform p)
+    {
+        var go = new GameObject(n, typeof(RectTransform));
+        go.transform.SetParent(p, false); return go;
+    }
+
+    static void Stretch(RectTransform r)
+    { r.anchorMin = Vector2.zero; r.anchorMax = Vector2.one; r.offsetMin = r.offsetMax = Vector2.zero; }
+
+    static void TopStretch(RectTransform r, float h)
+    {
+        r.anchorMin = new Vector2(0, 1); r.anchorMax = new Vector2(1, 1);
+        r.pivot = new Vector2(0.5f, 1); r.sizeDelta = new Vector2(0, h);
+        r.anchoredPosition = Vector2.zero;
+    }
+
+    static void SetBtnPos(GameObject btn, Vector2 ap, Vector2 sd, Vector2 pivot)
+    {
+        var rt = btn.GetComponent<RectTransform>();
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0);
+        rt.pivot = pivot; rt.sizeDelta = sd; rt.anchoredPosition = ap;
+    }
+
+    static Color Hex(string h) => ColorUtility.TryParseHtmlString(h, out var c) ? c : Color.magenta;
+
+    static Sprite Circle()
+    {
+        try { return AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd"); }
+        catch { return null; }
+    }
+
+    static void AddToBuild(string path)
     {
         var scenes = EditorBuildSettings.scenes.ToList();
         if (!scenes.Any(s => s.path == path))
-        {
-            scenes.Add(new EditorBuildSettingsScene(path, true));
-            EditorBuildSettings.scenes = scenes.ToArray();
-        }
+        { scenes.Add(new EditorBuildSettingsScene(path, true)); EditorBuildSettings.scenes = scenes.ToArray(); }
     }
 }

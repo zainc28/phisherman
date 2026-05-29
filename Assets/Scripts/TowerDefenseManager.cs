@@ -6,36 +6,39 @@ using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 /// <summary>
-/// Phish Patrol: Password Edition — tower defense minigame.
+/// Phish Patrol — Tower Defense.
 ///
-/// Weak passwords (scam) fly toward the player's computer as fish.
-/// Click a fish to cast a fishing rod and reel it in.
-/// Strong passwords (safe) should pass — clicking one launches a rocket
-/// at your tower.
+/// Fish+log units swim from the left toward the tower.
+/// Phisherman stands on top with a speargun that aims at the mouse.
+/// Click to fire a spear.
 ///
-/// Wired by TowerDefenseBuilder. Wave/password content lives in the
-/// data arrays below.
+/// Red  + reaches tower  → pufferfish explosion, tower damage
+/// Red  + shot early     → enrages, charges at 2.5x speed
+/// Green + reaches tower → collects in tower water, swims
+/// Green + shot early    → reeled to tower dead, no benefit
 /// </summary>
 public class TowerDefenseManager : MonoBehaviour
 {
     [Header("Game Settings")]
     public int startingHealth = 5;
+    public float spearSpeed = 22f;
 
-    [Header("Sprites (assigned by builder)")]
-    public Sprite heartSprite;    // circle for life icons
-    public Sprite whiteSprite;    // fallback white pixel
-    public Sprite fishSprite;     // displayed on enemy GameObjects
-    public Sprite rocketSprite;   // used when a safe password is wrongly clicked
+    [Header("Sprites — auto-wired by builder")]
+    public Sprite fishSprite;
+    public Sprite logSprite;
+    public Sprite towerSprite;
+    public Sprite phishermanSprite;
+    public Sprite speargunSprite;
+    public Sprite whiteSprite;
 
     [Header("Scene References")]
     public Transform spawnPoint;
-    public Transform towerTransform;
+    public Transform towerRoot;
     public Transform towerShakeRoot;
-    public SpriteRenderer towerScreenSr;
     public Transform crackContainer;
-
-    [Header("Phisherman")]
-    public Transform fishermanTransform;  // placeholder on top of tower; rod casts from here
+    public Transform towerWaterContainer;   // WorldSpace canvas RectTransform
+    public Transform speargunPivot;         // rotates toward mouse each frame
+    public Transform spearSpawnPoint;       // tip of speargun
 
     [Header("HUD")]
     public Transform heartsContainer;
@@ -56,35 +59,31 @@ public class TowerDefenseManager : MonoBehaviour
     public Button tutorialNextButton;
     public TMP_Text tutorialNextButtonText;
 
-    [Header("Game Over UI")]
+    [Header("Result UI")]
     public TMP_Text gameOverScoreText;
     public TMP_Text gameOverMessageText;
-
-    [Header("Win UI")]
     public TMP_Text winScoreText;
     public TMP_Text winStarsText;
 
     [Header("Commentator")]
     public Commentator commentator;
 
-    // =========================================================================
-    // Runtime state
-    // =========================================================================
-
+    // ── Internal ──
     private int score, health, combo, tutStep, currentWave, enemiesRemaining;
-    private bool gameActive, spawning;
-    private List<EnemyEmail> liveEnemies = new List<EnemyEmail>();
+    private bool gameActive, spawning, advancingWave;
+    private List<FishUnit> liveFish = new List<FishUnit>();
     private List<Image> heartImages = new List<Image>();
+    private List<RectTransform> towerFish = new List<RectTransform>();
 
-    private static readonly Color HeartFilled = new Color(0.91f, 0.30f, 0.24f);
+    private static readonly Color HeartFull = new Color(0.91f, 0.30f, 0.24f);
     private static readonly Color HeartEmpty = new Color(0.40f, 0.40f, 0.45f);
-    private static readonly Color ScreenNormal = new Color(0.04f, 0.18f, 0.32f);
-    private static readonly Color ScreenHit = new Color(0.85f, 0.20f, 0.20f);
 
-    static Color WEAK_BG = new Color(0.95f, 0.22f, 0.22f);
-    static Color STRONG_BG = new Color(0.15f, 0.78f, 0.35f);
-
-    struct ED { public string label; public bool isScam; public ED(string l, bool s) { label = l; isScam = s; } }
+    // ── Wave / password data ──
+    struct ED
+    {
+        public string label; public bool isScam;
+        public ED(string l, bool s) { label = l; isScam = s; }
+    }
 
     ED[] scams = {
         new ED("password123", true), new ED("123456", true),   new ED("qwerty", true),
@@ -93,43 +92,47 @@ public class TowerDefenseManager : MonoBehaviour
         new ED("monkey", true),      new ED("dragon", true),    new ED("master", true),
         new ED("hello", true),       new ED("login", true),     new ED("admin", true),
         new ED("baseball", true),    new ED("shadow", true),    new ED("trustno1", true),
-        new ED("12345678", true),    new ED("princess", true),  new ED("sunshine", true),
-        new ED("superman", true),    new ED("football", true),  new ED("charlie", true),
-        new ED("donald", true),
+        new ED("12345678", true),    new ED("princess", true),
     };
 
     ED[] safes = {
-        new ED("K#9mP!2xL", false),    new ED("Blue$Tree47!", false),  new ED("Xq8@nW3!vY", false),
-        new ED("Maple!Leaf99#", false), new ED("T7@kLz!9Rp", false),   new ED("Sun$Rise2024!", false),
-        new ED("Wr9#mK!6Lp", false),   new ED("Cat!Rain$42X", false),  new ED("Gr@pe!Vine88", false),
-        new ED("Z3br@Dance#7", false),  new ED("Moon&Star99#", false),  new ED("P@rrot3!Wing", false),
-        new ED("B3eHoney$44!", false),  new ED("Night#Sky25!", false),  new ED("W1nt3r!Sun##", false),
-        new ED("x9K!mPqR2@L", false),  new ED("J@zz7Beat!99", false),  new ED("Cr0wn$Eagle#5", false),
-        new ED("H0r1zon&Sun2!", false), new ED("R@inB0w!77Frg", false),
+        new ED("K#9mP!2xL", false),  new ED("Blue$Tree47!", false),
+        new ED("Xq8@nW3!vY", false), new ED("Maple!Leaf99#", false),
+        new ED("T7@kLz!9Rp", false), new ED("Sun$Rise2024!", false),
+        new ED("Wr9#mK!6Lp", false), new ED("Cat!Rain$42X", false),
+        new ED("Gr@pe!Vine88", false),new ED("Z3br@Dance#7", false),
+        new ED("Moon&Star99#", false),new ED("P@rrot3!Wing", false),
+        new ED("B3eHoney$44!", false),new ED("Night#Sky25!", false),
     };
 
     struct Wave
     {
         public int count; public float scamRatio, speed, interval;
-        public Wave(int c, float r, float s, float i) { count = c; scamRatio = r; speed = s; interval = i; }
+        public Wave(int c, float r, float s, float i)
+        { count = c; scamRatio = r; speed = s; interval = i; }
     }
 
     Wave[] waves = {
-        new Wave(14, 0.5f,  1.0f, 1.8f),
-        new Wave(18, 0.55f, 1.3f, 1.4f),
-        new Wave(22, 0.6f,  1.6f, 1.1f),
-        new Wave(26, 0.65f, 2.0f, 0.85f),
+        new Wave(12, 0.50f, 1.0f, 1.8f),
+        new Wave(16, 0.55f, 1.3f, 1.4f),
+        new Wave(20, 0.60f, 1.7f, 1.1f),
+        new Wave(24, 0.65f, 2.1f, 0.85f),
     };
 
-    string[] tutTitles = { "Phish Patrol: Password Edition", "Your mission" };
+    string[] tutTitles = { "Phish Patrol -- Tower Defense", "How to play" };
     string[] tutBodies = {
-        "Weak passwords are swimming at your computer as fish!\n\nCast your fishing rod at weak passwords to catch them.\n\nLet strong passwords pass through safely.",
-        "🎣 RED fish = Weak password — click to catch!\nexamples: password123, qwerty, 123456\n\n✓ GREEN fish = Strong password — let them swim past!\nexamples: K#9mP!2xL, Blue$Tree47!\n\nYour computer has 5 lives. Don't let it crack apart."
+        "Fish carrying log banners are swimming toward your tower!\n\n" +
+        "Aim Phisherman's speargun and CLICK to shoot.",
+        "RED flag fish = weak password -- SHOOT THEM!\n" +
+        "  Warning: shooting them early makes them charge faster!\n\n" +
+        "GREEN flag fish = strong password -- LET THEM REACH THE TOWER!\n" +
+        "  Shooting green fish reels them in dead.\n\n" +
+        "Let green fish swim into your tower. Block the red ones!"
     };
 
-    // =========================================================================
+    // =================================================================
     // Lifecycle
-    // =========================================================================
+    // =================================================================
 
     void Start()
     {
@@ -144,37 +147,43 @@ public class TowerDefenseManager : MonoBehaviour
     {
         if (!gameActive) return;
 
-        int before = liveEnemies.Count;
-        liveEnemies.RemoveAll(e => e == null);
-        int vanished = before - liveEnemies.Count;
-        if (vanished > 0)
+        // ── Speargun tracks mouse ──
+        if (speargunPivot != null)
         {
-            enemiesRemaining = Mathf.Max(0, enemiesRemaining - vanished);
-            if (!spawning && enemiesRemaining <= 0) TryAdvanceWave();
+            Vector3 mouseWorld = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            mouseWorld.z = 0;
+            Vector3 dir = mouseWorld - speargunPivot.position;
+            float angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+            speargunPivot.rotation = Quaternion.Euler(0, 0, angle);
         }
 
+        // ── Fire on click ──
         if (Input.GetMouseButtonDown(0))
         {
-            Vector2 wp = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-            Collider2D hit = Physics2D.OverlapPoint(wp);
-            if (hit != null)
-            {
-                EnemyEmail e = hit.GetComponent<EnemyEmail>();
-                if (e != null) e.GetClicked();
-            }
+            Vector3 mouseWorld = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            mouseWorld.z = 0;
+            FireSpear(mouseWorld);
         }
+
+        // ── Animate swimming fish in tower ──
+        AnimateTowerFish();
+
+        // ── Clean null refs (destroyed fish) ──
+        liveFish.RemoveAll(f => f == null);
+        if (!spawning && enemiesRemaining <= 0 && liveFish.Count == 0)
+            TryAdvanceWave();
     }
 
-    // =========================================================================
+    // =================================================================
     // Tutorial
-    // =========================================================================
+    // =================================================================
 
     void ShowTutStep(int step)
     {
         tutorialTitleText.text = tutTitles[step];
         tutorialBodyText.text = tutBodies[step];
         tutorialStepText.text = (step + 1) + " of " + tutTitles.Length;
-        tutorialNextButtonText.text = step == tutTitles.Length - 1 ? "Start" : "Next";
+        tutorialNextButtonText.text = (step == tutTitles.Length - 1) ? "Start!" : "Next";
     }
 
     public void OnTutorialNext()
@@ -183,24 +192,24 @@ public class TowerDefenseManager : MonoBehaviour
         if (tutStep >= tutTitles.Length)
         {
             tutorialPanel.SetActive(false);
-            hudPanel.SetActive(true);
             StartGame();
         }
         else ShowTutStep(tutStep);
     }
 
-    // =========================================================================
-    // Game start / wave loop
-    // =========================================================================
+    // =================================================================
+    // Game start
+    // =================================================================
 
     void StartGame()
     {
         score = 0; health = startingHealth; combo = 0;
         currentWave = 0; gameActive = true;
+        hudPanel.SetActive(true);
         SpawnHearts();
         UpdateHUD();
         StartCoroutine(WaveDelay(1.5f));
-        commentator?.Say("Cast your rod at the red fish — let the green ones swim past!");
+        commentator?.Say("Let the green fish reach the tower. Spear the red ones!");
     }
 
     IEnumerator WaveDelay(float d)
@@ -209,19 +218,163 @@ public class TowerDefenseManager : MonoBehaviour
         StartCoroutine(SpawnWave(waves[currentWave]));
     }
 
+    // =================================================================
+    // Spear firing
+    // =================================================================
+
+    void FireSpear(Vector3 targetWorld)
+    {
+        Vector3 origin = spearSpawnPoint != null
+            ? spearSpawnPoint.position
+            : (towerRoot != null ? towerRoot.position + new Vector3(-0.5f, 2.5f, 0) : Vector3.zero);
+
+        Vector3 dir = (targetWorld - origin).normalized;
+
+        var spearGO = new GameObject("Spear");
+        spearGO.tag = "Spear";
+        spearGO.transform.position = origin;
+
+        var col = spearGO.AddComponent<CircleCollider2D>();
+        col.isTrigger = true;
+        col.radius = 0.18f;
+
+        var rb = spearGO.AddComponent<Rigidbody2D>();
+        rb.gravityScale = 0;
+
+        var sr = spearGO.AddComponent<SpriteRenderer>();
+        sr.sprite = WhitePix;
+        sr.color = new Color(0.95f, 0.85f, 0.30f);
+        sr.sortingOrder = 10;
+        float angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+        spearGO.transform.rotation = Quaternion.Euler(0, 0, angle);
+        spearGO.transform.localScale = new Vector3(0.55f, 0.07f, 1f);
+
+        StartCoroutine(MoveSpear(spearGO, dir));
+    }
+
+    IEnumerator MoveSpear(GameObject spear, Vector3 dir)
+    {
+        float maxDist = 20f, traveled = 0f;
+        while (spear != null && traveled < maxDist)
+        {
+            float step = spearSpeed * Time.deltaTime;
+            spear.transform.position += dir * step;
+            traveled += step;
+            yield return null;
+        }
+        if (spear != null) Destroy(spear);
+    }
+
+    // =================================================================
+    // Fish callbacks — called by FishUnit
+    // =================================================================
+
+    /// <summary>Called when a red fish is HIT by the spear (before it enrages).</summary>
+    public void OnRedFishSpearHit(Vector3 pos)
+    {
+        combo++;
+        int pts = combo >= 3 ? 15 : 10;
+        score += pts;
+        SpawnPopup("+" + pts + (combo >= 3 ? " COMBO!" : ""), pos + Vector3.up,
+            combo >= 3 ? new Color(1f, 0.85f, 0.1f) : new Color(0.3f, 1f, 0.5f));
+        UpdateHUD();
+
+        if (combo == 3) commentator?.Say("Three in a row -- wonderful!");
+        else if (combo == 6) commentator?.Say("Oh my, you are unstoppable!");
+        else commentator?.SayRandom(new[] {
+            "Got one!", "Nice shot, dear.", "That's the spirit!"
+        });
+    }
+
+    /// <summary>Called when a red fish (enraged or not) reaches the tower and explodes.</summary>
+    public void OnRedFishReachedTower(Vector3 pos)
+    {
+        combo = 0;
+        SpawnPopup("BAD FISH!", pos + Vector3.up, new Color(1f, 0.3f, 0.3f));
+        TakeDamage();
+        UpdateHUD();
+        if (health > 0)
+            commentator?.SayRandom(new[] {
+                "One slipped through!", "Keep them back!", "Block the red ones!"
+            });
+    }
+
+    /// <summary>Called when a green fish safely reaches the tower.</summary>
+    public void OnGreenFishCollected(GameObject fishGO, Sprite fishSpr)
+    {
+        SpawnTowerFish(fishSpr);
+        score += 5;
+        combo++;
+        UpdateHUD();
+        commentator?.SayRandom(new[] {
+            "A strong password joined the tower!",
+            "Safe and sound!", "Good fish welcome, dear."
+        });
+    }
+
+    /// <summary>Called when a green fish is shot and reeled in dead.</summary>
+    public void OnGreenFishShotDead()
+    {
+        combo = 0;
+        score = Mathf.Max(0, score - 5);
+        SpawnPopup("-5 safe fish!", Vector3.zero + Vector3.up * 2,
+            new Color(0.9f, 0.4f, 0.1f));
+        UpdateHUD();
+    }
+
+    /// <summary>
+    /// Called by FishUnit whenever it destroys itself (any outcome).
+    /// Tracks remaining fish so the wave can advance.
+    /// </summary>
+    public void OnFishRemoved()
+    {
+        enemiesRemaining = Mathf.Max(0, enemiesRemaining - 1);
+    }
+
+    // =================================================================
+    // Spawning
+    // =================================================================
+
     IEnumerator SpawnWave(Wave w)
     {
         spawning = true;
         waveText.text = "Wave " + (currentWave + 1) + " / " + waves.Length;
         var pool = BuildPool(w.count, w.scamRatio);
         enemiesRemaining = pool.Count;
-        foreach (var e in pool)
+
+        foreach (var data in pool)
         {
             if (!gameActive) yield break;
-            SpawnEnemy(e, w.speed);
+            SpawnFish(data, w.speed);
             yield return new WaitForSeconds(w.interval);
         }
         spawning = false;
+    }
+
+    void SpawnFish(ED data, float speed)
+    {
+        var go = new GameObject("FishUnit");
+        go.transform.position = new Vector3(
+            spawnPoint.position.x,
+            towerRoot != null
+                ? towerRoot.position.y + Random.Range(-1.4f, 1.4f)
+                : Random.Range(-1.8f, 1.8f),
+            0f);
+
+        var col = go.AddComponent<CircleCollider2D>();
+        col.isTrigger = true;
+        col.radius = 0.35f;
+
+        var rb = go.AddComponent<Rigidbody2D>();
+        rb.gravityScale = 0;
+
+        var fish = go.AddComponent<FishUnit>();
+        fish.Init(data.isScam, data.label, speed,
+                  this,
+                  towerRoot != null ? towerRoot.position : new Vector3(5f, 0, 0),
+                  fishSprite, logSprite);
+
+        liveFish.Add(fish);
     }
 
     List<ED> BuildPool(int count, float scamRatio)
@@ -229,7 +382,8 @@ public class TowerDefenseManager : MonoBehaviour
         var pool = new List<ED>();
         int sc = Mathf.RoundToInt(count * scamRatio);
         int sf = count - sc;
-        var sp = new List<ED>(scams); var sfp = new List<ED>(safes);
+        var sp = new List<ED>(scams);
+        var sfp = new List<ED>(safes);
         Shuffle(sp); Shuffle(sfp);
         for (int i = 0; i < sc && i < sp.Count; i++) pool.Add(sp[i]);
         for (int i = 0; i < sf && i < sfp.Count; i++) pool.Add(sfp[i]);
@@ -240,299 +394,88 @@ public class TowerDefenseManager : MonoBehaviour
     void Shuffle<T>(List<T> list)
     {
         for (int i = list.Count - 1; i > 0; i--)
-        {
-            int r = Random.Range(0, i + 1);
-            T t = list[i]; list[i] = list[r]; list[r] = t;
-        }
+        { int r = Random.Range(0, i + 1); T t = list[i]; list[i] = list[r]; list[r] = t; }
     }
 
-    // =========================================================================
-    // Spawn enemy — attaches fish sprite as a child
-    // =========================================================================
+    // =================================================================
+    // Tower water fish
+    // =================================================================
 
-    void SpawnEnemy(ED data, float speed)
+    void SpawnTowerFish(Sprite spr)
     {
-        var go = new GameObject("Enemy");
-        go.transform.position = new Vector3(spawnPoint.position.x, Random.Range(-1.8f, 1.8f), 0f);
-        go.transform.localScale = new Vector3(3.8f, 1.4f, 1f);
-        go.AddComponent<BoxCollider2D>().size = Vector2.one;
+        if (towerWaterContainer == null) return;
+        var go = new GameObject("TowerFish", typeof(RectTransform));
+        go.transform.SetParent(towerWaterContainer, false);
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchoredPosition = new Vector2(Random.Range(-80f, 80f), Random.Range(-25f, 25f));
+        rt.sizeDelta = new Vector2(36, 36);
 
-        // ── Fish sprite ──────────────────────────────────────────────────────
-        // Placed as a child so it moves with the enemy.
-        // Parent scale is (3.8, 1.4) — local scale compensates so the fish
-        // renders at roughly 1.5 × 1.0 world units.
-        var fishChild = new GameObject("FishSprite");
-        fishChild.transform.SetParent(go.transform, false);
-        // Negative X flips sprite to face RIGHT (toward tower); most fish icons face left.
-        fishChild.transform.localScale = new Vector3(-0.40f, 0.72f, 1f);
-        fishChild.transform.localPosition = new Vector3(0f, 0f, 0.1f);
-        var fsr = fishChild.AddComponent<SpriteRenderer>();
-        fsr.sprite = fishSprite != null ? fishSprite : WhitePix;
-        fsr.color = data.isScam ? new Color(1f, 0.45f, 0.45f)   // red tint  = weak
-                                       : new Color(0.45f, 1f, 0.60f);  // green tint = strong
-        fsr.sortingOrder = 3;
+        var img = go.AddComponent<Image>();
+        img.color = new Color(0.42f, 1f, 0.65f);
+        img.preserveAspect = true;
+        img.raycastTarget = false;
+        if (Random.value > 0.5f) rt.localScale = new Vector3(-1, 1, 1);
 
-        // ── Password label (world-space canvas, renders above fish) ──────────
-        var cGO = new GameObject("LabelCanvas");
-        cGO.transform.SetParent(go.transform, false);
-        var c = cGO.AddComponent<Canvas>();
-        c.renderMode = RenderMode.WorldSpace;
-        c.sortingOrder = 5;
-        cGO.transform.localScale = new Vector3(0.008f, 0.011f, 1f);
-        cGO.GetComponent<RectTransform>().sizeDelta = new Vector2(220, 80);
-
-        var tGO = new GameObject("Label");
-        tGO.transform.SetParent(cGO.transform, false);
-        var tmp = tGO.AddComponent<TextMeshProUGUI>();
-        tmp.text = data.label;
-        tmp.fontSize = 22;
-        tmp.color = Color.white;
-        tmp.fontStyle = FontStyles.Bold;
-        tmp.alignment = TextAlignmentOptions.Center;
-        var tRT = tGO.GetComponent<RectTransform>();
-        tRT.anchorMin = Vector2.zero; tRT.anchorMax = Vector2.one;
-        tRT.offsetMin = tRT.offsetMax = Vector2.zero;
-
-        // ── EnemyEmail controller ────────────────────────────────────────────
-        var enemy = go.AddComponent<EnemyEmail>();
-        enemy.Init(data.isScam, data.label, speed, this, towerTransform.position);
-        liveEnemies.Add(enemy);
+        towerFish.Add(rt);
+        StartCoroutine(SplashIn(rt));
     }
 
-    // =========================================================================
-    // Damage flow
-    // =========================================================================
-
-    public void OnScamDestroyed(Vector3 pos)
+    IEnumerator SplashIn(RectTransform rt)
     {
-        combo++;
-        int pts = combo >= 3 ? 15 : 10;
-        score += pts;
-        SpawnPopup("+" + pts, pos, new Color(0.1f, 0.9f, 0.3f));
-
-        // Fishing-rod catch animation
-        StartCoroutine(CastFishingRod(pos));
-
-        EnemyGone();
-        UpdateHUD();
-
-        if (commentator != null)
-        {
-            if (combo == 3) commentator.Say("Three in a row — wonderful!");
-            else if (combo == 6) commentator.Say("Oh my, you're unstoppable!");
-            else if (combo == 1) commentator.SayRandom(new[] {
-                "Got one!", "Nice catch, dear.", "That's the spirit!"
-            });
-        }
-    }
-
-    public void OnSafeDestroyed(Vector3 pos)
-    {
-        combo = 0;
-        SpawnPopup("That was strong!", pos, new Color(0.95f, 0.3f, 0.3f));
-        StartCoroutine(RocketThenDamage(pos));
-        EnemyGone();
-        UpdateHUD();
-
-        commentator?.SayRandom(new[] {
-            "Oh dear, that one was a good password!",
-            "Easy now — green fish are safe.",
-            "Don't catch the strong passwords!"
-        });
-    }
-
-    public void OnScamReachedTower()
-    {
-        combo = 0;
-        TakeDamage();
-        EnemyGone();
-        UpdateHUD();
-
-        if (commentator != null && health > 0)
-            commentator.SayRandom(new[] {
-                "One slipped through!", "Cast faster, dear.", "Watch out — they're tricky!"
-            });
-    }
-
-    public void OnSafeReachedTower()
-    {
-        EnemyGone();
-        UpdateHUD();
-    }
-
-    IEnumerator RocketThenDamage(Vector3 from)
-    {
-        yield return StartCoroutine(LaunchRocket(from, towerTransform.position));
-        TakeDamage();
-        UpdateHUD();
-    }
-
-    // =========================================================================
-    // Fishing-rod cast animation
-    //   Casts a line from the phisherman's rod tip OUT to the fish position,
-    //   holds a beat (hooked!), then reels the line back.
-    // =========================================================================
-
-    IEnumerator CastFishingRod(Vector3 fishWorldPos)
-    {
-        if (fishermanTransform == null) yield break;
-
-        var rodGo = new GameObject("FishingRodLine");
-        var lr = rodGo.AddComponent<LineRenderer>();
-        lr.positionCount = 10;
-        lr.startWidth = 0.07f;
-        lr.endWidth = 0.015f;
-        lr.useWorldSpace = true;
-        lr.sortingOrder = 20;
-        // Build a simple unlit material from the built-in Sprites shader
-        var mat = new Material(Shader.Find("Sprites/Default"));
-        lr.material = mat;
-        lr.startColor = new Color(0.55f, 0.33f, 0.10f);
-        lr.endColor = new Color(0.55f, 0.33f, 0.10f, 0.25f);
-
-        // Rod tip: slightly left + upward from the phisherman centre
-        Vector3 origin = fishermanTransform.position + new Vector3(-0.6f, 0.4f, 0f);
-
-        // Helper: draw a drooping catenary-ish line from origin to tip
-        void DrawLine(Vector3 tip)
-        {
-            for (int i = 0; i < 10; i++)
-            {
-                float f = i / 9f;
-                Vector3 pt = Vector3.Lerp(origin, tip, f);
-                // Parabolic sag in the middle
-                float sag = Mathf.Sin(f * Mathf.PI) * 0.45f;
-                pt.y -= sag;
-                lr.SetPosition(i, pt);
-            }
-        }
-
-        // ── Cast out ─────────────────────────────────────────────────────────
-        float t = 0f, castDur = 0.26f;
-        while (t < castDur)
+        float sign = rt.localScale.x;
+        rt.localScale = new Vector3(sign * 1.5f, 1.5f, 1);
+        float t = 0f;
+        while (t < 0.25f)
         {
             t += Time.deltaTime;
-            float p = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / castDur));
-            DrawLine(Vector3.Lerp(origin, fishWorldPos, p));
+            float s = Mathf.Lerp(1.5f, 1f, Mathf.Clamp01(t / 0.25f));
+            rt.localScale = new Vector3(sign * s, s, 1);
             yield return null;
         }
-        DrawLine(fishWorldPos);
-
-        // ── Brief "hooked!" hold ─────────────────────────────────────────────
-        yield return new WaitForSeconds(0.10f);
-
-        // ── Reel back ────────────────────────────────────────────────────────
-        t = 0f;
-        float reelDur = 0.22f;
-        while (t < reelDur)
-        {
-            t += Time.deltaTime;
-            float p = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / reelDur));
-            DrawLine(Vector3.Lerp(fishWorldPos, origin, p));
-            yield return null;
-        }
-
-        Destroy(rodGo);
-        Destroy(mat);
     }
 
-    // =========================================================================
-    // Rocket animation  (penalty for clicking a safe/green fish)
-    //   Uses rocketSprite if assigned, falls back to tinted white pixel.
-    // =========================================================================
-
-    IEnumerator LaunchRocket(Vector3 from, Vector3 to)
+    void AnimateTowerFish()
     {
-        var rocket = new GameObject("Rocket");
-        rocket.transform.position = from;
-
-        var sr = rocket.AddComponent<SpriteRenderer>();
-        bool hasSprite = rocketSprite != null;
-        sr.sprite = hasSprite ? rocketSprite : WhitePix;
-        sr.color = hasSprite ? Color.white : new Color(1f, 0.55f, 0.15f);
-        sr.sortingOrder = 12;
-        rocket.transform.localScale = hasSprite
-            ? new Vector3(0.65f, 0.65f, 1f)   // square-ish for real sprite
-            : new Vector3(0.55f, 0.22f, 1f);   // elongated for pixel fallback
-
-        // Point toward tower
-        Vector3 dir = (to - from).normalized;
-        float angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
-        rocket.transform.rotation = Quaternion.Euler(0, 0, angle);
-
-        // Exhaust trail
-        var trail = new GameObject("RocketTrail");
-        trail.transform.SetParent(rocket.transform, false);
-        var tsr = trail.AddComponent<SpriteRenderer>();
-        tsr.sprite = WhitePix;
-        tsr.color = new Color(1f, 0.85f, 0.3f, 0.45f);
-        tsr.sortingOrder = 11;
-        trail.transform.localPosition = new Vector3(-0.5f, 0, 0);
-        trail.transform.localScale = new Vector3(1.4f, 0.55f, 1f);
-
-        float duration = 0.42f, t = 0f;
-        while (t < duration)
+        float time = Time.time;
+        for (int i = towerFish.Count - 1; i >= 0; i--)
         {
-            t += Time.deltaTime;
-            float p = Mathf.Clamp01(t / duration);
-            float eased = p * p;
-            rocket.transform.position = Vector3.Lerp(from, to, eased);
-            float pulse = 1f + Mathf.Sin(t * 35f) * 0.08f;
-            rocket.transform.localScale = hasSprite
-                ? new Vector3(0.65f * pulse, 0.65f, 1f)
-                : new Vector3(0.55f * pulse, 0.22f, 1f);
-            yield return null;
+            if (towerFish[i] == null) { towerFish.RemoveAt(i); continue; }
+            var rt = towerFish[i];
+            var pos = rt.anchoredPosition;
+            pos.x += Mathf.Sin(time * 0.8f + i * 1.7f) * 0.4f;
+            pos.y += Mathf.Cos(time * 1.2f + i * 2.3f) * 0.12f;
+            rt.anchoredPosition = pos;
         }
-
-        Destroy(rocket);
     }
 
-    // =========================================================================
-    // Damage / tower effects
-    // =========================================================================
+    // =================================================================
+    // Tower damage
+    // =================================================================
 
     void TakeDamage()
     {
-        health--;
-        if (health < 0) health = 0;
+        health = Mathf.Max(0, health - 1);
         UpdateHearts();
         SpawnCrack();
-        StartCoroutine(ShakeTower(0.18f, 0.35f));
-        StartCoroutine(FlashScreen());
+        StartCoroutine(ShakeTower(0.20f, 0.35f));
         if (health <= 0) StartCoroutine(BreakSequence());
     }
 
-    IEnumerator ShakeTower(float intensity, float duration)
+    IEnumerator ShakeTower(float intensity, float dur)
     {
         if (towerShakeRoot == null) yield break;
-        Vector3 origin = towerShakeRoot.localPosition;
-        float t = 0;
-        while (t < duration)
-        {
-            t += Time.deltaTime;
-            float d = 1f - Mathf.Clamp01(t / duration);
-            towerShakeRoot.localPosition = origin + new Vector3(
-                Random.Range(-intensity, intensity) * d,
-                Random.Range(-intensity, intensity) * d, 0);
-            yield return null;
-        }
-        towerShakeRoot.localPosition = origin;
-    }
-
-    IEnumerator FlashScreen()
-    {
-        if (towerScreenSr == null) yield break;
-        towerScreenSr.color = ScreenHit;
-        yield return new WaitForSeconds(0.12f);
-        float t = 0, dur = 0.3f;
+        Vector3 orig = towerShakeRoot.localPosition;
+        float t = 0f;
         while (t < dur)
         {
             t += Time.deltaTime;
-            towerScreenSr.color = Color.Lerp(ScreenHit, ScreenNormal,
-                Mathf.Clamp01(t / dur));
+            float d = 1f - Mathf.Clamp01(t / dur);
+            towerShakeRoot.localPosition = orig + new Vector3(
+                Random.Range(-intensity, intensity) * d,
+                Random.Range(-intensity * 0.5f, intensity * 0.5f) * d, 0);
             yield return null;
         }
-        towerScreenSr.color = ScreenNormal;
+        towerShakeRoot.localPosition = orig;
     }
 
     void SpawnCrack()
@@ -541,126 +484,35 @@ public class TowerDefenseManager : MonoBehaviour
         var crack = new GameObject("Crack");
         crack.transform.SetParent(crackContainer, false);
         crack.transform.localPosition = new Vector3(
-            Random.Range(-1.2f, 1.2f), Random.Range(-0.7f, 0.7f), -0.05f);
-        AddCrackLine(crack.transform, Random.Range(0.5f, 1.0f), 0.04f, Random.Range(-30f, 30f));
-        AddCrackLine(crack.transform, Random.Range(0.3f, 0.7f), 0.035f, Random.Range(60f, 120f));
+            Random.Range(-0.8f, 0.8f), Random.Range(-1.0f, 1.0f), -0.05f);
+        CrackLine(crack.transform, Random.Range(0.4f, 0.9f), 0.04f, Random.Range(-35f, 35f));
+        CrackLine(crack.transform, Random.Range(0.25f, 0.55f), 0.03f, Random.Range(55f, 125f));
     }
 
-    void AddCrackLine(Transform parent, float length, float width, float angleDeg)
+    void CrackLine(Transform p, float length, float width, float angle)
     {
         var line = new GameObject("CrackLine");
-        line.transform.SetParent(parent, false);
-        line.transform.localRotation = Quaternion.Euler(0, 0, angleDeg);
+        line.transform.SetParent(p, false);
+        line.transform.localRotation = Quaternion.Euler(0, 0, angle);
         line.transform.localScale = new Vector3(length, width, 1);
         var sr = line.AddComponent<SpriteRenderer>();
-        sr.sprite = WhitePix;
-        sr.color = new Color(1f, 1f, 1f, 0.85f);
-        sr.sortingOrder = 6;
+        sr.sprite = WhitePix; sr.color = new Color(1f, 1f, 1f, 0.80f);
+        sr.sortingOrder = 8;
     }
 
     IEnumerator BreakSequence()
     {
         gameActive = false;
-        for (int i = 0; i < 8; i++) { SpawnCrack(); yield return new WaitForSeconds(0.05f); }
-        yield return StartCoroutine(ShakeTower(0.32f, 0.6f));
-        if (towerScreenSr != null) towerScreenSr.color = new Color(0.08f, 0.04f, 0.04f);
+        for (int i = 0; i < 10; i++) { SpawnCrack(); yield return new WaitForSeconds(0.04f); }
+        yield return StartCoroutine(ShakeTower(0.40f, 0.7f));
         yield return new WaitForSeconds(0.3f);
         GameOver();
     }
 
-    // =========================================================================
-    // HUD
-    // =========================================================================
+    // =================================================================
+    // Wave management
+    // =================================================================
 
-    void SpawnHearts()
-    {
-        if (heartsContainer == null) return;
-        foreach (Transform t in heartsContainer) Destroy(t.gameObject);
-        heartImages.Clear();
-        for (int i = 0; i < startingHealth; i++)
-        {
-            var go = new GameObject("Life" + i, typeof(RectTransform));
-            go.transform.SetParent(heartsContainer, false);
-            var img = go.AddComponent<Image>();
-            if (heartSprite != null) img.sprite = heartSprite;
-            img.color = HeartFilled;
-            img.raycastTarget = false;
-            img.preserveAspect = true;
-            var le = go.AddComponent<LayoutElement>();
-            le.preferredWidth = le.preferredHeight = 38;
-            heartImages.Add(img);
-        }
-    }
-
-    void UpdateHearts()
-    {
-        for (int i = 0; i < heartImages.Count; i++)
-            heartImages[i].color = (i < health) ? HeartFilled : HeartEmpty;
-    }
-
-    void UpdateHUD()
-    {
-        if (scoreText != null) scoreText.text = "Score: " + score;
-        if (waveText != null) waveText.text = "Wave " + (currentWave + 1) + " / " + waves.Length;
-        if (comboText != null) comboText.text = combo >= 3 ? combo + "x combo!" : "";
-    }
-
-    // =========================================================================
-    // Popups
-    // =========================================================================
-
-    void SpawnPopup(string text, Vector3 pos, Color col)
-    {
-        var go = new GameObject("Popup");
-        go.transform.position = pos + Vector3.up * 0.8f;
-        var c = go.AddComponent<Canvas>();
-        c.renderMode = RenderMode.WorldSpace;
-        go.transform.localScale = new Vector3(0.014f, 0.014f, 1f);
-        go.GetComponent<RectTransform>().sizeDelta = new Vector2(220, 60);
-        go.AddComponent<CanvasGroup>();
-
-        var t = new GameObject("T"); t.transform.SetParent(go.transform, false);
-        var tmp = t.AddComponent<TextMeshProUGUI>();
-        tmp.text = text;
-        tmp.fontSize = 22;
-        tmp.color = col;
-        tmp.fontStyle = FontStyles.Bold;
-        tmp.alignment = TextAlignmentOptions.Center;
-        var rt = t.GetComponent<RectTransform>();
-        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
-        rt.offsetMin = rt.offsetMax = Vector2.zero;
-
-        StartCoroutine(PopupAnim(go));
-    }
-
-    IEnumerator PopupAnim(GameObject go)
-    {
-        Vector3 start = go.transform.position;
-        var cg = go.GetComponent<CanvasGroup>();
-        float t = 0;
-        while (t < 1f)
-        {
-            t += Time.deltaTime * 1.5f;
-            if (go == null) yield break;
-            go.transform.position = start + Vector3.up * t * 1.2f;
-            if (cg != null) cg.alpha = 1f - Mathf.Clamp01((t - 0.5f) * 2f);
-            yield return null;
-        }
-        if (go != null) Destroy(go);
-    }
-
-    // =========================================================================
-    // Wave / end-game
-    // =========================================================================
-
-    void EnemyGone()
-    {
-        enemiesRemaining = Mathf.Max(0, enemiesRemaining - 1);
-        liveEnemies.RemoveAll(e => e == null);
-        if (!spawning && enemiesRemaining <= 0) TryAdvanceWave();
-    }
-
-    private bool advancingWave;
     void TryAdvanceWave()
     {
         if (advancingWave || !gameActive) return;
@@ -677,17 +529,97 @@ public class TowerDefenseManager : MonoBehaviour
         StartCoroutine(SpawnWave(waves[currentWave]));
     }
 
+    // =================================================================
+    // HUD
+    // =================================================================
+
+    void SpawnHearts()
+    {
+        foreach (Transform t in heartsContainer) Destroy(t.gameObject);
+        heartImages.Clear();
+        for (int i = 0; i < startingHealth; i++)
+        {
+            var go = new GameObject("Life" + i, typeof(RectTransform));
+            go.transform.SetParent(heartsContainer, false);
+            var img = go.AddComponent<Image>();
+            img.color = HeartFull; img.raycastTarget = false; img.preserveAspect = true;
+            var le = go.AddComponent<LayoutElement>();
+            le.preferredWidth = le.preferredHeight = 38;
+            heartImages.Add(img);
+        }
+    }
+
+    void UpdateHearts()
+    {
+        for (int i = 0; i < heartImages.Count; i++)
+            heartImages[i].color = i < health ? HeartFull : HeartEmpty;
+    }
+
+    void UpdateHUD()
+    {
+        if (scoreText != null) scoreText.text = "Score: " + score;
+        if (waveText != null) waveText.text = "Wave " + (currentWave + 1) + " / " + waves.Length;
+        if (comboText != null) comboText.text = combo >= 3 ? combo + "x combo!" : "";
+    }
+
+    // =================================================================
+    // Popups
+    // =================================================================
+
+    void SpawnPopup(string text, Vector3 pos, Color col)
+    {
+        var go = new GameObject("Popup");
+        go.transform.position = pos;
+        var c = go.AddComponent<Canvas>();
+        c.renderMode = RenderMode.WorldSpace;
+        c.sortingOrder = 20;
+        go.transform.localScale = new Vector3(0.013f, 0.013f, 1f);
+        go.GetComponent<RectTransform>().sizeDelta = new Vector2(260, 60);
+        go.AddComponent<CanvasGroup>();
+
+        var tgo = new GameObject("T"); tgo.transform.SetParent(go.transform, false);
+        var tmp = tgo.AddComponent<TextMeshProUGUI>();
+        tmp.text = text; tmp.fontSize = 22; tmp.color = col;
+        tmp.fontStyle = FontStyles.Bold; tmp.alignment = TextAlignmentOptions.Center;
+        var rt = tgo.GetComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+        rt.offsetMin = rt.offsetMax = Vector2.zero;
+
+        StartCoroutine(PopupAnim(go));
+    }
+
+    IEnumerator PopupAnim(GameObject go)
+    {
+        Vector3 start = go.transform.position;
+        var cg = go.GetComponent<CanvasGroup>();
+        float t = 0f;
+        while (t < 1f)
+        {
+            t += Time.deltaTime * 1.4f;
+            if (go == null) yield break;
+            go.transform.position = start + Vector3.up * t * 1.0f;
+            if (cg != null) cg.alpha = 1f - Mathf.Clamp01((t - 0.5f) * 2f);
+            yield return null;
+        }
+        if (go != null) Destroy(go);
+    }
+
+    // =================================================================
+    // End game
+    // =================================================================
+
     void GameOver()
     {
         gameActive = false;
         StopAllCoroutines();
-        foreach (var e in liveEnemies) if (e != null) Destroy(e.gameObject);
-        liveEnemies.Clear();
+        foreach (var f in liveFish) if (f != null) Destroy(f.gameObject);
+        liveFish.Clear();
         gameOverPanel.SetActive(true);
         gameOverScoreText.text = "Score: " + score;
-        gameOverMessageText.text = "Your computer cracked. Weak passwords like '123456' are easy targets — strong, unique passwords keep the bad fish out.";
-        commentator?.Clear();
-        commentator?.Say("The tower fell! We'll get them next time, dear.");
+        gameOverMessageText.text =
+            "Your tower cracked! Weak passwords like '123456' let the bad fish through.\n" +
+            "Strong passwords (symbols + numbers) keep them out.";
+        commentator?.Say("The tower fell! We'll be stronger next time, dear.");
     }
 
     void WinGame()
@@ -697,37 +629,32 @@ public class TowerDefenseManager : MonoBehaviour
         int max = 0;
         foreach (var w in waves) max += Mathf.RoundToInt(w.count * w.scamRatio) * 10;
         winScoreText.text = score + " / " + max;
-        float pct = (float)score / max;
+        float pct = max > 0 ? (float)score / max : 0;
         winStarsText.text = pct >= 0.9f ? "* * *" : pct >= 0.6f ? "* *" : "*";
-        commentator?.Clear();
-        commentator?.Say(pct >= 0.9f ? "Perfect! You saved the tower, dear!" : "We did it! Thank you, dear.");
+        commentator?.Say(pct >= 0.9f
+            ? "Perfect defence! The tower is safe, dear."
+            : "We did it! Strong passwords saved the day.");
     }
 
     public void OnRetry() { SceneManager.LoadScene("TowerDefense"); }
     public void OnReturnToMap() { SceneManager.LoadScene("WorldMap"); }
 
-    // =========================================================================
+    // =================================================================
     // Helpers
-    // =========================================================================
+    // =================================================================
 
-    private Sprite _cachedWhite;
+    private Sprite _white;
     private Sprite WhitePix
     {
         get
         {
             if (whiteSprite != null) return whiteSprite;
-            if (_cachedWhite != null) return _cachedWhite;
-            _cachedWhite = MakeFallbackSprite();
-            return _cachedWhite;
+            if (_white != null) return _white;
+            var tex = new Texture2D(4, 4);
+            var px = new Color[16]; for (int i = 0; i < 16; i++) px[i] = Color.white;
+            tex.SetPixels(px); tex.Apply();
+            _white = Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f));
+            return _white;
         }
-    }
-
-    private static Sprite MakeFallbackSprite()
-    {
-        var tex = new Texture2D(4, 4);
-        var px = new Color[16];
-        for (int i = 0; i < 16; i++) px[i] = Color.white;
-        tex.SetPixels(px); tex.Apply();
-        return Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f));
     }
 }

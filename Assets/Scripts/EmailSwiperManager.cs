@@ -1,4 +1,4 @@
-using System.Collections;
+ï»¿using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -6,11 +6,11 @@ using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 /// <summary>
-/// Phish Patrol — Reigns-style swiper with bottom bucket.
+/// Phish Patrol â€” Reigns-style swiper with bottom bucket.
 ///
 /// Swipe left = SCAM, right = SAFE.
-/// Correct ? card crumples into a happy fish that arcs into the bucket.
-/// Wrong  ? card crumples into a pufferfish that spikes the bucket,
+/// Correct â†’ card morphs into a happy fish that arcs into the bucket.
+/// Wrong  â†’ card morphs into a pufferfish that spikes the bucket,
 ///           causing a crack. 5 cracks = bucket breaks = game over.
 ///
 /// Scene built by EmailSwiperBuilder. Email data in InitializeEmails().
@@ -24,8 +24,8 @@ public class EmailSwiperManager : MonoBehaviour
     public int correctPoints = 100;
     public int streakBonus = 25;
 
-    // ===== Sprites (assign in Inspector — see README at bottom) =====
-    [Header("Sprites — assign your PNGs here")]
+    // ===== Sprites (assign in Inspector â€” see README at bottom) =====
+    [Header("Sprites â€” assign your PNGs here")]
     public Sprite fishNormalSprite;   // happy fish (correct answer)
     public Sprite fishPufferSprite;   // pufferfish (wrong answer)
     public Sprite crackSprite;        // crack/leak mark
@@ -169,7 +169,7 @@ public class EmailSwiperManager : MonoBehaviour
     }
 
     // =================================================================
-    // Tutorial ? Game
+    // Tutorial â†’ Game
     // =================================================================
 
     public void OnTutorialStart()
@@ -182,7 +182,7 @@ public class EmailSwiperManager : MonoBehaviour
         gameRunning = true;
 
         if (commentator != null)
-            commentator.Say("Be careful, dear — some of these look very real.");
+            commentator.Say("Be careful, dear â€” some of these look very real.");
     }
 
     // =================================================================
@@ -266,16 +266,22 @@ public class EmailSwiperManager : MonoBehaviour
         StartCoroutine(SwipeSequence(dir, correct, email));
     }
 
+    // =================================================================
+    // UPDATED: SwipeSequence â€” card morphs into fish, then arcs to bucket
+    // =================================================================
+
     IEnumerator SwipeSequence(int dir, bool correct, Email email)
     {
-        // 1) Card crumples off
-        yield return StartCoroutine(swipeCard.FlyOffAndCrumple(dir, 0.30f));
+        // 1) Card transforms into fish mid-swipe
+        yield return StartCoroutine(CardMorphToFish(dir, correct));
 
-        // 2) Spawn fish at card's last position, arc to bucket
-        Vector2 spawnPos = swipeCard.GetCardPosition();
+        // 2) Fish arcs from where morph ended down into bucket
+        Vector2 spawnPos = fishAnimRT != null
+            ? fishAnimRT.anchoredPosition
+            : swipeCard.GetCardPosition();
         yield return StartCoroutine(FishArcToBucket(spawnPos, correct));
 
-        // 3) If correct ? fish lands happily, score popup
+        // 3) Landing effects
         if (correct)
         {
             SpawnSwimmingFish();
@@ -283,7 +289,6 @@ public class EmailSwiperManager : MonoBehaviour
             StartCoroutine(ShowScorePopup(gain));
             StartCoroutine(BucketBounce());
         }
-        // 4) If wrong ? pufferfish spikes bucket
         else
         {
             yield return StartCoroutine(PufferSpikesBucket());
@@ -291,10 +296,10 @@ public class EmailSwiperManager : MonoBehaviour
 
         UpdateBucketLabel();
 
-        // 5) Brief feedback
+        // 4) Brief feedback panel
         yield return StartCoroutine(ShowFeedback(correct, email.explanation));
 
-        // 6) Next or end
+        // 5) Next card or end
         if (cracks >= maxCracks || currentIndex + 1 >= emails.Length)
             EndGame();
         else
@@ -302,57 +307,91 @@ public class EmailSwiperManager : MonoBehaviour
     }
 
     // =================================================================
-    // Fish arc animation (crumple point ? bucket)
+    // UPDATED: Card shrinks away while fish pops in on top of it,
+    //          then drifts slightly in the swipe direction.
+    // =================================================================
+
+    IEnumerator CardMorphToFish(int dir, bool correct)
+    {
+        if (fishAnimRT == null) yield break;
+
+        // Place fish exactly on top of the card
+        Vector2 cardPos = swipeCard.cardRoot != null
+            ? swipeCard.cardRoot.anchoredPosition
+            : Vector2.zero;
+        fishAnimRT.anchoredPosition = cardPos;
+        fishAnimRT.localScale = Vector3.zero;
+        fishAnimRT.localRotation = Quaternion.identity;
+        fishAnimRT.gameObject.SetActive(true);
+
+        // Set sprite BEFORE animation starts â€” this is what was missing before
+        if (fishAnimImage != null)
+        {
+            Sprite target = correct ? fishNormalSprite : fishPufferSprite;
+            fishAnimImage.sprite = target != null ? target : circleSprite;
+            fishAnimImage.color = Color.white; // let the sprite show its real colours
+        }
+
+        Vector2 flyEnd = cardPos + new Vector2(dir * 240f, 30f);
+        float dur = 0.30f;
+        float t = 0f;
+
+        CanvasGroup cardCG = swipeCard.cardRoot != null
+            ? swipeCard.cardRoot.GetComponent<CanvasGroup>() : null;
+
+        while (t < dur)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.Clamp01(t / dur);
+            float ease = p * p;
+
+            // Card shrinks and fades out
+            if (swipeCard.cardRoot != null)
+                swipeCard.cardRoot.localScale = Vector3.one * Mathf.Lerp(1f, 0.05f, ease);
+            if (cardCG != null)
+                cardCG.alpha = 1f - p;
+
+            // Fish pops in during first half, then holds size
+            float fishScale = Mathf.Clamp01(p / 0.5f);
+            fishAnimRT.localScale = Vector3.one * fishScale;
+            fishAnimRT.anchoredPosition = Vector2.Lerp(cardPos, flyEnd, ease);
+            fishAnimRT.localRotation = Quaternion.Euler(0, 0,
+                Mathf.Lerp(0f, dir * -25f, ease));
+
+            yield return null;
+        }
+    }
+
+    // =================================================================
+    // UPDATED: Arc fish from morph end-position into the bucket.
+    //          Sprite is already set by CardMorphToFish â€” don't touch it.
     // =================================================================
 
     IEnumerator FishArcToBucket(Vector2 start, bool correct)
     {
         if (fishAnimRT == null) yield break;
 
-        fishAnimRT.gameObject.SetActive(true);
-        fishAnimRT.anchoredPosition = start;
-        fishAnimRT.localScale = Vector3.one * 0.3f;
-        fishAnimRT.localRotation = Quaternion.identity;
-
-        // Use correct sprite
-        if (fishAnimImage != null)
-        {
-            if (correct && fishNormalSprite != null)
-                fishAnimImage.sprite = fishNormalSprite;
-            else if (!correct && fishPufferSprite != null)
-                fishAnimImage.sprite = fishPufferSprite;
-            else if (circleSprite != null)
-                fishAnimImage.sprite = circleSprite;
-
-            fishAnimImage.color = correct ? FishHappy : FishAngry;
-        }
-
-        // Arc end = top-centre of bucket
         Vector2 end = bucketRoot != null
             ? bucketRoot.anchoredPosition + new Vector2(0, 80f)
             : new Vector2(0, -300f);
-        Vector2 mid = (start + end) * 0.5f + new Vector2(0, 200f);
+        Vector2 mid = (start + end) * 0.5f + new Vector2(0, 180f);
 
-        float dur = 0.40f, t = 0f;
+        float dur = 0.38f, t = 0f;
         while (t < dur)
         {
             t += Time.deltaTime;
             float p = Mathf.Clamp01(t / dur);
             float ease = 1f - Mathf.Pow(1f - p, 2f);
 
-            // Quadratic bezier
             Vector2 a = Vector2.Lerp(start, mid, ease);
             Vector2 b = Vector2.Lerp(mid, end, ease);
-            Vector2 pos = Vector2.Lerp(a, b, ease);
-            fishAnimRT.anchoredPosition = pos;
+            fishAnimRT.anchoredPosition = Vector2.Lerp(a, b, ease);
 
-            // Scale: grow then shrink
-            float s = 0.3f + 0.6f * Mathf.Sin(p * Mathf.PI);
+            // Slight size pulse so it feels alive
+            float s = 0.6f + 0.4f * Mathf.Sin(p * Mathf.PI);
             fishAnimRT.localScale = Vector3.one * s;
 
-            // Spin
             fishAnimRT.localRotation = Quaternion.Euler(0, 0, -360f * ease);
-
             yield return null;
         }
 
@@ -372,7 +411,6 @@ public class EmailSwiperManager : MonoBehaviour
         go.transform.SetParent(fishContainer, false);
         var rt = go.GetComponent<RectTransform>();
 
-        // Random position inside bucket
         float bw = fishContainer.rect.width * 0.4f;
         float bh = fishContainer.rect.height * 0.3f;
         rt.anchoredPosition = new Vector2(
@@ -383,32 +421,26 @@ public class EmailSwiperManager : MonoBehaviour
         var img = go.AddComponent<Image>();
         if (fishNormalSprite != null) img.sprite = fishNormalSprite;
         else if (circleSprite != null) img.sprite = circleSprite;
-        img.color = Color.Lerp(FishHappy, Color.white, Random.Range(0f, 0.35f));
+        img.color = Color.white; // show real sprite colours
         img.preserveAspect = true;
         img.raycastTarget = false;
 
-        // Random flip
         if (Random.value > 0.5f) rt.localScale = new Vector3(-1, 1, 1);
 
         swimmingFish.Add(rt);
-
-        // Splash entry
         StartCoroutine(SplashIn(rt));
     }
 
     IEnumerator SplashIn(RectTransform rt)
     {
-        Vector3 big = Vector3.one * 1.5f;
-        rt.localScale = big;
+        rt.localScale = Vector3.one * 1.5f;
         float t = 0f;
         while (t < 0.25f)
         {
             t += Time.deltaTime;
             float p = Mathf.Clamp01(t / 0.25f);
-            float bounce = 1f + 0.5f * Mathf.Sin(p * Mathf.PI);
             float s = Mathf.Lerp(1.5f, 1f, p);
-            rt.localScale = new Vector3(
-                rt.localScale.x > 0 ? s : -s, s, 1f);
+            rt.localScale = new Vector3(rt.localScale.x > 0 ? s : -s, s, 1f);
             yield return null;
         }
     }
@@ -421,38 +453,28 @@ public class EmailSwiperManager : MonoBehaviour
             if (swimmingFish[i] == null) { swimmingFish.RemoveAt(i); continue; }
             var rt = swimmingFish[i];
             var pos = rt.anchoredPosition;
-            // Gentle side-to-side drift
-            float offset = Mathf.Sin(time * 0.8f + i * 1.7f) * 0.4f;
-            pos.x += offset;
-            // Gentle bob
+            pos.x += Mathf.Sin(time * 0.8f + i * 1.7f) * 0.4f;
             pos.y += Mathf.Cos(time * 1.2f + i * 2.3f) * 0.15f;
             rt.anchoredPosition = pos;
         }
     }
 
     // =================================================================
-    // Wrong: pufferfish inflates + spikes bucket ? crack
+    // Wrong: pufferfish inflates + spikes bucket â†’ crack
     // =================================================================
 
     IEnumerator PufferSpikesBucket()
     {
-        // Show crack
         int crackIdx = Mathf.Clamp(cracks - 1, 0, maxCracks - 1);
         if (crackSlots != null && crackIdx < crackSlots.Length && crackSlots[crackIdx] != null)
         {
             var slot = crackSlots[crackIdx];
             slot.gameObject.SetActive(true);
-            // Punch scale the crack in
             StartCoroutine(PunchScale(slot, 0.3f, 1.6f));
         }
 
-        // Shake the bucket
         yield return StartCoroutine(ShakeBucket(0.3f, 12f));
-
-        // Update water colour based on damage
         UpdateWaterColor();
-
-        // Commentator reaction happens in ReactToWrong (already called)
     }
 
     IEnumerator ShakeBucket(float dur, float intensity)
@@ -476,7 +498,6 @@ public class EmailSwiperManager : MonoBehaviour
         if (waterFill == null) return;
         float dmg = (float)cracks / maxCracks;
         waterFill.color = Color.Lerp(WaterBlue, WaterLow, dmg);
-        // Shrink water level slightly with each crack
         var rt = waterFill.rectTransform;
         float targetHeight = Mathf.Lerp(1f, 0.3f, dmg);
         rt.anchorMax = new Vector2(1, targetHeight);
@@ -576,7 +597,7 @@ public class EmailSwiperManager : MonoBehaviour
     void UpdateBucketLabel()
     {
         if (bucketLabel != null)
-            bucketLabel.text = $"{fishCaught} caught  ·  {cracks}/{maxCracks} cracks";
+            bucketLabel.text = $"{fishCaught} caught  Â·  {cracks}/{maxCracks} cracks";
     }
 
     // =================================================================
@@ -601,11 +622,11 @@ public class EmailSwiperManager : MonoBehaviour
         if (cracks == maxCracks - 1)
             commentator.Say("One more crack and the bucket breaks!");
         else if (cracks == maxCracks - 2)
-            commentator.Say("Be careful — the bucket's getting fragile…");
+            commentator.Say("Be careful â€” the bucket's getting fragileâ€¦");
         else
             commentator.SayRandom(new[] {
                 "Oh no, that pufferfish spiked us!",
-                "Ouch! The bucket sprung a leak…",
+                "Ouch! The bucket sprung a leakâ€¦",
                 "Don't worry, scammers are clever."
             });
     }
@@ -623,7 +644,7 @@ public class EmailSwiperManager : MonoBehaviour
         feedbackBg.color = correct
             ? new Color(0.18f, 0.74f, 0.41f, 0.97f)
             : new Color(0.91f, 0.30f, 0.24f, 0.97f);
-        feedbackTitle.text = correct ? "Correct!" : "Not quite…";
+        feedbackTitle.text = correct ? "Correct!" : "Not quiteâ€¦";
         feedbackBody.text = explanation;
 
         feedbackPanel.transform.localScale = Vector3.one * 0.85f;
@@ -638,7 +659,6 @@ public class EmailSwiperManager : MonoBehaviour
 
         yield return new WaitForSeconds(2.2f);
 
-        // Fade out
         if (cg != null)
         {
             float fo = 0f;
@@ -679,31 +699,31 @@ public class EmailSwiperManager : MonoBehaviour
 
         if (cracks >= maxCracks)
         {
-            resultStars.text = "?";
+            resultStars.text = "â˜…";
             resultMessage.text = "The bucket broke! Those pufferfish got you.\nRead carefully and try again.";
-            if (commentator != null) commentator.Say("Oh dear… the bucket couldn't take any more.");
+            if (commentator != null) commentator.Say("Oh dearâ€¦ the bucket couldn't take any more.");
         }
         else if (timeRemaining <= 0 && pct < 0.7f)
         {
-            resultStars.text = "?";
-            resultMessage.text = "Time's up — you'll be quicker next time.";
+            resultStars.text = "â˜…";
+            resultMessage.text = "Time's up â€” you'll be quicker next time.";
             if (commentator != null) commentator.Say("Time got away from us, dear.");
         }
         else if (pct >= 0.95f)
         {
-            resultStars.text = "? ? ?";
+            resultStars.text = "â˜… â˜… â˜…";
             resultMessage.text = "Phish-master! The bucket's full of happy fish.";
             if (commentator != null) commentator.Say("Oh thank you, dear! You're wonderful.");
         }
         else if (pct >= 0.7f)
         {
-            resultStars.text = "? ?";
+            resultStars.text = "â˜… â˜…";
             resultMessage.text = "Solid work! Review the ones that got you.";
-            if (commentator != null) commentator.Say("That was a big help — thank you, dear!");
+            if (commentator != null) commentator.Say("That was a big help â€” thank you, dear!");
         }
         else
         {
-            resultStars.text = "?";
+            resultStars.text = "â˜…";
             resultMessage.text = "Scammers are tricky. Try again and read carefully.";
             if (commentator != null) commentator.Say("It's a good start. We'll get them next time.");
         }
@@ -738,7 +758,7 @@ public class EmailSwiperManager : MonoBehaviour
     }
 
     // =================================================================
-    // Email data — edit here
+    // Email data â€” edit here
     // =================================================================
 
     void InitializeEmails()
@@ -750,88 +770,88 @@ public class EmailSwiperManager : MonoBehaviour
                 senderEmail = "support@paypa1.com",
                 subject     = "URGENT: Your account has been suspended",
                 preview     = "Dear Customer, your PayPal account has been suspended",
-                body        = "Dear Customer,\n\nYour PayPal account has been suspended due to suspicious activity. Click below immediately to verify your information or your account will be permanently deleted within 24 hours.\n\n— PayPal Support",
+                body        = "Dear Customer,\n\nYour PayPal account has been suspended due to suspicious activity. Click below immediately to verify your information or your account will be permanently deleted within 24 hours.\n\nâ€” PayPal Support",
                 timestamp   = "10:09 AM",
                 avatarColor = new Color(0.07f, 0.45f, 0.71f),
                 isScam      = true,
-                explanation = "SCAM — The sender domain is 'paypa1.com' (number 1, not lowercase L). Real PayPal emails come from paypal.com. The 24-hour deletion threat is a classic urgency trick."
+                explanation = "SCAM â€” The sender domain is 'paypa1.com' (number 1, not lowercase L). Real PayPal emails come from paypal.com. The 24-hour deletion threat is a classic urgency trick."
             },
             new Email {
                 senderName  = "Spotify",
                 senderEmail = "newsletter@spotify.com",
                 subject     = "Your June playlist is ready",
                 preview     = "Your monthly Spotify stats are in",
-                body        = "Hi there,\n\nYour monthly Spotify stats are in. Check out your top songs from this month in the app.\n\n— The Spotify Team",
+                body        = "Hi there,\n\nYour monthly Spotify stats are in. Check out your top songs from this month in the app.\n\nâ€” The Spotify Team",
                 timestamp   = "9:42 AM",
                 avatarColor = new Color(0.12f, 0.84f, 0.38f),
                 isScam      = false,
-                explanation = "SAFE — Real domain (spotify.com), calm tone, no threats, no request for personal info."
+                explanation = "SAFE â€” Real domain (spotify.com), calm tone, no threats, no request for personal info."
             },
             new Email {
                 senderName  = "Canada Revenue Agency",
                 senderEmail = "noreply@canada-revenue-agency-refund.com",
                 subject     = "You have a $847 tax refund waiting",
                 preview     = "Provide your SIN and banking details",
-                body        = "NOTICE FROM THE CRA:\n\nA refund of $847.00 is ready. To claim it, provide your SIN and banking details within 24 hours or the refund will be cancelled.\n\n— Canada Revenue Agency",
+                body        = "NOTICE FROM THE CRA:\n\nA refund of $847.00 is ready. To claim it, provide your SIN and banking details within 24 hours or the refund will be cancelled.\n\nâ€” Canada Revenue Agency",
                 timestamp   = "8:27 AM",
                 avatarColor = new Color(0.78f, 0.13f, 0.13f),
                 isScam      = true,
-                explanation = "SCAM — The CRA never emails asking for your SIN. Real messages come from cra-arc.gc.ca only. The 24-hour deadline is another red flag."
+                explanation = "SCAM â€” The CRA never emails asking for your SIN. Real messages come from cra-arc.gc.ca only. The 24-hour deadline is another red flag."
             },
             new Email {
                 senderName  = "Amazon",
                 senderEmail = "orders@amazon.com",
                 subject     = "Your order has shipped",
                 preview     = "Order #112-4857293 has shipped",
-                body        = "Hello,\n\nYour order #112-4857293 has shipped. Estimated delivery June 12. Track it in the Amazon app.\n\n— Amazon",
+                body        = "Hello,\n\nYour order #112-4857293 has shipped. Estimated delivery June 12. Track it in the Amazon app.\n\nâ€” Amazon",
                 timestamp   = "Yesterday",
                 avatarColor = new Color(1f, 0.6f, 0f),
                 isScam      = false,
-                explanation = "SAFE — Real domain (amazon.com), specific order number, no request for personal info."
+                explanation = "SAFE â€” Real domain (amazon.com), specific order number, no request for personal info."
             },
             new Email {
                 senderName  = "Microsoft Security",
                 senderEmail = "security@micros0ft-account.net",
                 subject     = "Unusual sign-in detected",
                 preview     = "Click below immediately to secure your account",
-                body        = "Dear User,\n\nWe detected a sign-in from an unrecognized location. Click below immediately to secure your account.\n\n— Microsoft Security Team",
+                body        = "Dear User,\n\nWe detected a sign-in from an unrecognized location. Click below immediately to secure your account.\n\nâ€” Microsoft Security Team",
                 timestamp   = "Yesterday",
                 avatarColor = new Color(0.05f, 0.45f, 0.79f),
                 isScam      = true,
-                explanation = "SCAM — Domain is 'micros0ft-account.net' (zero, not O). 'Dear User' is generic — Microsoft uses your name."
+                explanation = "SCAM â€” Domain is 'micros0ft-account.net' (zero, not O). 'Dear User' is generic â€” Microsoft uses your name."
             },
             new Email {
                 senderName  = "Uber",
                 senderEmail = "no-reply@uber.com",
                 subject     = "Your Tuesday night trip receipt",
                 preview     = "Your trip: $14.72",
-                body        = "Thanks for riding with Uber.\n\nYour trip came to $14.72. Payment charged to Visa ending in 4821.\n\n— Uber",
+                body        = "Thanks for riding with Uber.\n\nYour trip came to $14.72. Payment charged to Visa ending in 4821.\n\nâ€” Uber",
                 timestamp   = "May 4",
                 avatarColor = new Color(0.1f, 0.1f, 0.1f),
                 isScam      = false,
-                explanation = "SAFE — Real domain, specific details, only last 4 card digits shown, no suspicious links."
+                explanation = "SAFE â€” Real domain, specific details, only last 4 card digits shown, no suspicious links."
             },
             new Email {
                 senderName  = "Netflix Billing",
                 senderEmail = "billing@netfl1x-payments.com",
-                subject     = "Payment failed — update card now",
+                subject     = "Payment failed â€” update card now",
                 preview     = "Update billing within 48 hours",
-                body        = "Hello,\n\nYour Netflix payment could not be processed. Update your billing details within 48 hours or your account will be terminated.\n\n— Netflix Billing",
+                body        = "Hello,\n\nYour Netflix payment could not be processed. Update your billing details within 48 hours or your account will be terminated.\n\nâ€” Netflix Billing",
                 timestamp   = "May 3",
                 avatarColor = new Color(0.90f, 0.05f, 0.10f),
                 isScam      = true,
-                explanation = "SCAM — Domain is 'netfl1x-payments.com' (number 1 not L). Real billing comes from netflix.com."
+                explanation = "SCAM â€” Domain is 'netfl1x-payments.com' (number 1 not L). Real billing comes from netflix.com."
             },
             new Email {
                 senderName  = "Google Calendar",
                 senderEmail = "calendar-noreply@google.com",
                 subject     = "Reminder: Coffee with Sarah at 2pm",
                 preview     = "Event reminder for today",
-                body        = "This is a reminder for your event:\n\nCoffee with Sarah\nToday at 2:00 PM\nThe Wired Monk Cafe\n\n— Google Calendar",
+                body        = "This is a reminder for your event:\n\nCoffee with Sarah\nToday at 2:00 PM\nThe Wired Monk Cafe\n\nâ€” Google Calendar",
                 timestamp   = "May 3",
                 avatarColor = new Color(0.26f, 0.52f, 0.96f),
                 isScam      = false,
-                explanation = "SAFE — Real Google domain, specific event, no suspicious links or requests."
+                explanation = "SAFE â€” Real Google domain, specific event, no suspicious links or requests."
             }
         };
     }
