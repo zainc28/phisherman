@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using TMPro;
@@ -10,67 +10,69 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 /// <summary>
-/// Builds the Gmail-styled Email Swiper scene from scratch.
+/// Builds the Reigns-style Email Swiper scene with bottom bucket.
 ///
-/// Run via:    Phisherman > Build Email Swiper Scene
-/// Output:     Assets/Scenes/EmailSwiper.unity
-///
-/// Re-running fully overwrites the scene. Email content is defined in
-/// EmailSwiperManager.InitializeEmails() � this builder only constructs
-/// the UI shell and wires references.
+/// Run via:  Phisherman ▸ Build Email Swiper Scene
+/// Output:   Assets/Scenes/EmailSwiper.unity
 /// </summary>
 public static class EmailSwiperBuilder
 {
     private const string ScenesDir = "Assets/Scenes";
     private const string ScenePath = "Assets/Scenes/EmailSwiper.unity";
 
-    // ===== Color palette =====
-    // Gmail-ish chrome
-    private static readonly Color BgColor = Hex("#F6F8FC");
-    private static readonly Color TopBarBg = Color.white;
-    private static readonly Color SidebarBg = Hex("#F6F8FC");
-    private static readonly Color InboxBg = Color.white;
-    private static readonly Color BorderColor = Hex("#E0E3E8");
-    private static readonly Color GmailRed = Hex("#EA4335");
-    private static readonly Color GmailBlue = Hex("#1A73E8");
-    private static readonly Color InboxSelected = Hex("#FCE8E6");
-    private static readonly Color SearchBg = Hex("#EAF1FB");
-    private static readonly Color MutedText = Hex("#5F6368");
-    private static readonly Color DarkText = Hex("#202124");
+    // =====================================================================
+    // Palette — ocean / fishing, cute & vibrant
+    // =====================================================================
+    private static readonly Color BgDeep = Hex("#0F2027");
+    private static readonly Color BgOcean = Hex("#1B3A4B");
+    private static readonly Color BgWave = Hex("#274156");
+    private static readonly Color HudBg = Hex("#0D1B2A");
+    private static readonly Color ScoreGold = Hex("#FFD93D");
+    private static readonly Color StreakOrange = Hex("#FF9F1C");
+    private static readonly Color CardWhite = Hex("#FFFDF7");
+    private static readonly Color CardShadow = new Color(0, 0, 0, 0.18f);
+    private static readonly Color CardBorder = new Color(1, 1, 1, 0f);
+    private static readonly Color ScamRed = Hex("#FF6B6B");
+    private static readonly Color SafeTeal = Hex("#4ECDC4");
+    private static readonly Color BucketBody = Hex("#2D3436");
+    private static readonly Color BucketInner = Hex("#1A1A2E");
+    private static readonly Color WaterBlue = new Color(0.27f, 0.62f, 0.83f, 0.55f);
+    private static readonly Color BucketRim = Hex("#636E72");
+    private static readonly Color CrackColor = Hex("#FDCB6E");
+    private static readonly Color DarkText = Hex("#1A1A2E");
+    private static readonly Color MutedText = Hex("#636E72");
+    private static readonly Color LightText = Hex("#DFE6E9");
+    private static readonly Color Coral = Hex("#FF7675");
+    private static readonly Color Aqua = Hex("#81ECEC");
 
-    // Game HUD (saturated, candy-crush feel)
-    private static readonly Color HudBg = Hex("#2E3A59");
-    private static readonly Color ScoreColor = Hex("#FFD93D");
-    private static readonly Color StreakColor = Hex("#FF9F1C");
-    private static readonly Color SafeGreen = Hex("#2ECC71");
-    private static readonly Color ScamRed = Hex("#E74C3C");
+    // =====================================================================
+    // Build
+    // =====================================================================
 
     [MenuItem("Phisherman/Build Email Swiper Scene")]
     public static void Build()
     {
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
-
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-        // === Camera ===
+        // Camera
         var camGo = new GameObject("Main Camera");
         camGo.tag = "MainCamera";
         var cam = camGo.AddComponent<Camera>();
         camGo.AddComponent<AudioListener>();
         cam.clearFlags = CameraClearFlags.SolidColor;
-        cam.backgroundColor = BgColor;
+        cam.backgroundColor = BgDeep;
         cam.orthographic = true;
 
-        // === EventSystem ===
+        // EventSystem
         var es = new GameObject("EventSystem");
         es.AddComponent<EventSystem>();
         es.AddComponent<StandaloneInputModule>();
 
-        // === Canvas ===
+        // Canvas
         var canvasGo = new GameObject("Canvas");
         var canvas = canvasGo.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 0;
         var scaler = canvasGo.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);
@@ -78,881 +80,698 @@ public static class EmailSwiperBuilder
         canvasGo.AddComponent<GraphicRaycaster>();
         var canvasRT = canvasGo.GetComponent<RectTransform>();
 
-        // === Manager ===
-        var managerGo = new GameObject("GameManager");
-        var manager = managerGo.AddComponent<EmailSwiperManager>();
-        manager.heartSprite = TryGetCircleSprite();
+        // Manager
+        var mgrGo = new GameObject("GameManager");
+        var mgr = mgrGo.AddComponent<EmailSwiperManager>();
+        mgr.circleSprite = Circle();
 
-        // === Background (full canvas) ===
-        var bg = AddImage(canvasRT, "Background", BgColor);
-        Stretch(bg.rectTransform);
-        bg.raycastTarget = false;
+        // ── Background layers ──
+        var bgB = Img(canvasRT, "BgBottom", BgDeep); Stretch(bgB.rectTransform); bgB.raycastTarget = false;
+        var bgM = Img(canvasRT, "BgMid", new Color(BgOcean.r, BgOcean.g, BgOcean.b, 0.7f));
+        var mrt = bgM.rectTransform; mrt.anchorMin = new Vector2(0, 0.15f); mrt.anchorMax = Vector2.one;
+        mrt.offsetMin = mrt.offsetMax = Vector2.zero; bgM.raycastTarget = false;
+        var bgW = Img(canvasRT, "BgWave", new Color(BgWave.r, BgWave.g, BgWave.b, 0.35f));
+        var wrt = bgW.rectTransform; wrt.anchorMin = new Vector2(0, 0.55f); wrt.anchorMax = Vector2.one;
+        wrt.offsetMin = wrt.offsetMax = Vector2.zero; bgW.raycastTarget = false;
 
-        // === Build sections ===
-        var gmailRoot = BuildGmailSection(canvasRT, manager);
-        var hudPanel = BuildHud(canvasRT, manager);
-        var detailPanel = BuildDetailPanel(canvasRT, manager);
-        var feedbackPanel = BuildFeedbackPanel(canvasRT, manager);
-        var tutorialPanel = BuildTutorialPanel(canvasRT, manager);
-        var resultPanel = BuildResultPanel(canvasRT, manager);
+        // ── HUD ──
+        var hud = BuildHud(canvasRT, mgr);
 
-        // Commentator (grandma's reactive speech bubble in bottom-left)
-        manager.commentator = BuildCommentator(canvasRT);
+        // ── Game root (below HUD, above bucket) ──
+        var gameRootImg = Img(canvasRT, "GameRoot", new Color(0, 0, 0, 0));
+        var grrt = gameRootImg.rectTransform;
+        grrt.anchorMin = Vector2.zero; grrt.anchorMax = Vector2.one;
+        grrt.offsetMin = new Vector2(0, 220); // leave room for bucket
+        grrt.offsetMax = new Vector2(0, -90); // below HUD
+        gameRootImg.raycastTarget = false;
 
-        manager.gmailRoot = gmailRoot;
-        manager.hudPanel = hudPanel;
-        manager.detailPanel = detailPanel;
-        manager.feedbackPanel = feedbackPanel;
-        manager.tutorialPanel = tutorialPanel;
-        manager.resultPanel = resultPanel;
+        // ── Swipe hints ──
+        CanvasGroup scamHint, safeHint;
+        BuildSwipeHints(grrt, out scamHint, out safeHint);
 
-        gmailRoot.SetActive(false);
-        hudPanel.SetActive(false);
-        detailPanel.SetActive(false);
-        feedbackPanel.SetActive(false);
-        resultPanel.SetActive(false);
-        tutorialPanel.SetActive(true);
+        // ── Email card + drag overlay ──
+        BuildCard(grrt, mgr, scamHint, safeHint);
 
+        // ── Bottom bucket ──
+        BuildBucket(canvasRT, mgr);
+
+        // ── Fish animation sprite ──
+        BuildFishAnim(canvasRT, mgr);
+
+        // ── Score popup ──
+        BuildScorePopup(canvasRT, mgr);
+
+        // ── Commentator ──
+        mgr.commentator = BuildCommentator(canvasRT);
+
+        // ── Overlays ──
+        var feedback = BuildFeedbackPanel(canvasRT, mgr);
+        var tutorial = BuildTutorialPanel(canvasRT, mgr);
+        var result = BuildResultPanel(canvasRT, mgr);
+
+        mgr.gameRoot = gameRootImg.gameObject;
+        mgr.hudPanel = hud;
+        mgr.feedbackPanel = feedback;
+        mgr.tutorialPanel = tutorial;
+        mgr.resultPanel = result;
+
+        gameRootImg.gameObject.SetActive(false);
+        hud.SetActive(false);
+        feedback.SetActive(false);
+        result.SetActive(false);
+        tutorial.SetActive(true);
+
+        // Save
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, ScenePath);
-        AddSceneToBuildSettings(ScenePath);
+        AddToBuild(ScenePath);
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-
-        Debug.Log($"[EmailSwiperBuilder] Built scene at {ScenePath}");
+        Debug.Log($"[EmailSwiperBuilder] Built → {ScenePath}");
     }
 
     // =====================================================================
-    // HUD (game UI - hearts, timer, score, streak)
+    // HUD
     // =====================================================================
 
-    private static GameObject BuildHud(RectTransform parent, EmailSwiperManager manager)
+    static GameObject BuildHud(RectTransform parent, EmailSwiperManager mgr)
     {
-        var hud = AddImage(parent, "HUD", HudBg);
-        AnchorTopStretch(hud.rectTransform, height: 90);
+        var hud = Img(parent, "HUD", HudBg);
+        TopStretch(hud.rectTransform, 90);
         hud.raycastTarget = true;
 
-        // === Hearts container (left) ===
-        var heartsHolder = new GameObject("HeartsHolder", typeof(RectTransform));
-        heartsHolder.transform.SetParent(hud.rectTransform, false);
-        var hhrt = heartsHolder.GetComponent<RectTransform>();
-        hhrt.anchorMin = new Vector2(0, 0);
-        hhrt.anchorMax = new Vector2(0, 1);
-        hhrt.pivot = new Vector2(0, 0.5f);
-        hhrt.sizeDelta = new Vector2(360, 0);
-        hhrt.anchoredPosition = new Vector2(40, 0);
+        // Timer (centre)
+        var tH = RT("TimerHolder", hud.rectTransform);
+        var thr = tH.GetComponent<RectTransform>();
+        thr.anchorMin = new Vector2(0.5f, 0); thr.anchorMax = new Vector2(0.5f, 1);
+        thr.pivot = new Vector2(0.5f, 0.5f); thr.sizeDelta = new Vector2(340, 0);
 
-        var hlg = heartsHolder.AddComponent<HorizontalLayoutGroup>();
-        hlg.childAlignment = TextAnchor.MiddleLeft;
-        hlg.spacing = 8;
-        hlg.childForceExpandWidth = false;
-        hlg.childForceExpandHeight = false;
-        hlg.childControlWidth = false;
-        hlg.childControlHeight = false;
+        var timerTxt = Txt(thr, "TimerText", "1:30", 42, Color.white,
+            TextAlignmentOptions.Center, FontStyles.Bold);
+        var ttrt = timerTxt.rectTransform;
+        ttrt.anchorMin = new Vector2(0, 0.5f); ttrt.anchorMax = Vector2.one;
+        ttrt.offsetMin = ttrt.offsetMax = Vector2.zero;
 
-        // === Timer (center) ===
-        var timerHolder = new GameObject("TimerHolder", typeof(RectTransform));
-        timerHolder.transform.SetParent(hud.rectTransform, false);
-        var thrt = timerHolder.GetComponent<RectTransform>();
-        thrt.anchorMin = new Vector2(0.5f, 0);
-        thrt.anchorMax = new Vector2(0.5f, 1);
-        thrt.pivot = new Vector2(0.5f, 0.5f);
-        thrt.sizeDelta = new Vector2(360, 0);
-        thrt.anchoredPosition = Vector2.zero;
-
-        var timerText = AddText(thrt, "TimerText", "1:30",
-            44, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
-        var ttrt = timerText.rectTransform;
-        ttrt.anchorMin = new Vector2(0, 0.5f);
-        ttrt.anchorMax = new Vector2(1, 1);
-        ttrt.offsetMin = Vector2.zero;
-        ttrt.offsetMax = Vector2.zero;
-
-        var barBg = AddImage(thrt, "TimerBarBg", new Color(1, 1, 1, 0.18f));
+        var barBg = Img(thr, "TimerBarBg", new Color(1, 1, 1, 0.15f));
         var bbrt = barBg.rectTransform;
-        bbrt.anchorMin = new Vector2(0, 0.05f);
-        bbrt.anchorMax = new Vector2(1, 0.42f);
-        bbrt.offsetMin = new Vector2(20, 0);
-        bbrt.offsetMax = new Vector2(-20, 0);
+        bbrt.anchorMin = new Vector2(0, 0.08f); bbrt.anchorMax = new Vector2(1, 0.40f);
+        bbrt.offsetMin = new Vector2(16, 0); bbrt.offsetMax = new Vector2(-16, 0);
         barBg.raycastTarget = false;
 
-        var barFill = AddImage(barBg.rectTransform, "TimerFill", SafeGreen);
-        Stretch(barFill.rectTransform);
-        barFill.type = Image.Type.Filled;
-        barFill.fillMethod = Image.FillMethod.Horizontal;
-        barFill.fillOrigin = (int)Image.OriginHorizontal.Left;
-        barFill.fillAmount = 1f;
-        barFill.raycastTarget = false;
+        var fill = Img(bbrt, "TimerFill", SafeTeal);
+        Stretch(fill.rectTransform);
+        fill.type = Image.Type.Filled;
+        fill.fillMethod = Image.FillMethod.Horizontal;
+        fill.fillOrigin = 0; fill.fillAmount = 1f; fill.raycastTarget = false;
 
-        // === Score + streak (right) ===
-        var scoreHolder = new GameObject("ScoreHolder", typeof(RectTransform));
-        scoreHolder.transform.SetParent(hud.rectTransform, false);
-        var shrt = scoreHolder.GetComponent<RectTransform>();
-        shrt.anchorMin = new Vector2(1, 0);
-        shrt.anchorMax = new Vector2(1, 1);
-        shrt.pivot = new Vector2(1, 0.5f);
-        shrt.sizeDelta = new Vector2(420, 0);
-        shrt.anchoredPosition = new Vector2(-40, 0);
+        var progTxt = Txt(thr, "Progress", "1 / 8", 20, LightText,
+            TextAlignmentOptions.Center);
+        var prt = progTxt.rectTransform;
+        prt.anchorMin = Vector2.zero; prt.anchorMax = new Vector2(1, 0.22f);
+        prt.offsetMin = prt.offsetMax = Vector2.zero;
 
-        var scoreText = AddText(shrt, "ScoreText", "Score: 0",
-            42, ScoreColor, TextAlignmentOptions.MidlineRight, FontStyles.Bold);
-        var srrt = scoreText.rectTransform;
-        srrt.anchorMin = new Vector2(0, 0.4f);
-        srrt.anchorMax = new Vector2(1, 1);
-        srrt.offsetMin = Vector2.zero;
-        srrt.offsetMax = Vector2.zero;
+        // Score (right)
+        var sH = RT("ScoreHolder", hud.rectTransform);
+        var shr = sH.GetComponent<RectTransform>();
+        shr.anchorMin = new Vector2(1, 0); shr.anchorMax = new Vector2(1, 1);
+        shr.pivot = new Vector2(1, 0.5f);
+        shr.sizeDelta = new Vector2(380, 0); shr.anchoredPosition = new Vector2(-30, 0);
 
-        var streakText = AddText(shrt, "StreakText", "",
-            26, StreakColor, TextAlignmentOptions.MidlineRight, FontStyles.Bold);
-        var skrt = streakText.rectTransform;
-        skrt.anchorMin = new Vector2(0, 0);
-        skrt.anchorMax = new Vector2(1, 0.4f);
-        skrt.offsetMin = Vector2.zero;
-        skrt.offsetMax = Vector2.zero;
+        var scoreTxt = Txt(shr, "ScoreText", "Score: 0", 38, ScoreGold,
+            TextAlignmentOptions.MidlineRight, FontStyles.Bold);
+        var srrt = scoreTxt.rectTransform;
+        srrt.anchorMin = new Vector2(0, 0.4f); srrt.anchorMax = Vector2.one;
+        srrt.offsetMin = srrt.offsetMax = Vector2.zero;
 
-        manager.heartsContainer = heartsHolder.transform;
-        manager.timerText = timerText;
-        manager.timerFill = barFill;
-        manager.scoreText = scoreText;
-        manager.streakText = streakText;
+        var streakTxt = Txt(shr, "StreakText", "", 24, StreakOrange,
+            TextAlignmentOptions.MidlineRight, FontStyles.Bold);
+        var skrt = streakTxt.rectTransform;
+        skrt.anchorMin = Vector2.zero; skrt.anchorMax = new Vector2(1, 0.4f);
+        skrt.offsetMin = skrt.offsetMax = Vector2.zero;
+
+        mgr.timerText = timerTxt;
+        mgr.timerFill = fill;
+        mgr.scoreText = scoreTxt;
+        mgr.streakText = streakTxt;
+        mgr.progressText = progTxt;
 
         return hud.gameObject;
     }
 
     // =====================================================================
-    // Gmail section (top bar + sidebar + inbox)
+    // Swipe hints (SCAM left, SAFE right)
     // =====================================================================
 
-    private static GameObject BuildGmailSection(RectTransform parent, EmailSwiperManager manager)
+    static void BuildSwipeHints(RectTransform parent,
+        out CanvasGroup scamCG, out CanvasGroup safeCG)
     {
-        var root = AddImage(parent, "GmailRoot", BgColor);
-        var rrt = root.rectTransform;
-        rrt.anchorMin = new Vector2(0, 0);
-        rrt.anchorMax = new Vector2(1, 1);
-        rrt.offsetMin = Vector2.zero;
-        rrt.offsetMax = new Vector2(0, -90);
-        root.raycastTarget = false;
-
-        // === Top bar ===
-        var topBar = AddImage(rrt, "TopBar", TopBarBg);
-        AnchorTopStretch(topBar.rectTransform, height: 64);
-        var topBarBorder = AddImage(topBar.rectTransform, "Border", BorderColor);
-        var tbrt = topBarBorder.rectTransform;
-        tbrt.anchorMin = new Vector2(0, 0);
-        tbrt.anchorMax = new Vector2(1, 0);
-        tbrt.pivot = new Vector2(0.5f, 0);
-        tbrt.sizeDelta = new Vector2(0, 1);
-
-        // Gmail logo (text)
-        var logo = AddText(topBar.rectTransform, "Logo", "Gmail",
-            34, GmailRed, TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
-        var lrt = logo.rectTransform;
-        lrt.anchorMin = new Vector2(0, 0);
-        lrt.anchorMax = new Vector2(0, 1);
-        lrt.pivot = new Vector2(0, 0.5f);
-        lrt.sizeDelta = new Vector2(160, 0);
-        lrt.anchoredPosition = new Vector2(40, 0);
-
-        // Search bar (decorative, rounded)
-        var search = AddImage(topBar.rectTransform, "SearchBar", SearchBg);
-        var srt = search.rectTransform;
-        srt.anchorMin = new Vector2(0.20f, 0.5f);
-        srt.anchorMax = new Vector2(0.65f, 0.5f);
-        srt.pivot = new Vector2(0.5f, 0.5f);
-        srt.sizeDelta = new Vector2(0, 44);
-        srt.anchoredPosition = Vector2.zero;
-        var searchPlaceholder = AddText(search.rectTransform, "Placeholder",
-            "    Search mail", 20, MutedText, TextAlignmentOptions.MidlineLeft);
-        Stretch(searchPlaceholder.rectTransform);
-        searchPlaceholder.rectTransform.offsetMin = new Vector2(20, 0);
-        searchPlaceholder.raycastTarget = false;
-
-        // Sidebar
-        var sidebar = AddImage(rrt, "Sidebar", SidebarBg);
-        var sbrt = sidebar.rectTransform;
-        sbrt.anchorMin = new Vector2(0, 0);
-        sbrt.anchorMax = new Vector2(0, 1);
-        sbrt.pivot = new Vector2(0, 0.5f);
-        sbrt.sizeDelta = new Vector2(220, 0);
-        sbrt.offsetMax = new Vector2(220, -64);
-        sbrt.offsetMin = new Vector2(0, 0);
-        sidebar.raycastTarget = false;
-        BuildSidebarContents(sidebar.rectTransform);
-
-        // Inbox area
-        var inboxArea = AddImage(rrt, "InboxArea", InboxBg);
-        var iart = inboxArea.rectTransform;
-        iart.anchorMin = new Vector2(0, 0);
-        iart.anchorMax = new Vector2(1, 1);
-        iart.offsetMin = new Vector2(220, 0);
-        iart.offsetMax = new Vector2(0, -64);
-        inboxArea.raycastTarget = false;
-
-        // Inbox toolbar (count + tab indicator)
-        var toolbar = AddImage(iart, "InboxToolbar", InboxBg);
-        AnchorTopStretch(toolbar.rectTransform, height: 50);
-        var toolbarBorder = AddImage(toolbar.rectTransform, "Border", BorderColor);
-        var tbrt2 = toolbarBorder.rectTransform;
-        tbrt2.anchorMin = new Vector2(0, 0);
-        tbrt2.anchorMax = new Vector2(1, 0);
-        tbrt2.pivot = new Vector2(0.5f, 0);
-        tbrt2.sizeDelta = new Vector2(0, 1);
-        toolbarBorder.raycastTarget = false;
-
-        var countLabel = AddText(toolbar.rectTransform, "CountLabel", "8 unread",
-            22, MutedText, TextAlignmentOptions.MidlineLeft);
-        var clrt = countLabel.rectTransform;
-        clrt.anchorMin = new Vector2(0, 0);
-        clrt.anchorMax = new Vector2(0, 1);
-        clrt.pivot = new Vector2(0, 0.5f);
-        clrt.sizeDelta = new Vector2(300, 0);
-        clrt.anchoredPosition = new Vector2(40, 0);
-        countLabel.raycastTarget = false;
-
-        var primaryTab = AddText(toolbar.rectTransform, "PrimaryTab", "Primary",
-            22, GmailBlue, TextAlignmentOptions.Center, FontStyles.Bold);
-        var ptrt = primaryTab.rectTransform;
-        ptrt.anchorMin = new Vector2(0.5f, 0);
-        ptrt.anchorMax = new Vector2(0.5f, 1);
-        ptrt.pivot = new Vector2(0.5f, 0.5f);
-        ptrt.sizeDelta = new Vector2(160, 0);
-        ptrt.anchoredPosition = Vector2.zero;
-        primaryTab.raycastTarget = false;
-
-        var tabUnderline = AddImage(primaryTab.rectTransform, "Underline", GmailBlue);
-        var tut = tabUnderline.rectTransform;
-        tut.anchorMin = new Vector2(0, 0);
-        tut.anchorMax = new Vector2(1, 0);
-        tut.pivot = new Vector2(0.5f, 0);
-        tut.sizeDelta = new Vector2(0, 3);
-        tabUnderline.raycastTarget = false;
-
-        // Inbox scroll view
-        var scrollGo = new GameObject("InboxScroll", typeof(RectTransform));
-        scrollGo.transform.SetParent(iart, false);
-        var scrollRT = scrollGo.GetComponent<RectTransform>();
-        scrollRT.anchorMin = new Vector2(0, 0);
-        scrollRT.anchorMax = new Vector2(1, 1);
-        scrollRT.offsetMin = Vector2.zero;
-        scrollRT.offsetMax = new Vector2(0, -50);
-
-        var scrollImg = scrollGo.AddComponent<Image>();
-        scrollImg.color = InboxBg;
-        scrollImg.raycastTarget = true;
-
-        var scrollRect = scrollGo.AddComponent<ScrollRect>();
-        scrollRect.horizontal = false;
-        scrollRect.vertical = true;
-        scrollRect.movementType = ScrollRect.MovementType.Clamped;
-        scrollRect.scrollSensitivity = 30;
-
-        var viewport = new GameObject("Viewport", typeof(RectTransform));
-        viewport.transform.SetParent(scrollRT, false);
-        var vrt = viewport.GetComponent<RectTransform>();
-        Stretch(vrt);
-        var vimg = viewport.AddComponent<Image>();
-        vimg.color = InboxBg;
-        vimg.raycastTarget = false;
-        var vmask = viewport.AddComponent<Mask>();
-        vmask.showMaskGraphic = false;
-
-        var content = new GameObject("Content", typeof(RectTransform));
-        content.transform.SetParent(vrt, false);
-        var crt = content.GetComponent<RectTransform>();
-        crt.anchorMin = new Vector2(0, 1);
-        crt.anchorMax = new Vector2(1, 1);
-        crt.pivot = new Vector2(0.5f, 1);
-        crt.sizeDelta = new Vector2(0, 0);
-        crt.anchoredPosition = Vector2.zero;
-
-        var vlg = content.AddComponent<VerticalLayoutGroup>();
-        vlg.childAlignment = TextAnchor.UpperCenter;
-        vlg.childForceExpandHeight = false;
-        vlg.childForceExpandWidth = true;
-        vlg.childControlHeight = true;
-        vlg.childControlWidth = true;
-        vlg.spacing = 0;
-        vlg.padding = new RectOffset(0, 0, 0, 0);
-
-        var fitter = content.AddComponent<ContentSizeFitter>();
-        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-
-        scrollRect.viewport = vrt;
-        scrollRect.content = crt;
-
-        manager.inboxContent = content.transform;
-        manager.inboxCountLabel = countLabel;
-
-        return root.gameObject;
+        scamCG = MakeHintLabel(parent, "ScamHint", "◀  SCAM", ScamRed, 0.12f);
+        safeCG = MakeHintLabel(parent, "SafeHint", "SAFE  ▶", SafeTeal, 0.88f);
     }
 
-    private static void BuildSidebarContents(RectTransform sidebar)
+    static CanvasGroup MakeHintLabel(RectTransform parent, string name,
+        string text, Color color, float xAnch)
     {
-        // Compose button (decorative)
-        var compose = AddImage(sidebar, "ComposeBtn", Hex("#C2E7FF"));
-        var crt = compose.rectTransform;
-        crt.anchorMin = new Vector2(0, 1);
-        crt.anchorMax = new Vector2(1, 1);
-        crt.pivot = new Vector2(0.5f, 1);
-        crt.sizeDelta = new Vector2(-32, 56);
-        crt.anchoredPosition = new Vector2(0, -16);
-        var composeText = AddText(compose.rectTransform, "Label",
-            "Compose", 22, DarkText, TextAlignmentOptions.Center, FontStyles.Bold);
-        Stretch(composeText.rectTransform);
-        composeText.raycastTarget = false;
+        var go = RT(name, parent);
+        var rrt = go.GetComponent<RectTransform>();
+        rrt.anchorMin = new Vector2(xAnch, 0.42f);
+        rrt.anchorMax = new Vector2(xAnch, 0.58f);
+        rrt.pivot = new Vector2(0.5f, 0.5f);
+        rrt.sizeDelta = new Vector2(240, 72);
 
-        // Folder list
-        string[] folders = { "Inbox", "Starred", "Snoozed", "Sent", "Drafts", "More" };
-        float startY = 100f;
-        float rowHeight = 44f;
-        for (int i = 0; i < folders.Length; i++)
-        {
-            bool selected = (i == 0);
-            var row = AddImage(sidebar, "Folder_" + folders[i],
-                selected ? InboxSelected : new Color(1, 1, 1, 0));
-            var rrt = row.rectTransform;
-            rrt.anchorMin = new Vector2(0, 1);
-            rrt.anchorMax = new Vector2(1, 1);
-            rrt.pivot = new Vector2(0.5f, 1);
-            rrt.sizeDelta = new Vector2(-12, rowHeight);
-            rrt.anchoredPosition = new Vector2(0, -(startY + i * rowHeight));
-            row.raycastTarget = false;
+        var img = go.AddComponent<Image>();
+        img.color = new Color(color.r, color.g, color.b, 0.25f);
+        img.raycastTarget = false;
 
-            var lbl = AddText(row.rectTransform, "Label",
-                folders[i], 20,
-                selected ? GmailRed : DarkText,
-                TextAlignmentOptions.MidlineLeft,
-                selected ? FontStyles.Bold : FontStyles.Normal);
-            Stretch(lbl.rectTransform);
-            lbl.rectTransform.offsetMin = new Vector2(24, 0);
-            lbl.raycastTarget = false;
-        }
+        var lbl = Txt(rrt, "Label", text, 32, color,
+            TextAlignmentOptions.Center, FontStyles.Bold);
+        Stretch(lbl.rectTransform);
+
+        var cg = go.AddComponent<CanvasGroup>();
+        cg.alpha = 0f; cg.blocksRaycasts = false;
+        return cg;
     }
 
     // =====================================================================
-    // Detail panel (the opened email + decision buttons)
+    // Email card + transparent drag overlay
     // =====================================================================
 
-    private static GameObject BuildDetailPanel(RectTransform parent, EmailSwiperManager manager)
+    static void BuildCard(RectTransform parent, EmailSwiperManager mgr,
+        CanvasGroup scamHint, CanvasGroup safeHint)
     {
-        var overlay = AddImage(parent, "DetailOverlay", new Color(0, 0, 0, 0.5f));
-        var ort = overlay.rectTransform;
-        ort.anchorMin = new Vector2(0, 0);
-        ort.anchorMax = new Vector2(1, 1);
-        ort.offsetMin = Vector2.zero;
-        ort.offsetMax = new Vector2(0, -90);
-        overlay.raycastTarget = true;
+        // -- Shadow --
+        var shadow = Img(parent, "CardShadow", CardShadow);
+        var shrt = shadow.rectTransform;
+        shrt.anchorMin = shrt.anchorMax = new Vector2(0.5f, 0.52f);
+        shrt.pivot = new Vector2(0.5f, 0.5f);
+        shrt.sizeDelta = new Vector2(620, 700);
+        shrt.anchoredPosition = new Vector2(6, -6);
+        shadow.raycastTarget = false;
 
-        var card = AddImage(ort, "Card", Color.white);
+        // -- Border / glow --
+        var border = Img(parent, "CardBorder", CardBorder);
+        var brrt = border.rectTransform;
+        brrt.anchorMin = brrt.anchorMax = new Vector2(0.5f, 0.52f);
+        brrt.pivot = new Vector2(0.5f, 0.5f);
+        brrt.sizeDelta = new Vector2(626, 706);
+        border.raycastTarget = false;
+
+        // -- Card visual (cardRoot) --
+        var card = Img(parent, "EmailCard", CardWhite);
         var crt = card.rectTransform;
-        crt.anchorMin = new Vector2(0.5f, 0.5f);
-        crt.anchorMax = new Vector2(0.5f, 0.5f);
+        crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.52f);
         crt.pivot = new Vector2(0.5f, 0.5f);
-        crt.sizeDelta = new Vector2(1500, 820);
+        crt.sizeDelta = new Vector2(600, 680);
+        card.raycastTarget = false;          // overlay handles input
 
-        // === Top bar with Back button ===
-        var topBar = AddImage(crt, "TopBar", Hex("#F8F9FA"));
-        AnchorTopStretch(topBar.rectTransform, height: 60);
-        var tbBorder = AddImage(topBar.rectTransform, "Border", BorderColor);
-        var tbrt = tbBorder.rectTransform;
-        tbrt.anchorMin = new Vector2(0, 0);
-        tbrt.anchorMax = new Vector2(1, 0);
-        tbrt.pivot = new Vector2(0.5f, 0);
-        tbrt.sizeDelta = new Vector2(0, 1);
-        tbBorder.raycastTarget = false;
+        var cardCG = card.gameObject.AddComponent<CanvasGroup>();
 
-        var back = AddButton(topBar.rectTransform, "BackBtn", "Back", 22,
-            new Color(1, 1, 1, 0), DarkText);
-        var brrt = back.GetComponent<RectTransform>();
-        brrt.anchorMin = new Vector2(0, 0);
-        brrt.anchorMax = new Vector2(0, 1);
-        brrt.pivot = new Vector2(0, 0.5f);
-        brrt.sizeDelta = new Vector2(120, 40);
-        brrt.anchoredPosition = new Vector2(20, 0);
-        UnityEventTools.AddPersistentListener(back.GetComponent<Button>().onClick, manager.OnBackPressed);
-
-        // === Subject (big bold) ===
-        var subject = AddText(crt, "Subject",
-            "Subject goes here", 36, DarkText, TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
-        var srt = subject.rectTransform;
-        srt.anchorMin = new Vector2(0, 1);
-        srt.anchorMax = new Vector2(1, 1);
-        srt.pivot = new Vector2(0.5f, 1);
-        srt.sizeDelta = new Vector2(-80, 60);
-        srt.anchoredPosition = new Vector2(0, -90);
-
-        // === Sender row (avatar + name + email + timestamp) ===
-        var senderRow = new GameObject("SenderRow", typeof(RectTransform));
-        senderRow.transform.SetParent(crt, false);
-        var senrrt = senderRow.GetComponent<RectTransform>();
-        senrrt.anchorMin = new Vector2(0, 1);
-        senrrt.anchorMax = new Vector2(1, 1);
-        senrrt.pivot = new Vector2(0.5f, 1);
-        senrrt.sizeDelta = new Vector2(-80, 64);
-        senrrt.anchoredPosition = new Vector2(0, -160);
-
-        var avatar = AddImage(senrrt, "Avatar", Hex("#1A73E8"));
-        avatar.sprite = TryGetCircleSprite();
+        // Avatar
+        var avatar = Img(crt, "Avatar", Hex("#1A73E8"));
+        avatar.sprite = Circle();
         var avrt = avatar.rectTransform;
-        avrt.anchorMin = new Vector2(0, 0.5f);
-        avrt.anchorMax = new Vector2(0, 0.5f);
-        avrt.pivot = new Vector2(0, 0.5f);
-        avrt.sizeDelta = new Vector2(56, 56);
-        avrt.anchoredPosition = Vector2.zero;
+        avrt.anchorMin = avrt.anchorMax = new Vector2(0, 1);
+        avrt.pivot = new Vector2(0, 1);
+        avrt.sizeDelta = new Vector2(60, 60);
+        avrt.anchoredPosition = new Vector2(28, -24);
         avatar.raycastTarget = false;
 
-        var avatarLetter = AddText(avatar.rectTransform, "Letter", "A",
-            32, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
-        Stretch(avatarLetter.rectTransform);
-        avatarLetter.raycastTarget = false;
-
-        var senderName = AddText(senrrt, "SenderName", "Sender Name",
-            24, DarkText, TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
-        var snrt = senderName.rectTransform;
-        snrt.anchorMin = new Vector2(0, 0.5f);
-        snrt.anchorMax = new Vector2(0, 1);
-        snrt.pivot = new Vector2(0, 0.5f);
-        snrt.sizeDelta = new Vector2(900, 0);
-        snrt.anchoredPosition = new Vector2(80, -8);
-
-        var senderEmail = AddText(senrrt, "SenderEmail", "<sender@example.com>",
-            18, MutedText, TextAlignmentOptions.MidlineLeft);
-        var sert = senderEmail.rectTransform;
-        sert.anchorMin = new Vector2(0, 0);
-        sert.anchorMax = new Vector2(0, 0.5f);
-        sert.pivot = new Vector2(0, 0.5f);
-        sert.sizeDelta = new Vector2(900, 0);
-        sert.anchoredPosition = new Vector2(80, 8);
-
-        var timestamp = AddText(senrrt, "Timestamp", "10:09 AM",
-            18, MutedText, TextAlignmentOptions.MidlineRight);
-        var trt = timestamp.rectTransform;
-        trt.anchorMin = new Vector2(1, 0);
-        trt.anchorMax = new Vector2(1, 1);
-        trt.pivot = new Vector2(1, 0.5f);
-        trt.sizeDelta = new Vector2(200, 0);
-        trt.anchoredPosition = Vector2.zero;
-
-        // === Body (scrollable area) ===
-        var bodyScroll = new GameObject("BodyScroll", typeof(RectTransform));
-        bodyScroll.transform.SetParent(crt, false);
-        var bsrt = bodyScroll.GetComponent<RectTransform>();
-        bsrt.anchorMin = new Vector2(0, 0);
-        bsrt.anchorMax = new Vector2(1, 1);
-        bsrt.offsetMin = new Vector2(40, 160);
-        bsrt.offsetMax = new Vector2(-40, -250);
-
-        var bodyImg = bodyScroll.AddComponent<Image>();
-        bodyImg.color = Hex("#FAFBFC");
-        var bodySr = bodyScroll.AddComponent<ScrollRect>();
-        bodySr.horizontal = false;
-        bodySr.vertical = true;
-
-        var bodyVp = new GameObject("Viewport", typeof(RectTransform));
-        bodyVp.transform.SetParent(bsrt, false);
-        var bvrt = bodyVp.GetComponent<RectTransform>();
-        Stretch(bvrt);
-        var bvi = bodyVp.AddComponent<Image>();
-        bvi.color = Hex("#FAFBFC");
-        bvi.raycastTarget = false;
-        var bvm = bodyVp.AddComponent<Mask>();
-        bvm.showMaskGraphic = false;
-
-        var bodyContent = new GameObject("Content", typeof(RectTransform));
-        bodyContent.transform.SetParent(bvrt, false);
-        var bcrt = bodyContent.GetComponent<RectTransform>();
-        bcrt.anchorMin = new Vector2(0, 1);
-        bcrt.anchorMax = new Vector2(1, 1);
-        bcrt.pivot = new Vector2(0.5f, 1);
-        bcrt.sizeDelta = new Vector2(0, 0);
-
-        var body = AddText(bcrt, "Body",
-            "Body text here.", 22, DarkText, TextAlignmentOptions.TopLeft);
-        var brt2 = body.rectTransform;
-        brt2.anchorMin = new Vector2(0, 1);
-        brt2.anchorMax = new Vector2(1, 1);
-        brt2.pivot = new Vector2(0.5f, 1);
-        brt2.sizeDelta = new Vector2(-40, 600);
-        brt2.anchoredPosition = new Vector2(0, -20);
-
-        var bodyFitter = bodyContent.AddComponent<ContentSizeFitter>();
-        bodyFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-        var bodyVlg = bodyContent.AddComponent<VerticalLayoutGroup>();
-        bodyVlg.padding = new RectOffset(20, 20, 20, 20);
-        bodyVlg.childForceExpandWidth = true;
-        bodyVlg.childControlWidth = true;
-        bodyVlg.childControlHeight = true;
-
-        bodySr.viewport = bvrt;
-        bodySr.content = bcrt;
-
-        // === Decision bar (bottom) ===
-        var decisionBar = new GameObject("DecisionBar", typeof(RectTransform));
-        decisionBar.transform.SetParent(crt, false);
-        var dbrt = decisionBar.GetComponent<RectTransform>();
-        dbrt.anchorMin = new Vector2(0, 0);
-        dbrt.anchorMax = new Vector2(1, 0);
-        dbrt.pivot = new Vector2(0.5f, 0);
-        dbrt.sizeDelta = new Vector2(0, 100);
-        dbrt.anchoredPosition = new Vector2(0, 0);
-
-        var scamBtn = AddButton(dbrt, "ScamBtn", "SCAM!", 36, ScamRed, Color.white);
-        var sbrt = scamBtn.GetComponent<RectTransform>();
-        sbrt.anchorMin = new Vector2(0.5f, 0.5f);
-        sbrt.anchorMax = new Vector2(0.5f, 0.5f);
-        sbrt.pivot = new Vector2(1, 0.5f);
-        sbrt.sizeDelta = new Vector2(360, 80);
-        sbrt.anchoredPosition = new Vector2(-20, 0);
-        UnityEventTools.AddPersistentListener(scamBtn.GetComponent<Button>().onClick, manager.OnScamPressed);
-
-        var safeBtn = AddButton(dbrt, "SafeBtn", "SAFE", 36, SafeGreen, Color.white);
-        var sfrt = safeBtn.GetComponent<RectTransform>();
-        sfrt.anchorMin = new Vector2(0.5f, 0.5f);
-        sfrt.anchorMax = new Vector2(0.5f, 0.5f);
-        sfrt.pivot = new Vector2(0, 0.5f);
-        sfrt.sizeDelta = new Vector2(360, 80);
-        sfrt.anchoredPosition = new Vector2(20, 0);
-        UnityEventTools.AddPersistentListener(safeBtn.GetComponent<Button>().onClick, manager.OnSafePressed);
-
-        manager.detailAvatarBg = avatar;
-        manager.detailAvatarLetter = avatarLetter;
-        manager.detailSenderName = senderName;
-        manager.detailSenderEmail = senderEmail;
-        manager.detailTimestamp = timestamp;
-        manager.detailSubject = subject;
-        manager.detailBody = body;
-
-        return overlay.gameObject;
-    }
-
-    // =====================================================================
-    // Tutorial panel
-    // =====================================================================
-
-    private static GameObject BuildTutorialPanel(RectTransform parent, EmailSwiperManager manager)
-    {
-        var overlay = AddImage(parent, "TutorialOverlay", new Color(0, 0, 0, 0.65f));
-        Stretch(overlay.rectTransform);
-        overlay.raycastTarget = true;
-
-        var card = AddImage(overlay.rectTransform, "Card", Color.white);
-        var crt = card.rectTransform;
-        crt.anchorMin = new Vector2(0.5f, 0.5f);
-        crt.anchorMax = new Vector2(0.5f, 0.5f);
-        crt.pivot = new Vector2(0.5f, 0.5f);
-        crt.sizeDelta = new Vector2(900, 600);
-
-        var header = AddImage(crt, "Header", GmailBlue);
-        AnchorTopStretch(header.rectTransform, height: 100);
-        var headerLabel = AddText(header.rectTransform, "HeaderLabel",
-            "Phish Patrol", 48, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
-        Stretch(headerLabel.rectTransform);
-        headerLabel.raycastTarget = false;
-
-        var body = AddText(crt, "Body",
-            "Sort the scam emails from the real ones.\n\n" +
-            "Click each email to open it, then decide: <b>SCAM</b> or <b>SAFE</b>.\n\n" +
-            "<b>5 lives</b> - wrong answers cost a life\n" +
-            "<b>90 seconds</b> on the clock\n" +
-            "<b>Streak bonus</b> for 3+ correct in a row",
-            28, DarkText, TextAlignmentOptions.Center);
-        var brt = body.rectTransform;
-        brt.anchorMin = new Vector2(0, 0);
-        brt.anchorMax = new Vector2(1, 1);
-        brt.offsetMin = new Vector2(60, 140);
-        brt.offsetMax = new Vector2(-60, -120);
-
-        var start = AddButton(crt, "StartBtn", "Start Game", 32, SafeGreen, Color.white);
-        var srt = start.GetComponent<RectTransform>();
-        srt.anchorMin = new Vector2(0.5f, 0);
-        srt.anchorMax = new Vector2(0.5f, 0);
-        srt.pivot = new Vector2(0.5f, 0);
-        srt.sizeDelta = new Vector2(320, 80);
-        srt.anchoredPosition = new Vector2(0, 40);
-        UnityEventTools.AddPersistentListener(start.GetComponent<Button>().onClick, manager.OnTutorialStart);
-
-        return overlay.gameObject;
-    }
-
-    // =====================================================================
-    // Feedback overlay
-    // =====================================================================
-
-    private static GameObject BuildFeedbackPanel(RectTransform parent, EmailSwiperManager manager)
-    {
-        var overlay = AddImage(parent, "FeedbackOverlay", new Color(0, 0, 0, 0.5f));
-        Stretch(overlay.rectTransform);
-        overlay.raycastTarget = true;
-
-        var card = AddImage(overlay.rectTransform, "Card", SafeGreen);
-        var crt = card.rectTransform;
-        crt.anchorMin = new Vector2(0.5f, 0.5f);
-        crt.anchorMax = new Vector2(0.5f, 0.5f);
-        crt.pivot = new Vector2(0.5f, 0.5f);
-        crt.sizeDelta = new Vector2(1100, 480);
-
-        var title = AddText(crt, "Title", "Correct!",
-            64, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
-        var trt = title.rectTransform;
-        trt.anchorMin = new Vector2(0, 1);
-        trt.anchorMax = new Vector2(1, 1);
-        trt.pivot = new Vector2(0.5f, 1);
-        trt.sizeDelta = new Vector2(-60, 100);
-        trt.anchoredPosition = new Vector2(0, -50);
-
-        var body = AddText(crt, "Body",
-            "Explanation goes here", 28, Color.white, TextAlignmentOptions.Center);
-        var brt = body.rectTransform;
-        brt.anchorMin = new Vector2(0, 0);
-        brt.anchorMax = new Vector2(1, 1);
-        brt.offsetMin = new Vector2(60, 50);
-        brt.offsetMax = new Vector2(-60, -160);
-
-        manager.feedbackBg = card;
-        manager.feedbackTitle = title;
-        manager.feedbackBody = body;
-
-        return overlay.gameObject;
-    }
-
-    // =====================================================================
-    // Result panel (end of game)
-    // =====================================================================
-
-    private static GameObject BuildResultPanel(RectTransform parent, EmailSwiperManager manager)
-    {
-        var overlay = AddImage(parent, "ResultOverlay", new Color(0, 0, 0, 0.7f));
-        Stretch(overlay.rectTransform);
-        overlay.raycastTarget = true;
-
-        var card = AddImage(overlay.rectTransform, "Card", Color.white);
-        var crt = card.rectTransform;
-        crt.anchorMin = new Vector2(0.5f, 0.5f);
-        crt.anchorMax = new Vector2(0.5f, 0.5f);
-        crt.pivot = new Vector2(0.5f, 0.5f);
-        crt.sizeDelta = new Vector2(900, 700);
-
-        var header = AddImage(crt, "Header", GmailBlue);
-        AnchorTopStretch(header.rectTransform, height: 100);
-        var hLabel = AddText(header.rectTransform, "HLabel",
-            "Round Complete!", 44, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
-        Stretch(hLabel.rectTransform);
-        hLabel.raycastTarget = false;
-
-        var stars = AddText(crt, "Stars", "* * *",
-            72, ScoreColor, TextAlignmentOptions.Center, FontStyles.Bold);
-        var srt = stars.rectTransform;
-        srt.anchorMin = new Vector2(0, 1);
-        srt.anchorMax = new Vector2(1, 1);
-        srt.pivot = new Vector2(0.5f, 1);
-        srt.sizeDelta = new Vector2(0, 100);
-        srt.anchoredPosition = new Vector2(0, -140);
-
-        var score = AddText(crt, "ScoreText", "0 / 800",
-            48, DarkText, TextAlignmentOptions.Center, FontStyles.Bold);
-        var scrt = score.rectTransform;
-        scrt.anchorMin = new Vector2(0, 1);
-        scrt.anchorMax = new Vector2(1, 1);
-        scrt.pivot = new Vector2(0.5f, 1);
-        scrt.sizeDelta = new Vector2(0, 80);
-        scrt.anchoredPosition = new Vector2(0, -260);
-
-        var msg = AddText(crt, "Message",
-            "Result message", 24, MutedText, TextAlignmentOptions.Center);
-        var mrt = msg.rectTransform;
-        mrt.anchorMin = new Vector2(0, 0);
-        mrt.anchorMax = new Vector2(1, 1);
-        mrt.offsetMin = new Vector2(60, 160);
-        mrt.offsetMax = new Vector2(-60, -360);
-
-        var playAgain = AddButton(crt, "PlayAgainBtn",
-            "Play Again", 28, SafeGreen, Color.white);
-        var part = playAgain.GetComponent<RectTransform>();
-        part.anchorMin = new Vector2(0.5f, 0);
-        part.anchorMax = new Vector2(0.5f, 0);
-        part.pivot = new Vector2(1, 0);
-        part.sizeDelta = new Vector2(280, 70);
-        part.anchoredPosition = new Vector2(-20, 50);
-        UnityEventTools.AddPersistentListener(playAgain.GetComponent<Button>().onClick, manager.OnPlayAgain);
-
-        var backToMap = AddButton(crt, "BackBtn",
-            "Back to Map", 28, Hex("#7F8C8D"), Color.white);
-        var bart = backToMap.GetComponent<RectTransform>();
-        bart.anchorMin = new Vector2(0.5f, 0);
-        bart.anchorMax = new Vector2(0.5f, 0);
-        bart.pivot = new Vector2(0, 0);
-        bart.sizeDelta = new Vector2(280, 70);
-        bart.anchoredPosition = new Vector2(20, 50);
-        UnityEventTools.AddPersistentListener(backToMap.GetComponent<Button>().onClick, manager.OnReturnToMap);
-
-        manager.resultStars = stars;
-        manager.resultScore = score;
-        manager.resultMessage = msg;
-
-        return overlay.gameObject;
-    }
-
-    // =====================================================================
-    // Commentator (reactive speech bubble � bottom-left)
-    // =====================================================================
-
-    private static Commentator BuildCommentator(RectTransform parent)
-    {
-        var root = new GameObject("CommentatorPanel", typeof(RectTransform));
-        root.transform.SetParent(parent, false);
-        var rrt = root.GetComponent<RectTransform>();
-        rrt.anchorMin = new Vector2(0, 0);
-        rrt.anchorMax = new Vector2(0, 0);
-        rrt.pivot = new Vector2(0, 0);
-        rrt.sizeDelta = new Vector2(620, 140);
-        rrt.anchoredPosition = new Vector2(30, 30);
-
-        // Portrait (pink circle with "G")
-        var portrait = AddImage(rrt, "Portrait", new Color(1f, 0.72f, 0.78f));
-        portrait.sprite = TryGetCircleSprite();
-        portrait.preserveAspect = true;
-        var prt = portrait.rectTransform;
-        prt.anchorMin = new Vector2(0, 0);
-        prt.anchorMax = new Vector2(0, 1);
-        prt.pivot = new Vector2(0, 0.5f);
-        prt.sizeDelta = new Vector2(120, 0);
-        prt.anchoredPosition = Vector2.zero;
-
-        var letter = AddText(portrait.rectTransform, "Letter", "G",
-            64, new Color(0.20f, 0.10f, 0.18f),
+        var avatarLetter = Txt(avrt, "Letter", "P", 34, Color.white,
             TextAlignmentOptions.Center, FontStyles.Bold);
+        Stretch(avatarLetter.rectTransform);
+
+        // Sender name
+        var senderName = Txt(crt, "SenderName", "Sender", 24, DarkText,
+            TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
+        var snrt = senderName.rectTransform;
+        snrt.anchorMin = new Vector2(0, 1); snrt.anchorMax = new Vector2(1, 1);
+        snrt.pivot = new Vector2(0, 1);
+        snrt.sizeDelta = new Vector2(-130, 32);
+        snrt.anchoredPosition = new Vector2(100, -24);
+
+        // Sender email
+        var senderEmail = Txt(crt, "SenderEmail", "sender@example.com", 19, MutedText,
+            TextAlignmentOptions.MidlineLeft);
+        var sert = senderEmail.rectTransform;
+        sert.anchorMin = new Vector2(0, 1); sert.anchorMax = new Vector2(1, 1);
+        sert.pivot = new Vector2(0, 1);
+        sert.sizeDelta = new Vector2(-130, 26);
+        sert.anchoredPosition = new Vector2(100, -58);
+
+        // Divider
+        var div = Img(crt, "Divider", Hex("#E0E3E8"));
+        var dvrt = div.rectTransform;
+        dvrt.anchorMin = new Vector2(0, 1); dvrt.anchorMax = new Vector2(1, 1);
+        dvrt.pivot = new Vector2(0.5f, 1);
+        dvrt.sizeDelta = new Vector2(-50, 2);
+        dvrt.anchoredPosition = new Vector2(0, -100);
+        div.raycastTarget = false;
+
+        // Subject
+        var subject = Txt(crt, "Subject", "Subject", 26, DarkText,
+            TextAlignmentOptions.TopLeft, FontStyles.Bold);
+        var sjrt = subject.rectTransform;
+        sjrt.anchorMin = new Vector2(0, 1); sjrt.anchorMax = new Vector2(1, 1);
+        sjrt.pivot = new Vector2(0, 1);
+        sjrt.sizeDelta = new Vector2(-50, 60);
+        sjrt.anchoredPosition = new Vector2(25, -115);
+
+        // Body — NO ScrollRect! Just plain text that clips.
+        var body = Txt(crt, "Body", "Body text…", 21, DarkText,
+            TextAlignmentOptions.TopLeft);
+        body.textWrappingMode = TextWrappingModes.Normal;
+        body.overflowMode = TextOverflowModes.Ellipsis;
+        var brt = body.rectTransform;
+        brt.anchorMin = new Vector2(0, 0); brt.anchorMax = new Vector2(1, 1);
+        brt.offsetMin = new Vector2(25, 25);
+        brt.offsetMax = new Vector2(-25, -185);
+
+        // == DRAG OVERLAY (sits ON TOP of the card, catches all input) ==
+        var overlay = Img(parent, "DragOverlay", new Color(0, 0, 0, 0));
+        var olrt = overlay.rectTransform;
+        olrt.anchorMin = olrt.anchorMax = new Vector2(0.5f, 0.52f);
+        olrt.pivot = new Vector2(0.5f, 0.5f);
+        olrt.sizeDelta = new Vector2(620, 700);
+        overlay.raycastTarget = true;
+
+        // SwipeCard on the overlay
+        var swipe = overlay.gameObject.AddComponent<SwipeCard>();
+        swipe.cardRoot = crt;
+        swipe.scamIndicator = scamHint;
+        swipe.safeIndicator = safeHint;
+        swipe.cardBorder = border;
+
+        // Wire to manager
+        mgr.swipeCard = swipe;
+        mgr.cardSender = senderName;
+        mgr.cardEmail = senderEmail;
+        mgr.cardSubject = subject;
+        mgr.cardBody = body;
+        mgr.cardAvatar = avatar;
+        mgr.cardAvatarLetter = avatarLetter;
+        mgr.cardCanvasGroup = cardCG;
+    }
+
+    // =====================================================================
+    // Bottom bucket
+    // =====================================================================
+
+    static void BuildBucket(RectTransform parent, EmailSwiperManager mgr)
+    {
+        // Bucket root — bottom 220px
+        var root = Img(parent, "BucketRoot", new Color(0, 0, 0, 0));
+        var rrt = root.rectTransform;
+        rrt.anchorMin = new Vector2(0, 0); rrt.anchorMax = new Vector2(1, 0);
+        rrt.pivot = new Vector2(0.5f, 0);
+        rrt.sizeDelta = new Vector2(0, 220);
+        root.raycastTarget = false;
+
+        // Bucket body (dark)
+        var body = Img(rrt, "BucketBody", BucketBody);
+        var brt = body.rectTransform;
+        brt.anchorMin = new Vector2(0.1f, 0); brt.anchorMax = new Vector2(0.9f, 0.75f);
+        brt.offsetMin = brt.offsetMax = Vector2.zero;
+        body.raycastTarget = false;
+
+        // Inner (slightly lighter)
+        var inner = Img(brt, "Inner", BucketInner);
+        var irt = inner.rectTransform;
+        irt.anchorMin = new Vector2(0.02f, 0.05f); irt.anchorMax = new Vector2(0.98f, 0.95f);
+        irt.offsetMin = irt.offsetMax = Vector2.zero;
+        inner.raycastTarget = false;
+
+        // Water fill (rises with caught fish, changes colour with damage)
+        var water = Img(inner.rectTransform, "WaterFill", WaterBlue);
+        var wrt2 = water.rectTransform;
+        wrt2.anchorMin = Vector2.zero; wrt2.anchorMax = new Vector2(1, 0.6f);
+        wrt2.offsetMin = wrt2.offsetMax = Vector2.zero;
+        water.raycastTarget = false;
+
+        // Fish container (swimming fish go here)
+        var fishCont = RT("FishContainer", inner.rectTransform);
+        Stretch(fishCont.GetComponent<RectTransform>());
+
+        // Bucket rim (top edge)
+        var rim = Img(rrt, "Rim", BucketRim);
+        var rmrt = rim.rectTransform;
+        rmrt.anchorMin = new Vector2(0.08f, 0.72f); rmrt.anchorMax = new Vector2(0.92f, 0.82f);
+        rmrt.offsetMin = rmrt.offsetMax = Vector2.zero;
+        rim.raycastTarget = false;
+
+        // Bucket label
+        var label = Txt(rrt, "BucketLabel", "0 caught  ·  0/5 cracks", 22, LightText,
+            TextAlignmentOptions.Center);
+        var lrt = label.rectTransform;
+        lrt.anchorMin = new Vector2(0, 0.82f); lrt.anchorMax = new Vector2(1, 1);
+        lrt.offsetMin = lrt.offsetMax = Vector2.zero;
+
+        // Crack container + 5 crack slots
+        var crackCont = RT("CrackContainer", brt);
+        Stretch(crackCont.GetComponent<RectTransform>());
+        var slots = new RectTransform[5];
+        float[] xPositions = { 0.10f, 0.30f, 0.50f, 0.70f, 0.90f };
+        float[] yPositions = { 0.30f, 0.60f, 0.40f, 0.70f, 0.25f };
+        for (int i = 0; i < 5; i++)
+        {
+            var crack = Img(crackCont.transform, "Crack_" + i, CrackColor);
+            crack.sprite = Circle(); // placeholder — swap with crackSprite PNG
+            var ccrt = crack.rectTransform;
+            ccrt.anchorMin = ccrt.anchorMax = new Vector2(xPositions[i], yPositions[i]);
+            ccrt.pivot = new Vector2(0.5f, 0.5f);
+            ccrt.sizeDelta = new Vector2(40, 40);
+            crack.raycastTarget = false;
+            crack.gameObject.SetActive(false); // hidden until damage
+            slots[i] = ccrt;
+        }
+
+        mgr.bucketRoot = rrt;
+        mgr.bucketBodyImage = body;
+        mgr.waterFill = water;
+        mgr.fishContainer = fishCont.GetComponent<RectTransform>();
+        mgr.crackContainer = crackCont.transform;
+        mgr.crackSlots = slots;
+        mgr.bucketLabel = label;
+    }
+
+    // =====================================================================
+    // Fish animation sprite
+    // =====================================================================
+
+    static void BuildFishAnim(RectTransform parent, EmailSwiperManager mgr)
+    {
+        var go = RT("FishAnim", parent);
+        var rrt = go.GetComponent<RectTransform>();
+        rrt.anchorMin = rrt.anchorMax = new Vector2(0.5f, 0.5f);
+        rrt.pivot = new Vector2(0.5f, 0.5f);
+        rrt.sizeDelta = new Vector2(72, 72);
+
+        var img = go.AddComponent<Image>();
+        img.sprite = Circle();
+        img.preserveAspect = true;
+        img.color = Coral;
+        img.raycastTarget = false;
+
+        // Simple tail
+        var tail = Img(rrt, "Tail", Coral);
+        var trt = tail.rectTransform;
+        trt.anchorMin = trt.anchorMax = new Vector2(1, 0.5f);
+        trt.pivot = new Vector2(0, 0.5f);
+        trt.sizeDelta = new Vector2(26, 34);
+        tail.raycastTarget = false;
+
+        // Eye
+        var eye = Img(rrt, "Eye", Color.white);
+        eye.sprite = Circle();
+        var ert = eye.rectTransform;
+        ert.anchorMin = ert.anchorMax = new Vector2(0.28f, 0.62f);
+        ert.pivot = new Vector2(0.5f, 0.5f);
+        ert.sizeDelta = new Vector2(14, 14);
+        eye.raycastTarget = false;
+
+        var pupil = Img(ert, "Pupil", DarkText);
+        pupil.sprite = Circle();
+        var purt = pupil.rectTransform;
+        purt.anchorMin = purt.anchorMax = new Vector2(0.5f, 0.5f);
+        purt.pivot = new Vector2(0.5f, 0.5f);
+        purt.sizeDelta = new Vector2(7, 7);
+        pupil.raycastTarget = false;
+
+        go.SetActive(false);
+        mgr.fishAnimRT = rrt;
+        mgr.fishAnimImage = img;
+    }
+
+    // =====================================================================
+    // Score popup
+    // =====================================================================
+
+    static void BuildScorePopup(RectTransform parent, EmailSwiperManager mgr)
+    {
+        var go = RT("ScorePopup", parent);
+        var rrt = go.GetComponent<RectTransform>();
+        rrt.anchorMin = rrt.anchorMax = new Vector2(0.5f, 0.5f);
+        rrt.pivot = new Vector2(0.5f, 0.5f);
+        rrt.sizeDelta = new Vector2(200, 60);
+
+        var cg = go.AddComponent<CanvasGroup>();
+        cg.alpha = 0f; cg.blocksRaycasts = false;
+
+        var txt = Txt(rrt, "Text", "+100", 36, ScoreGold,
+            TextAlignmentOptions.Center, FontStyles.Bold);
+        Stretch(txt.rectTransform);
+
+        mgr.scorePopupRT = rrt;
+        mgr.scorePopupText = txt;
+        mgr.scorePopupCG = cg;
+    }
+
+    // =====================================================================
+    // Commentator
+    // =====================================================================
+
+    static Commentator BuildCommentator(RectTransform parent)
+    {
+        var root = RT("Commentator", parent);
+        var rrt = root.GetComponent<RectTransform>();
+        rrt.anchorMin = rrt.anchorMax = Vector2.zero;
+        rrt.pivot = Vector2.zero;
+        rrt.sizeDelta = new Vector2(540, 120);
+        rrt.anchoredPosition = new Vector2(30, 230); // above bucket
+
+        var portrait = Img(rrt, "Portrait", new Color(1f, 0.72f, 0.78f));
+        portrait.sprite = Circle(); portrait.preserveAspect = true;
+        var prt2 = portrait.rectTransform;
+        prt2.anchorMin = new Vector2(0, 0); prt2.anchorMax = new Vector2(0, 1);
+        prt2.pivot = new Vector2(0, 0.5f);
+        prt2.sizeDelta = new Vector2(100, 0);
+
+        var letter = Txt(prt2, "Letter", "G", 52,
+            new Color(0.20f, 0.10f, 0.18f), TextAlignmentOptions.Center, FontStyles.Bold);
         Stretch(letter.rectTransform);
 
-        // Bubble background
-        var bubble = AddImage(rrt, "Bubble", Color.white);
-        var brt = bubble.rectTransform;
-        brt.anchorMin = new Vector2(0, 0);
-        brt.anchorMax = new Vector2(1, 1);
-        brt.pivot = new Vector2(0, 0.5f);
-        brt.offsetMin = new Vector2(140, 0);
-        brt.offsetMax = new Vector2(0, 0);
+        var bubble = Img(rrt, "Bubble", new Color(1, 1, 1, 0.92f));
+        var bbrt = bubble.rectTransform;
+        bbrt.anchorMin = Vector2.zero; bbrt.anchorMax = Vector2.one;
+        bbrt.offsetMin = new Vector2(115, 0); bbrt.offsetMax = Vector2.zero;
 
-        // Speaker label
-        var speakerLabel = AddText(bubble.rectTransform, "SpeakerLabel",
-            "Grandma", 18,
-            new Color(0.78f, 0.30f, 0.50f),
-            TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
-        var slrt = speakerLabel.rectTransform;
-        slrt.anchorMin = new Vector2(0, 1);
-        slrt.anchorMax = new Vector2(1, 1);
+        var speaker = Txt(bbrt, "Speaker", "Grandma", 15,
+            new Color(0.78f, 0.30f, 0.50f), TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
+        var slrt = speaker.rectTransform;
+        slrt.anchorMin = new Vector2(0, 1); slrt.anchorMax = new Vector2(1, 1);
         slrt.pivot = new Vector2(0, 1);
-        slrt.sizeDelta = new Vector2(0, 26);
-        slrt.anchoredPosition = new Vector2(20, -8);
+        slrt.sizeDelta = new Vector2(0, 22); slrt.anchoredPosition = new Vector2(14, -5);
 
-        // Bubble text
-        var bubbleText = AddText(bubble.rectTransform, "BubbleText",
-            "...", 22,
-            new Color(0.13f, 0.13f, 0.13f),
-            TextAlignmentOptions.MidlineLeft);
-        bubbleText.textWrappingMode = TextWrappingModes.Normal;
-        var btrt = bubbleText.rectTransform;
-        btrt.anchorMin = new Vector2(0, 0);
-        btrt.anchorMax = new Vector2(1, 1);
-        btrt.offsetMin = new Vector2(20, 8);
-        btrt.offsetMax = new Vector2(-20, -32);
+        var bText = Txt(bbrt, "BubbleText", "…", 19,
+            new Color(0.13f, 0.13f, 0.13f), TextAlignmentOptions.MidlineLeft);
+        bText.textWrappingMode = TextWrappingModes.Normal;
+        var btrt = bText.rectTransform;
+        btrt.anchorMin = Vector2.zero; btrt.anchorMax = Vector2.one;
+        btrt.offsetMin = new Vector2(14, 5); btrt.offsetMax = new Vector2(-14, -25);
 
-        // Wire Commentator component
         var comm = root.AddComponent<Commentator>();
-        comm.root = root;
-        comm.portrait = portrait;
-        comm.portraitLetter = letter;
-        comm.bubbleBg = bubble;
-        comm.bubbleText = bubbleText;
-        comm.speakerLabel = speakerLabel;
-        comm.portraitSprite = TryGetCircleSprite();
-        comm.speakerName = "Grandma";
-        comm.portraitInitial = "G";
+        comm.root = root; comm.portrait = portrait; comm.portraitLetter = letter;
+        comm.bubbleBg = bubble; comm.bubbleText = bText; comm.speakerLabel = speaker;
+        comm.portraitSprite = Circle();
+        comm.speakerName = "Grandma"; comm.portraitInitial = "G";
         comm.portraitColor = new Color(1f, 0.72f, 0.78f);
-
         return comm;
     }
 
     // =====================================================================
-    // Build settings
+    // Tutorial
     // =====================================================================
 
-    private static void AddSceneToBuildSettings(string path)
+    static GameObject BuildTutorialPanel(RectTransform parent, EmailSwiperManager mgr)
     {
-        var scenes = EditorBuildSettings.scenes.ToList();
-        if (!scenes.Any(s => s.path == path))
-        {
-            scenes.Add(new EditorBuildSettingsScene(path, true));
-            EditorBuildSettings.scenes = scenes.ToArray();
-        }
+        var ov = Img(parent, "TutorialOverlay", new Color(0, 0, 0, 0.72f));
+        Stretch(ov.rectTransform); ov.raycastTarget = true;
+
+        var card = Img(ov.rectTransform, "Card", CardWhite);
+        var crt = card.rectTransform;
+        crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.5f);
+        crt.pivot = new Vector2(0.5f, 0.5f);
+        crt.sizeDelta = new Vector2(820, 560);
+
+        var hdr = Img(crt, "Header", Hex("#1B3A4B"));
+        TopStretch(hdr.rectTransform, 95);
+        var hLbl = Txt(hdr.rectTransform, "Title", "Phish Patrol", 44, Aqua,
+            TextAlignmentOptions.Center, FontStyles.Bold);
+        Stretch(hLbl.rectTransform); hLbl.raycastTarget = false;
+
+        var body = Txt(crt, "Body",
+            "Swipe each email to sort it.\n\n" +
+            "◀  Swipe <b>LEFT</b> → <color=#FF6B6B><b>SCAM</b></color>\n" +
+            "Swipe <b>RIGHT</b> → <color=#4ECDC4><b>SAFE</b></color>  ▶\n\n" +
+            "Correct → fish joins the bucket!\n" +
+            "Wrong → pufferfish spikes it.\n" +
+            "<b>5 cracks</b> and the bucket breaks.",
+            24, DarkText, TextAlignmentOptions.Center);
+        var brt = body.rectTransform;
+        brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one;
+        brt.offsetMin = new Vector2(45, 110); brt.offsetMax = new Vector2(-45, -110);
+
+        var btn = MakeButton(crt, "StartBtn", "Start Game", 28, SafeTeal, Color.white);
+        var sbrt = btn.GetComponent<RectTransform>();
+        sbrt.anchorMin = sbrt.anchorMax = new Vector2(0.5f, 0);
+        sbrt.pivot = new Vector2(0.5f, 0);
+        sbrt.sizeDelta = new Vector2(280, 64); sbrt.anchoredPosition = new Vector2(0, 28);
+        UnityEventTools.AddPersistentListener(btn.GetComponent<Button>().onClick, mgr.OnTutorialStart);
+
+        return ov.gameObject;
     }
 
     // =====================================================================
-    // Helpers
+    // Feedback
     // =====================================================================
 
-    private static Image AddImage(Transform parent, string name, Color color)
+    static GameObject BuildFeedbackPanel(RectTransform parent, EmailSwiperManager mgr)
     {
-        var go = new GameObject(name, typeof(RectTransform));
-        go.transform.SetParent(parent, false);
-        var img = go.AddComponent<Image>();
-        img.color = color;
-        return img;
+        var ov = Img(parent, "FeedbackOverlay", new Color(0, 0, 0, 0.45f));
+        Stretch(ov.rectTransform); ov.raycastTarget = true;
+        ov.gameObject.AddComponent<CanvasGroup>();
+
+        var card = Img(ov.rectTransform, "Card", Hex("#2ECC71"));
+        var crt = card.rectTransform;
+        crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.55f);
+        crt.pivot = new Vector2(0.5f, 0.5f);
+        crt.sizeDelta = new Vector2(960, 380);
+
+        var title = Txt(crt, "Title", "Correct!", 52, Color.white,
+            TextAlignmentOptions.Center, FontStyles.Bold);
+        var trt = title.rectTransform;
+        trt.anchorMin = new Vector2(0, 1); trt.anchorMax = new Vector2(1, 1);
+        trt.pivot = new Vector2(0.5f, 1);
+        trt.sizeDelta = new Vector2(-40, 80); trt.anchoredPosition = new Vector2(0, -24);
+
+        var body = Txt(crt, "Body", "Explanation…", 23, Color.white,
+            TextAlignmentOptions.Center);
+        body.textWrappingMode = TextWrappingModes.Normal;
+        var brt = body.rectTransform;
+        brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one;
+        brt.offsetMin = new Vector2(40, 24); brt.offsetMax = new Vector2(-40, -110);
+
+        mgr.feedbackBg = card; mgr.feedbackTitle = title; mgr.feedbackBody = body;
+        return ov.gameObject;
     }
 
-    private static TMP_Text AddText(Transform parent, string name, string content,
-        int fontSize, Color color, TextAlignmentOptions align,
-        FontStyles style = FontStyles.Normal)
+    // =====================================================================
+    // Result
+    // =====================================================================
+
+    static GameObject BuildResultPanel(RectTransform parent, EmailSwiperManager mgr)
     {
-        var go = new GameObject(name, typeof(RectTransform));
-        go.transform.SetParent(parent, false);
+        var ov = Img(parent, "ResultOverlay", new Color(0, 0, 0, 0.75f));
+        Stretch(ov.rectTransform); ov.raycastTarget = true;
+
+        var card = Img(ov.rectTransform, "Card", CardWhite);
+        var crt = card.rectTransform;
+        crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.5f);
+        crt.pivot = new Vector2(0.5f, 0.5f);
+        crt.sizeDelta = new Vector2(820, 620);
+
+        var hdr = Img(crt, "Header", Hex("#1B3A4B"));
+        TopStretch(hdr.rectTransform, 95);
+        var hLbl = Txt(hdr.rectTransform, "Label", "Round Complete!", 40, Aqua,
+            TextAlignmentOptions.Center, FontStyles.Bold);
+        Stretch(hLbl.rectTransform); hLbl.raycastTarget = false;
+
+        var stars = Txt(crt, "Stars", "★ ★ ★", 62, ScoreGold,
+            TextAlignmentOptions.Center, FontStyles.Bold);
+        var srt = stars.rectTransform;
+        srt.anchorMin = new Vector2(0, 1); srt.anchorMax = new Vector2(1, 1);
+        srt.pivot = new Vector2(0.5f, 1);
+        srt.sizeDelta = new Vector2(0, 90); srt.anchoredPosition = new Vector2(0, -120);
+
+        var score = Txt(crt, "Score", "0 / 800", 42, DarkText,
+            TextAlignmentOptions.Center, FontStyles.Bold);
+        var scrt = score.rectTransform;
+        scrt.anchorMin = new Vector2(0, 1); scrt.anchorMax = new Vector2(1, 1);
+        scrt.pivot = new Vector2(0.5f, 1);
+        scrt.sizeDelta = new Vector2(0, 60); scrt.anchoredPosition = new Vector2(0, -220);
+
+        var msg = Txt(crt, "Message", "Result", 21, MutedText,
+            TextAlignmentOptions.Center);
+        msg.textWrappingMode = TextWrappingModes.Normal;
+        var mrt = msg.rectTransform;
+        mrt.anchorMin = Vector2.zero; mrt.anchorMax = Vector2.one;
+        mrt.offsetMin = new Vector2(45, 120); mrt.offsetMax = new Vector2(-45, -300);
+
+        var play = MakeButton(crt, "PlayAgain", "Play Again", 25, SafeTeal, Color.white);
+        var prrt = play.GetComponent<RectTransform>();
+        prrt.anchorMin = prrt.anchorMax = new Vector2(0.5f, 0);
+        prrt.pivot = new Vector2(1, 0);
+        prrt.sizeDelta = new Vector2(240, 60); prrt.anchoredPosition = new Vector2(-12, 36);
+        UnityEventTools.AddPersistentListener(play.GetComponent<Button>().onClick, mgr.OnPlayAgain);
+
+        var back = MakeButton(crt, "BackToMap", "Back to Map", 25, Hex("#636E72"), Color.white);
+        var bart = back.GetComponent<RectTransform>();
+        bart.anchorMin = bart.anchorMax = new Vector2(0.5f, 0);
+        bart.pivot = new Vector2(0, 0);
+        bart.sizeDelta = new Vector2(240, 60); bart.anchoredPosition = new Vector2(12, 36);
+        UnityEventTools.AddPersistentListener(back.GetComponent<Button>().onClick, mgr.OnReturnToMap);
+
+        mgr.resultStars = stars; mgr.resultScore = score; mgr.resultMessage = msg;
+        return ov.gameObject;
+    }
+
+    // =====================================================================
+    // Low-level helpers
+    // =====================================================================
+
+    static Image Img(Transform p, string n, Color c)
+    {
+        var go = new GameObject(n, typeof(RectTransform));
+        go.transform.SetParent(p, false);
+        var img = go.AddComponent<Image>(); img.color = c; return img;
+    }
+
+    static TMP_Text Txt(Transform p, string n, string c, int s, Color col,
+        TextAlignmentOptions a, FontStyles st = FontStyles.Normal)
+    {
+        var go = new GameObject(n, typeof(RectTransform));
+        go.transform.SetParent(p, false);
         var t = go.AddComponent<TextMeshProUGUI>();
-        t.text = content;
-        t.fontSize = fontSize;
-        t.color = color;
-        t.alignment = align;
-        t.fontStyle = style;
-        t.raycastTarget = false;
+        t.text = c; t.fontSize = s; t.color = col;
+        t.alignment = a; t.fontStyle = st; t.raycastTarget = false;
         return t;
     }
 
-    private static GameObject AddButton(Transform parent, string name, string label,
-        int fontSize, Color bg, Color textColor)
+    static GameObject MakeButton(Transform p, string n, string lbl,
+        int fs, Color bg, Color tc)
     {
-        var go = new GameObject(name, typeof(RectTransform));
-        go.transform.SetParent(parent, false);
-        var img = go.AddComponent<Image>();
-        img.color = bg;
-        var btn = go.AddComponent<Button>();
-        btn.targetGraphic = img;
-        var t = AddText(go.transform, "Label", label, fontSize, textColor,
+        var go = new GameObject(n, typeof(RectTransform));
+        go.transform.SetParent(p, false);
+        var img = go.AddComponent<Image>(); img.color = bg;
+        var btn = go.AddComponent<Button>(); btn.targetGraphic = img;
+        var t = Txt(go.transform, "Label", lbl, fs, tc,
             TextAlignmentOptions.Center, FontStyles.Bold);
         Stretch(t.rectTransform);
         return go;
     }
 
-    private static void Stretch(RectTransform rt)
+    static GameObject RT(string n, Transform p)
     {
-        rt.anchorMin = Vector2.zero;
-        rt.anchorMax = Vector2.one;
-        rt.offsetMin = Vector2.zero;
-        rt.offsetMax = Vector2.zero;
+        var go = new GameObject(n, typeof(RectTransform));
+        go.transform.SetParent(p, false); return go;
     }
 
-    private static void AnchorTopStretch(RectTransform rt, float height, float topInset = 0)
+    static void Stretch(RectTransform r)
     {
-        rt.anchorMin = new Vector2(0, 1);
-        rt.anchorMax = new Vector2(1, 1);
-        rt.pivot = new Vector2(0.5f, 1);
-        rt.sizeDelta = new Vector2(0, height);
-        rt.anchoredPosition = new Vector2(0, -topInset);
+        r.anchorMin = Vector2.zero; r.anchorMax = Vector2.one;
+        r.offsetMin = r.offsetMax = Vector2.zero;
     }
 
-    private static Color Hex(string hex)
+    static void TopStretch(RectTransform r, float h, float inset = 0)
     {
-        return ColorUtility.TryParseHtmlString(hex, out var c) ? c : Color.magenta;
+        r.anchorMin = new Vector2(0, 1); r.anchorMax = new Vector2(1, 1);
+        r.pivot = new Vector2(0.5f, 1); r.sizeDelta = new Vector2(0, h);
+        r.anchoredPosition = new Vector2(0, -inset);
     }
 
-    private static Sprite TryGetCircleSprite()
+    static Color Hex(string h) =>
+        ColorUtility.TryParseHtmlString(h, out var c) ? c : Color.magenta;
+
+    static Sprite Circle()
     {
         try
         {
@@ -961,5 +780,15 @@ public static class EmailSwiperBuilder
         }
         catch { }
         return null;
+    }
+
+    static void AddToBuild(string path)
+    {
+        var scenes = EditorBuildSettings.scenes.ToList();
+        if (!scenes.Any(s => s.path == path))
+        {
+            scenes.Add(new EditorBuildSettingsScene(path, true));
+            EditorBuildSettings.scenes = scenes.ToArray();
+        }
     }
 }
