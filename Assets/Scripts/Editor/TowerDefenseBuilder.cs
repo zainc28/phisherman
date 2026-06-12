@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using UnityEditor;
@@ -10,16 +11,6 @@ using UnityEngine.UI;
 
 /// <summary>
 /// Builds the Tower Defense scene.
-///
-/// Run via:  Phisherman ▸ Build Tower Defense Scene
-/// Output:   Assets/Scenes/TowerDefense.unity
-///
-/// Auto-detects these sprites anywhere under Assets/:
-///   tower.png          → tower body
-///   phisherman.png     → character on tower top
-///   speargun.png       → weapon that rotates toward mouse
-///   td_hanging_fish.png → fish enemy sprite
-///   log.png            → log the fish holds (password text goes here)
 /// </summary>
 public static class TowerDefenseBuilder
 {
@@ -66,13 +57,22 @@ public static class TowerDefenseBuilder
         Sprite spTower = FindSprite("tower");
         Sprite spPhisherman = FindSprite("phisherman");
         Sprite spSpeargun = FindSprite("speargun");
-        Sprite spFish = FindSprite("td_hanging_fish");
         Sprite spLog = FindSprite("log");
+
+        // Auto-detect the puffer spritesheet and slice it
+        Sprite[] pufferSprites = FindAllSprites("fish_puffer");
+        Sprite spNormal = (pufferSprites != null && pufferSprites.Length > 0) ? pufferSprites[0] : FindSprite("td_hanging_fish");
+        Sprite spHappy = (pufferSprites != null && pufferSprites.Length > 4) ? pufferSprites[4] : spNormal;
+        Sprite spPuffed = (pufferSprites != null && pufferSprites.Length > 7) ? pufferSprites[7] : spNormal;
+
+        // ── Auto-detect audio ──
+        AudioClip clipBgm = FindAudio("adventure_music_v1");
+        AudioClip clipSpear = FindAudio("spear");
 
         LogFound("tower", spTower);
         LogFound("phisherman", spPhisherman);
         LogFound("speargun", spSpeargun);
-        LogFound("td_hanging_fish", spFish);
+        LogFound("fish_puffer (normal)", spNormal);
         LogFound("log", spLog);
 
         // ── Tag setup ──
@@ -126,12 +126,19 @@ public static class TowerDefenseBuilder
         // ── Manager ──
         var mgrGo = new GameObject("GameManager");
         var mgr = mgrGo.AddComponent<TowerDefenseManager>();
-        mgr.fishSprite = spFish;
+
+        mgr.fishNormalSprite = spNormal;
+        mgr.fishHappySprite = spHappy;
+        mgr.fishPuffedSprite = spPuffed;
         mgr.logSprite = spLog;
         mgr.towerSprite = spTower;
         mgr.phishermanSprite = spPhisherman;
         mgr.speargunSprite = spSpeargun;
         mgr.whiteSprite = white;
+
+        mgr.bgmClip = clipBgm;
+        mgr.spearClip = clipSpear;
+
         mgr.spawnPoint = spawnGo.transform;
         mgr.towerRoot = towerRootGo.transform;
         mgr.towerShakeRoot = shakeRoot.transform;
@@ -533,35 +540,57 @@ public static class TowerDefenseBuilder
 
     static Sprite FindSprite(string name)
     {
-        // Try exact name match first
         string[] guids = AssetDatabase.FindAssets(name + " t:Sprite");
         foreach (string guid in guids)
         {
             string path = AssetDatabase.GUIDToAssetPath(guid);
-            if (System.IO.Path.GetFileNameWithoutExtension(path)
-                    .ToLower() == name.ToLower())
-            {
-                var s = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-                if (s != null) return s;
-            }
+            if (System.IO.Path.GetFileNameWithoutExtension(path).ToLower() == name.ToLower())
+                return AssetDatabase.LoadAssetAtPath<Sprite>(path);
         }
-        // Fallback: any sprite whose path contains the name
+
         string[] texGuids = AssetDatabase.FindAssets(name + " t:Texture2D");
         foreach (string guid in texGuids)
         {
             string path = AssetDatabase.GUIDToAssetPath(guid);
-            if (System.IO.Path.GetFileNameWithoutExtension(path)
-                    .ToLower().Contains(name.ToLower()))
-            {
-                var s = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-                if (s != null) return s;
-            }
+            if (System.IO.Path.GetFileNameWithoutExtension(path).ToLower().Contains(name.ToLower()))
+                return AssetDatabase.LoadAssetAtPath<Sprite>(path);
+        }
+        return null;
+    }
+
+    static Sprite[] FindAllSprites(string name)
+    {
+        string[] guids = AssetDatabase.FindAssets(name + " t:Texture2D");
+        if (guids.Length == 0) guids = AssetDatabase.FindAssets(name + " t:Sprite");
+
+        if (guids.Length > 0)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guids[0]);
+            var sprites = AssetDatabase.LoadAllAssetsAtPath(path).OfType<Sprite>().ToList();
+            sprites.Sort((a, b) => EditorUtility.NaturalCompare(a.name, b.name));
+            return sprites.ToArray();
         }
         return null;
     }
 
     static void LogFound(string name, Sprite s)
         => Debug.Log($"[TDBuilder] {name}: " + (s != null ? "✓ found" : "✗ not found (using fallback)"));
+
+    // =================================================================
+    // Audio auto-detection
+    // =================================================================
+
+    static AudioClip FindAudio(string name)
+    {
+        string[] guids = AssetDatabase.FindAssets(name + " t:AudioClip");
+        foreach (string guid in guids)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            if (System.IO.Path.GetFileNameWithoutExtension(path).ToLower() == name.ToLower())
+                return AssetDatabase.LoadAssetAtPath<AudioClip>(path);
+        }
+        return null;
+    }
 
     // =================================================================
     // Tag helper

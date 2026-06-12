@@ -6,23 +6,12 @@ using UnityEngine.UI;
 /// <summary>
 /// One fish+log unit. Fish hangs below; log floats above (arms reach up).
 /// Password text displays ON the log.
-///
-/// Four behaviours:
-///   Red  + reaches tower  → pufferfish explosion, damages tower
-///   Red  + TakeSpearHit() → enrages, charges at 2.5x speed
-///   Green + reaches tower → collects in tower water
-///   Green + TakeSpearHit()→ reeled to tower dead (no benefit)
-///
-/// CHANGES (June 2026):
-///   - Init() accepts fishColor — all fish render the same neutral tint (no red/green giveaway)
-///   - Label shows password only — no [RED]/[OK] prefix
-///   - Log background is neutral dark — no red/green tint
-///   - OnHitBySpear() renamed to TakeSpearHit() with isDead guard
-///   - OnTriggerEnter2D removed — manager targets via TryHitNearestFish
 /// </summary>
 public class FishUnit : MonoBehaviour
 {
-    [HideInInspector] public Sprite fishSprite;
+    private Sprite fishNormalSprite;
+    private Sprite fishHappySprite;
+    private Sprite fishPuffedSprite;
     [HideInInspector] public Sprite logSprite;
 
     // Child visuals
@@ -31,7 +20,7 @@ public class FishUnit : MonoBehaviour
     private TextMeshProUGUI labelTMP;
     private Transform logRoot;
 
-    public enum State { Swimming, Enraged, PulledIn, Exploding, Collected, Dead }
+    public enum State { Swimming, Enraged, Defused, Exploding, Collected, Dead }
     private State state = State.Swimming;
 
     private bool isScam;
@@ -41,12 +30,10 @@ public class FishUnit : MonoBehaviour
     private TowerDefenseManager manager;
     private Vector3 towerPos;
     private bool hitRegistered;
-    private bool isDead;          // guard: TakeSpearHit can only fire once per fish
+    private bool isDead;
     private float bobTimer;
     private float bobOffset;
     private Color fishColor;
-
-    private static readonly Color EnragedCol = new Color(1.0f, 0.15f, 0.05f);
 
     // =================================================================
     // Init
@@ -54,7 +41,7 @@ public class FishUnit : MonoBehaviour
 
     public void Init(bool scam, string label, float speed,
                      TowerDefenseManager mgr, Vector3 twrPos,
-                     Sprite fSpr, Sprite lSpr,
+                     Sprite fNormal, Sprite fHappy, Sprite fPuffed, Sprite lSpr,
                      Color fishColor)
     {
         isScam = scam;
@@ -63,8 +50,12 @@ public class FishUnit : MonoBehaviour
         currentSpeed = speed;
         manager = mgr;
         towerPos = twrPos;
-        fishSprite = fSpr;
+
+        fishNormalSprite = fNormal;
+        fishHappySprite = fHappy;
+        fishPuffedSprite = fPuffed;
         logSprite = lSpr;
+
         this.fishColor = fishColor;
         bobOffset = Random.Range(0f, Mathf.PI * 2f);
 
@@ -82,24 +73,24 @@ public class FishUnit : MonoBehaviour
         fishGO.transform.SetParent(transform, false);
         fishGO.transform.localPosition = Vector3.zero;
         fishSR = fishGO.AddComponent<SpriteRenderer>();
-        fishSR.sprite = fishSprite;
-        fishSR.color = fishColor;   // FIX: neutral colour, same for all fish
+        fishSR.sprite = fishNormalSprite;
+        fishSR.color = fishColor;
         fishSR.sortingOrder = 4;
-        fishGO.transform.localScale = new Vector3(-1.8f, 1.8f, 1f); // face right toward tower; bigger sprite
+        fishGO.transform.localScale = new Vector3(-1.8f, 1.8f, 1f);
 
         // ── Log root (above fish) ──
         logRoot = new GameObject("LogRoot").transform;
         logRoot.SetParent(transform, false);
-        logRoot.localPosition = new Vector3(0f, 0.85f, 0f); // sits on top of the (now larger) fish
+        logRoot.localPosition = new Vector3(0f, 0.85f, 0f);
 
         var logGO = new GameObject("Log");
         logGO.transform.SetParent(logRoot, false);
         logGO.transform.localPosition = Vector3.zero;
         logSR = logGO.AddComponent<SpriteRenderer>();
         logSR.sprite = logSprite;
-        logSR.color = Color.white;   // FIX: no red/green tint on log
+        logSR.color = Color.white;
         logSR.sortingOrder = 3;
-        logGO.transform.localScale = new Vector3(1.6f, 0.85f, 1f); // wider and taller log banner
+        logGO.transform.localScale = new Vector3(1.6f, 0.85f, 1f);
 
         // ── Label ON the log ──
         var canvasGO = new GameObject("LabelCanvas");
@@ -113,7 +104,6 @@ public class FishUnit : MonoBehaviour
         c.sortingOrder = 6;
         canvasGO.GetComponent<RectTransform>().sizeDelta = new Vector2(260, 70);
 
-        // FIX: neutral dark background — same for scam and safe
         var bg = new GameObject("LabelBg");
         bg.transform.SetParent(canvasGO.transform, false);
         var bgImg = bg.AddComponent<Image>();
@@ -123,7 +113,6 @@ public class FishUnit : MonoBehaviour
         bgRT.anchorMin = Vector2.zero; bgRT.anchorMax = Vector2.one;
         bgRT.offsetMin = bgRT.offsetMax = Vector2.zero;
 
-        // FIX: password text only — no [RED]/[OK] prefix
         var textGO = new GameObject("Label");
         textGO.transform.SetParent(canvasGO.transform, false);
         labelTMP = textGO.AddComponent<TextMeshProUGUI>();
@@ -146,8 +135,13 @@ public class FishUnit : MonoBehaviour
     {
         switch (state)
         {
-            case State.Swimming: TickSwimming(); break;
-            case State.Enraged: TickEnraged(); break;
+            case State.Swimming:
+            case State.Defused:
+                TickSwimming();
+                break;
+            case State.Enraged:
+                TickEnraged();
+                break;
         }
     }
 
@@ -185,73 +179,57 @@ public class FishUnit : MonoBehaviour
         }
     }
 
-    // =================================================================
-    // FIX: TakeSpearHit — called by manager, one fish per click
-    // =================================================================
-
     public void TakeSpearHit()
     {
-        // isDead guard prevents any double-fire edge cases
         if (isDead || state == State.Enraged || state == State.Exploding ||
-                      state == State.Collected || state == State.Dead || state == State.PulledIn)
+            state == State.Collected || state == State.Dead || state == State.Defused)
             return;
 
         if (isScam)
         {
-            // Award points first, then enrage — fish is still alive so don't set isDead
+            // Red flag hit: Becomes Defused (Happy), moves FASTER to get off screen
             manager.OnRedFishSpearHit(transform.position);
-            state = State.Enraged;
-            currentSpeed = baseSpeed * 2.5f;
-            fishSR.color = EnragedCol;
-            if (logSR != null) logSR.color = new Color(1f, 0.5f, 0.3f);
-            StartCoroutine(EnrageFlash());
+            state = State.Defused;
+            currentSpeed = baseSpeed * 3.5f; // Zip away to the tower!
+            if (fishHappySprite != null) fishSR.sprite = fishHappySprite;
+
             manager.commentator?.SayRandom(new[] {
-                "Oh no, you made it angry!",
-                "It's charging the tower!",
-                "Watch out — it's enraged!"
+                "Defused!",
+                "It's safe now!",
+                "Good eye, dear!"
             });
         }
         else
         {
-            isDead = true;   // green fish is done — lock it out
-            state = State.PulledIn;
+            // Green flag hit: Becomes Enraged (Puffed up), charges fast
+            manager.OnGreenFishShotEarly(transform.position);
+            state = State.Enraged;
+            currentSpeed = baseSpeed * 2.5f;
+            if (fishPuffedSprite != null) fishSR.sprite = fishPuffedSprite;
+
+            // Instantly play a puff-up scale animation
+            StartCoroutine(PuffUpAnim());
+
             manager.commentator?.SayRandom(new[] {
-                "Oh dear, that was a safe one!",
+                "Oh no, you made a safe one angry!",
                 "Don't shoot the strong passwords!",
-                "Let the good ones reach the tower!"
+                "Watch out — it's charging!"
             });
-            StartCoroutine(PullInToTower());
         }
     }
 
-    IEnumerator EnrageFlash()
+    IEnumerator PuffUpAnim()
     {
-        for (int i = 0; i < 4; i++)
-        {
-            fishSR.color = Color.white;
-            yield return new WaitForSeconds(0.055f);
-            fishSR.color = EnragedCol;
-            yield return new WaitForSeconds(0.055f);
-        }
-    }
-
-    IEnumerator PullInToTower()
-    {
-        Vector3 start = transform.position;
-        Vector3 end = towerPos + new Vector3(-0.5f, 0, 0);
-        float dur = 0.42f, t = 0f;
-
+        Vector3 start = transform.localScale;
+        Vector3 end = start * 1.5f; // Visibly pop up by 50%
+        float t = 0f, dur = 0.15f;
         while (t < dur)
         {
             t += Time.deltaTime;
-            float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / dur), 3f);
-            transform.position = Vector3.Lerp(start, end, p);
-            transform.localScale = Vector3.one * Mathf.Lerp(1f, 0.22f, p);
+            transform.localScale = Vector3.Lerp(start, end, t / dur);
             yield return null;
         }
-        manager.OnGreenFishShotDead();
-        manager.OnFishRemoved();
-        Destroy(gameObject);
+        transform.localScale = end;
     }
 
     // =================================================================
@@ -260,23 +238,27 @@ public class FishUnit : MonoBehaviour
 
     void OnReachedTower()
     {
-        if (isScam)
+        if (state == State.Defused || (!isScam && state == State.Swimming))
         {
-            state = State.Exploding;
-            StartCoroutine(PufferfishExplode());
-        }
-        else
-        {
+            // Naturally safe, or defused red flag -> collect in pool
             state = State.Collected;
             if (logRoot != null) logRoot.gameObject.SetActive(false);
-            manager.OnGreenFishCollected(gameObject, fishSR.sprite);
+
+            manager.OnGreenFishCollected(gameObject, fishSR.sprite, state == State.Defused);
             manager.OnFishRemoved();
             Destroy(gameObject);
+        }
+        else if (state == State.Enraged || (isScam && state == State.Swimming))
+        {
+            // Unshot red flag, or enraged safe flag -> explodes & damages tower
+            state = State.Exploding;
+            StartCoroutine(PufferfishExplode());
         }
     }
 
     IEnumerator PufferfishExplode()
     {
+        if (fishPuffedSprite != null) fishSR.sprite = fishPuffedSprite;
         fishSR.color = new Color(1f, 0.45f, 0.1f);
         if (logRoot != null) logRoot.gameObject.SetActive(false);
 
@@ -295,7 +277,7 @@ public class FishUnit : MonoBehaviour
         transform.localScale = baseScale * 2.5f;
         yield return new WaitForSeconds(0.05f);
 
-        manager.OnRedFishReachedTower(transform.position);
+        manager.OnRedFishReachedTower(transform.position, false);
         manager.OnFishRemoved();
 
         t = 0f; dur = 0.22f;
@@ -308,7 +290,4 @@ public class FishUnit : MonoBehaviour
         }
         Destroy(gameObject);
     }
-
-    // NOTE: OnTriggerEnter2D intentionally removed.
-    // Manager uses TryHitNearestFish → TakeSpearHit() — no spear GameObjects spawned.
 }

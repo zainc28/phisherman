@@ -11,16 +11,6 @@ using UnityEngine.UI;
 /// Fish+log units swim from the left toward the tower.
 /// Phisherman stands on top with a speargun that aims at the mouse.
 /// Click to shoot — hits the single nearest fish to the cursor only.
-///
-/// Red  + reaches tower  → pufferfish explosion, tower damage
-/// Red  + shot early     → enrages, charges at 2.5x speed
-/// Green + reaches tower → collects in tower water, swims in pool
-/// Green + shot early    → reeled to tower dead, no benefit
-///
-/// CHANGES (June 2026):
-///   1. NeutralFishColor — all fish same tint, no colour giveaway
-///   2. TryHitNearestFish — one click hits one fish max, no pass-through
-///   3. AnimateTowerFish — per-fish Lissajous swim with flip, visibly lively
 /// </summary>
 public class TowerDefenseManager : MonoBehaviour
 {
@@ -31,8 +21,16 @@ public class TowerDefenseManager : MonoBehaviour
     // Single neutral tint passed to every fish — player must read the label
     private static readonly Color NeutralFishColor = new Color(0.55f, 0.82f, 0.95f);
 
+    [Header("Audio")]
+    public AudioClip bgmClip;
+    public AudioClip spearClip;
+    private AudioSource bgmSource;
+    private AudioSource sfxSource;
+
     [Header("Sprites — auto-wired by builder")]
-    public Sprite fishSprite;
+    public Sprite fishNormalSprite;
+    public Sprite fishHappySprite;
+    public Sprite fishPuffedSprite;
     public Sprite logSprite;
     public Sprite towerSprite;
     public Sprite phishermanSprite;
@@ -131,10 +129,9 @@ public class TowerDefenseManager : MonoBehaviour
     }
 
     Wave[] waves = {
-        new Wave( 7, 0.50f, 0.65f, 2.6f),
-        new Wave( 9, 0.55f, 0.85f, 2.2f),
-        new Wave(12, 0.60f, 1.10f, 1.8f),
-        new Wave(14, 0.65f, 1.40f, 1.4f),
+        new Wave(10, 0.50f, 0.40f, 3.2f),
+        new Wave(15, 0.55f, 0.50f, 2.8f),
+        new Wave(20, 0.60f, 0.60f, 2.4f),
     };
 
     string[] tutTitles = { "Phish Patrol -- Tower Defense", "How to play" };
@@ -143,9 +140,8 @@ public class TowerDefenseManager : MonoBehaviour
         "Aim Phisherman's speargun and CLICK to shoot.",
         "Read the password on each fish's log banner!\n\n" +
         "WEAK password fish (like '123456') -- SHOOT THEM!\n" +
-        "  Warning: shooting them early makes them charge faster!\n\n" +
-        "STRONG password fish (symbols + numbers) -- LET THEM reach the tower!\n" +
-        "  Shooting strong-password fish reels them in dead.\n\n" +
+        "  Warning: shooting strong passwords makes them charge fast!\n\n" +
+        "STRONG password fish (symbols + numbers) -- LET THEM reach the tower!\n\n" +
         "You must read each label to decide!"
     };
 
@@ -159,6 +155,19 @@ public class TowerDefenseManager : MonoBehaviour
         hudPanel.SetActive(false);
         gameOverPanel.SetActive(false);
         winPanel.SetActive(false);
+
+        // Audio Setup
+        bgmSource = gameObject.AddComponent<AudioSource>();
+        if (bgmClip != null)
+        {
+            bgmSource.clip = bgmClip;
+            bgmSource.loop = true;
+            bgmSource.volume = 0.5f;
+            bgmSource.Play();
+        }
+
+        sfxSource = gameObject.AddComponent<AudioSource>();
+
         ShowTutStep(0);
     }
 
@@ -176,15 +185,15 @@ public class TowerDefenseManager : MonoBehaviour
             speargunPivot.rotation = Quaternion.Euler(0, 0, angle);
         }
 
-        // FIX 2: one click → one fish
         if (Input.GetMouseButtonDown(0))
         {
+            if (sfxSource != null && spearClip != null) sfxSource.PlayOneShot(spearClip);
+
             Vector3 mouseWorld = Camera.main.ScreenToWorldPoint(Input.mousePosition);
             mouseWorld.z = 0;
             TryHitNearestFish(mouseWorld);
         }
 
-        // FIX 3: lively pool swim
         AnimateTowerFish();
 
         liveFish.RemoveAll(f => f == null);
@@ -233,7 +242,7 @@ public class TowerDefenseManager : MonoBehaviour
     }
 
     // =================================================================
-    // FIX 2 — tap to hit one fish
+    // Interaction
     // =================================================================
 
     void TryHitNearestFish(Vector3 clickWorld, float maxRadius = 1.4f)
@@ -251,7 +260,6 @@ public class TowerDefenseManager : MonoBehaviour
 
         if (nearest == null) return;
 
-        // Visual bolt from speargun tip to fish
         Vector3 origin = spearSpawnPoint != null
             ? spearSpawnPoint.position
             : (towerRoot != null ? towerRoot.position + new Vector3(-0.5f, 2.5f, 0) : Vector3.zero);
@@ -304,33 +312,46 @@ public class TowerDefenseManager : MonoBehaviour
         else commentator?.SayRandom(new[] { "Got one!", "Nice shot, dear.", "That's the spirit!" });
     }
 
-    public void OnRedFishReachedTower(Vector3 pos)
+    public void OnRedFishReachedTower(Vector3 pos, bool wasShot = false)
     {
         combo = 0;
+
         SpawnPopup("BAD FISH!", pos + Vector3.up, new Color(1f, 0.3f, 0.3f));
         TakeDamage();
-        UpdateHUD();
         if (health > 0)
-            commentator?.SayRandom(new[] { "One slipped through!", "Keep them back!", "Block the weak ones!" });
+            commentator?.SayRandom(new[] { "A fish cracked the tower!", "Keep them back!" });
+
+        UpdateHUD();
     }
 
-    public void OnGreenFishCollected(GameObject fishGO, Sprite fishSpr)
+    public void OnGreenFishCollected(GameObject fishGO, Sprite fishSpr, bool isDefused = false)
     {
         SpawnTowerFish(fishSpr);
-        score += 5;
-        combo++;
+        if (!isDefused)
+        {
+            score += 5;
+            combo++;
+            commentator?.SayRandom(new[] {
+                "A strong password joined the tower!",
+                "Safe and sound!", "Good fish welcome, dear."
+            });
+        }
+        else
+        {
+            SpawnPopup("DEFUSED!", fishGO.transform.position + Vector3.up, new Color(0.3f, 1f, 0.3f));
+            commentator?.SayRandom(new[] {
+                "The defused fish is swimming happily!",
+                "Look at it go!"
+            });
+        }
         UpdateHUD();
-        commentator?.SayRandom(new[] {
-            "A strong password joined the tower!",
-            "Safe and sound!", "Good fish welcome, dear."
-        });
     }
 
-    public void OnGreenFishShotDead()
+    public void OnGreenFishShotEarly(Vector3 pos)
     {
         combo = 0;
         score = Mathf.Max(0, score - 5);
-        SpawnPopup("-5 safe fish!", Vector3.up * 2, new Color(0.9f, 0.4f, 0.1f));
+        SpawnPopup("-5 safe fish!", pos + Vector3.up * 2, new Color(0.9f, 0.4f, 0.1f));
         UpdateHUD();
     }
 
@@ -377,11 +398,10 @@ public class TowerDefenseManager : MonoBehaviour
         rb.gravityScale = 0;
 
         var fish = go.AddComponent<FishUnit>();
-        // FIX 1: pass NeutralFishColor — same tint for every fish
         fish.Init(data.isScam, data.label, speed,
                   this,
                   towerRoot != null ? towerRoot.position : new Vector3(5f, 0, 0),
-                  fishSprite, logSprite,
+                  fishNormalSprite, fishHappySprite, fishPuffedSprite, logSprite,
                   NeutralFishColor);
 
         liveFish.Add(fish);
@@ -408,7 +428,7 @@ public class TowerDefenseManager : MonoBehaviour
     }
 
     // =================================================================
-    // FIX 3 — Tower pool fish: spawn + lively swim
+    // Tower pool fish
     // =================================================================
 
     void SpawnTowerFish(Sprite spr)
@@ -424,7 +444,7 @@ public class TowerDefenseManager : MonoBehaviour
         rt.sizeDelta = new Vector2(36, 36);
 
         var img = go.AddComponent<Image>();
-        img.color = NeutralFishColor;   // FIX 1: neutral in pool too
+        img.color = NeutralFishColor;
         img.preserveAspect = true;
         img.raycastTarget = false;
         if (spr != null) img.sprite = spr;
@@ -432,7 +452,6 @@ public class TowerDefenseManager : MonoBehaviour
         float facing = Random.value > 0.5f ? 1f : -1f;
         rt.localScale = new Vector3(facing, 1f, 1f);
 
-        // Store per-fish swim state with randomised params so each swims differently
         towerFishStates.Add(new TowerFishState
         {
             rt = rt,
@@ -473,12 +492,10 @@ public class TowerDefenseManager : MonoBehaviour
             float x = s.center.x + Mathf.Sin(time * s.freqX + s.phaseX) * s.ampX;
             float y = s.center.y + Mathf.Sin(time * s.freqY + s.phaseY) * s.ampY;
 
-            // Clamp inside pool bounds
             x = Mathf.Clamp(x, -86f, 86f);
             y = Mathf.Clamp(y, -26f, 26f);
             s.rt.anchoredPosition = new Vector2(x, y);
 
-            // Flip to face direction of horizontal travel
             float dx = Mathf.Cos(time * s.freqX + s.phaseX);
             if (Mathf.Abs(dx) > 0.05f)
                 s.rt.localScale = new Vector3(dx > 0 ? 1f : -1f, 1f, 1f);
