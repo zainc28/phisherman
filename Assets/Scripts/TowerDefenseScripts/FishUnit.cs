@@ -6,6 +6,13 @@ using UnityEngine.UI;
 /// <summary>
 /// One fish+log unit. Fish hangs below; log floats above (arms reach up).
 /// Password text displays ON the log.
+///
+/// REEL-IN MECHANIC:
+///   When a spear hits, a line renders from the speargun pivot to the fish,
+///   and the fish is physically dragged toward the tower over ~0.6s.
+///   Once it arrives at the tower edge, THEN the original outcome fires:
+///     - Red flag  → puffs up and explodes (damages tower)
+///     - Green flag → happy sprite, swims into the pool
 /// </summary>
 public class FishUnit : MonoBehaviour
 {
@@ -17,10 +24,11 @@ public class FishUnit : MonoBehaviour
     // Child visuals
     private SpriteRenderer fishSR;
     private SpriteRenderer logSR;
+    private SpriteRenderer reelLineSR;   // the spear-line drawn during reel-in
     private TextMeshProUGUI labelTMP;
     private Transform logRoot;
 
-    public enum State { Swimming, Enraged, Defused, Exploding, Collected, Dead }
+    public enum State { Swimming, Enraged, Defused, Exploding, Collected, Dead, ReelingIn }
     private State state = State.Swimming;
 
     private bool isScam;
@@ -34,6 +42,10 @@ public class FishUnit : MonoBehaviour
     private float bobTimer;
     private float bobOffset;
     private Color fishColor;
+
+    // Reel-in state
+    private Transform speargunPivot;     // set by manager before TakeSpearHit
+    private GameObject reelLineGO;
 
     // =================================================================
     // Init
@@ -142,6 +154,9 @@ public class FishUnit : MonoBehaviour
             case State.Enraged:
                 TickEnraged();
                 break;
+            case State.ReelingIn:
+                UpdateReelLine();
+                break;
         }
     }
 
@@ -179,49 +194,188 @@ public class FishUnit : MonoBehaviour
         }
     }
 
-    public void TakeSpearHit()
+    // =================================================================
+    // Spear hit — begin reel-in instead of instant outcome
+    // =================================================================
+
+    /// <summary>
+    /// Called by TowerDefenseManager after a spear hit.
+    /// pivot: the speargun pivot Transform (for drawing the line).
+    /// </summary>
+    public void TakeSpearHit(Transform pivot)
     {
         if (isDead || state == State.Enraged || state == State.Exploding ||
-            state == State.Collected || state == State.Dead || state == State.Defused)
+            state == State.Collected || state == State.Dead || state == State.Defused ||
+            state == State.ReelingIn)
             return;
 
+        speargunPivot = pivot;
+        state = State.ReelingIn;
+        hitRegistered = true;           // stop natural tower-hit logic while reeling
+
+        // Flash the fish to signal the hit
+        StartCoroutine(HitFlash());
+
+        // Build a persistent line GO that we update every frame
+        SpawnReelLine();
+
+        // Begin the reel-in coroutine
+        StartCoroutine(ReelToTower());
+    }
+
+    // Kept for API compatibility (builder wires without pivot)
+    public void TakeSpearHit()
+    {
+        TakeSpearHit(null);
+    }
+
+    // =================================================================
+    // Reel-in coroutine
+    // =================================================================
+
+    IEnumerator ReelToTower()
+    {
+        // Target: just to the left of the tower so it's visually "at" the wall
+        Vector3 target = new Vector3(towerPos.x - 1.1f, transform.position.y, 0f);
+        Vector3 startPos = transform.position;
+
+        // Freeze autonomous movement during reel
+        float reelDur = 0.55f;
+        float elapsed = 0f;
+
+        // Shrink the log & spin it as it's dragged
+        while (elapsed < reelDur)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / reelDur);
+            // Ease-in-out
+            float p = t < 0.5f ? 2f * t * t : 1f - Mathf.Pow(-2f * t + 2f, 2f) / 2f;
+
+            transform.position = Vector3.Lerp(startPos, target, p);
+
+            // Spin log faster as it approaches
+            if (logRoot != null)
+                logRoot.localRotation = Quaternion.Euler(0, 0, p * 720f);
+
+            // Fish flips to face right (toward tower) while being reeled
+            var fishBody = transform.Find("FishBody");
+            if (fishBody != null)
+                fishBody.localScale = new Vector3(1.8f, 1.8f, 1f);   // face right
+
+            yield return null;
+        }
+
+        transform.position = target;
+
+        // Clean up the line
+        DestroyReelLine();
+
+        // Now trigger the actual outcome
+        ApplySpearOutcome();
+    }
+
+    // =================================================================
+    // Apply outcome once fish is next to tower
+    // =================================================================
+
+    void ApplySpearOutcome()
+    {
         if (isScam)
         {
-            // Red flag hit: Becomes Defused (Happy), moves FASTER to get off screen
-            manager.OnRedFishSpearHit(transform.position);
+            // Red flag → defuse: happy sprite, swim into pool
             state = State.Defused;
-            currentSpeed = baseSpeed * 3.5f; // Zip away to the tower!
+            currentSpeed = baseSpeed * 3.0f;
+            hitRegistered = false;     // let CheckReachedTower fire naturally
             if (fishHappySprite != null) fishSR.sprite = fishHappySprite;
 
+            manager.OnRedFishSpearHit(transform.position);
+
             manager.commentator?.SayRandom(new[] {
-                "Defused!",
-                "It's safe now!",
-                "Good eye, dear!"
+                "Defused!", "It's safe now!", "Good eye, dear!"
             });
         }
         else
         {
-            // Green flag hit: Becomes Enraged (Puffed up), charges fast
-            manager.OnGreenFishShotEarly(transform.position);
+            // Green flag → enraged: puff up and damage tower
             state = State.Enraged;
-            currentSpeed = baseSpeed * 2.5f;
+            currentSpeed = 0f;         // already at tower — explode immediately
             if (fishPuffedSprite != null) fishSR.sprite = fishPuffedSprite;
 
-            // Instantly play a puff-up scale animation
             StartCoroutine(PuffUpAnim());
+            manager.OnGreenFishShotEarly(transform.position);
 
             manager.commentator?.SayRandom(new[] {
                 "Oh no, you made a safe one angry!",
                 "Don't shoot the strong passwords!",
                 "Watch out — it's charging!"
             });
+
+            // Trigger explosion right here since it's already at the tower
+            StartCoroutine(PufferfishExplode());
+        }
+    }
+
+    // =================================================================
+    // Reel line helpers
+    // =================================================================
+
+    void SpawnReelLine()
+    {
+        reelLineGO = new GameObject("ReelLine");
+        reelLineGO.transform.SetParent(transform, false);   // child of fish so it moves with it
+        reelLineSR = reelLineGO.AddComponent<SpriteRenderer>();
+        reelLineSR.color = new Color(0.95f, 0.85f, 0.30f, 0.88f);
+        reelLineSR.sortingOrder = 10;
+
+        // Use a white pixel sprite as the line texture
+        reelLineSR.sprite = MakePixelSprite();
+    }
+
+    void UpdateReelLine()
+    {
+        if (reelLineGO == null || reelLineSR == null) return;
+        if (speargunPivot == null) { DestroyReelLine(); return; }
+
+        Vector3 from = speargunPivot.position;
+        Vector3 to = transform.position;
+        Vector3 mid = (from + to) * 0.5f;
+        Vector3 delta = to - from;
+        float length = delta.magnitude;
+        float angle = Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg;
+
+        // Position line at midpoint in world space (we parented to fish, so un-parent first)
+        reelLineGO.transform.SetParent(null, true);
+        reelLineGO.transform.position = mid;
+        reelLineGO.transform.rotation = Quaternion.Euler(0, 0, angle);
+        reelLineGO.transform.localScale = new Vector3(length, 0.06f, 1f);
+    }
+
+    void DestroyReelLine()
+    {
+        if (reelLineGO != null) Destroy(reelLineGO);
+        reelLineGO = null; reelLineSR = null;
+    }
+
+    // =================================================================
+    // Visual helpers
+    // =================================================================
+
+    IEnumerator HitFlash()
+    {
+        Color orig = fishSR != null ? fishSR.color : Color.white;
+        for (int i = 0; i < 3; i++)
+        {
+            if (fishSR != null) fishSR.color = Color.white;
+            yield return new WaitForSeconds(0.045f);
+            if (fishSR != null) fishSR.color = orig;
+            yield return new WaitForSeconds(0.045f);
         }
     }
 
     IEnumerator PuffUpAnim()
     {
         Vector3 start = transform.localScale;
-        Vector3 end = start * 1.5f; // Visibly pop up by 50%
+        Vector3 end = start * 1.5f;
         float t = 0f, dur = 0.15f;
         while (t < dur)
         {
@@ -233,7 +387,7 @@ public class FishUnit : MonoBehaviour
     }
 
     // =================================================================
-    // Reached tower
+    // Natural arrival at tower (not shot)
     // =================================================================
 
     void OnReachedTower()
@@ -289,5 +443,21 @@ public class FishUnit : MonoBehaviour
             yield return null;
         }
         Destroy(gameObject);
+    }
+
+    // =================================================================
+    // Tiny white pixel sprite (for the reel line)
+    // =================================================================
+
+    static Sprite _pixSprite;
+    static Sprite MakePixelSprite()
+    {
+        if (_pixSprite != null) return _pixSprite;
+        var tex = new Texture2D(4, 4);
+        var px = new Color[16];
+        for (int i = 0; i < 16; i++) px[i] = Color.white;
+        tex.SetPixels(px); tex.Apply();
+        _pixSprite = Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f));
+        return _pixSprite;
     }
 }

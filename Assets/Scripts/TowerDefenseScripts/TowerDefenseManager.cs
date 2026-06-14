@@ -11,6 +11,9 @@ using UnityEngine.UI;
 /// Fish+log units swim from the left toward the tower.
 /// Phisherman stands on top with a speargun that aims at the mouse.
 /// Click to shoot — hits the single nearest fish to the cursor only.
+///
+/// REEL-IN: clicking a fish now reels it toward the tower on a visible
+/// spear-line before triggering the red/green outcome at the wall.
 /// </summary>
 public class TowerDefenseManager : MonoBehaviour
 {
@@ -80,7 +83,7 @@ public class TowerDefenseManager : MonoBehaviour
     private List<FishUnit> liveFish = new List<FishUnit>();
     private List<Image> heartImages = new List<Image>();
 
-    // Per-fish pool swim state (struct so we can write back cheaply)
+    // Per-fish pool swim state
     private struct TowerFishState
     {
         public RectTransform rt;
@@ -102,23 +105,23 @@ public class TowerDefenseManager : MonoBehaviour
     }
 
     ED[] scams = {
-        new ED("password123", true), new ED("123456", true),   new ED("qwerty", true),
-        new ED("iloveyou", true),    new ED("abc123", true),    new ED("password1", true),
-        new ED("111111", true),      new ED("letmein", true),   new ED("welcome", true),
-        new ED("monkey", true),      new ED("dragon", true),    new ED("master", true),
-        new ED("hello", true),       new ED("login", true),     new ED("admin", true),
-        new ED("baseball", true),    new ED("shadow", true),    new ED("trustno1", true),
-        new ED("12345678", true),    new ED("princess", true),
+        new ED("password123", true), new ED("123456",   true), new ED("qwerty",   true),
+        new ED("iloveyou",   true),  new ED("abc123",   true), new ED("password1",true),
+        new ED("111111",     true),  new ED("letmein",  true), new ED("welcome",  true),
+        new ED("monkey",     true),  new ED("dragon",   true), new ED("master",   true),
+        new ED("hello",      true),  new ED("login",    true), new ED("admin",    true),
+        new ED("baseball",   true),  new ED("shadow",   true), new ED("trustno1", true),
+        new ED("12345678",   true),  new ED("princess", true),
     };
 
     ED[] safes = {
-        new ED("K#9mP!2xL", false),  new ED("Blue$Tree47!", false),
-        new ED("Xq8@nW3!vY", false), new ED("Maple!Leaf99#", false),
-        new ED("T7@kLz!9Rp", false), new ED("Sun$Rise2024!", false),
-        new ED("Wr9#mK!6Lp", false), new ED("Cat!Rain$42X", false),
-        new ED("Gr@pe!Vine88", false),new ED("Z3br@Dance#7", false),
-        new ED("Moon&Star99#", false),new ED("P@rrot3!Wing", false),
-        new ED("B3eHoney$44!", false),new ED("Night#Sky25!", false),
+        new ED("K#9mP!2xL",     false), new ED("Blue$Tree47!",  false),
+        new ED("Xq8@nW3!vY",    false), new ED("Maple!Leaf99#", false),
+        new ED("T7@kLz!9Rp",    false), new ED("Sun$Rise2024!", false),
+        new ED("Wr9#mK!6Lp",    false), new ED("Cat!Rain$42X",  false),
+        new ED("Gr@pe!Vine88",  false), new ED("Z3br@Dance#7",  false),
+        new ED("Moon&Star99#",  false), new ED("P@rrot3!Wing",  false),
+        new ED("B3eHoney$44!",  false), new ED("Night#Sky25!",  false),
     };
 
     struct Wave
@@ -156,7 +159,6 @@ public class TowerDefenseManager : MonoBehaviour
         gameOverPanel.SetActive(false);
         winPanel.SetActive(false);
 
-        // Audio Setup
         bgmSource = gameObject.AddComponent<AudioSource>();
         if (bgmClip != null)
         {
@@ -167,7 +169,6 @@ public class TowerDefenseManager : MonoBehaviour
         }
 
         sfxSource = gameObject.AddComponent<AudioSource>();
-
         ShowTutStep(0);
     }
 
@@ -187,8 +188,6 @@ public class TowerDefenseManager : MonoBehaviour
 
         if (Input.GetMouseButtonDown(0))
         {
-            if (sfxSource != null && spearClip != null) sfxSource.PlayOneShot(spearClip);
-
             Vector3 mouseWorld = Camera.main.ScreenToWorldPoint(Input.mousePosition);
             mouseWorld.z = 0;
             TryHitNearestFish(mouseWorld);
@@ -242,7 +241,7 @@ public class TowerDefenseManager : MonoBehaviour
     }
 
     // =================================================================
-    // Interaction
+    // Interaction — reel-in hit
     // =================================================================
 
     void TryHitNearestFish(Vector3 clickWorld, float maxRadius = 1.4f)
@@ -260,15 +259,23 @@ public class TowerDefenseManager : MonoBehaviour
 
         if (nearest == null) return;
 
-        Vector3 origin = spearSpawnPoint != null
-            ? spearSpawnPoint.position
-            : (towerRoot != null ? towerRoot.position + new Vector3(-0.5f, 2.5f, 0) : Vector3.zero);
+        // Play the spear SFX
+        if (sfxSource != null && spearClip != null)
+            sfxSource.PlayOneShot(spearClip);
 
-        StartCoroutine(BoltAnim(origin, nearest.transform.position));
-        nearest.TakeSpearHit();
+        // Draw a quick initial bolt flash from gun tip to fish
+        if (spearSpawnPoint != null)
+            StartCoroutine(BoltFlash(spearSpawnPoint.position, nearest.transform.position));
+
+        // Hand off to the fish — it will reel itself in using the pivot as anchor
+        nearest.TakeSpearHit(speargunPivot);
     }
 
-    IEnumerator BoltAnim(Vector3 from, Vector3 to)
+    /// <summary>
+    /// Brief yellow bolt flash (0.10 s) from spear tip to fish — gives instant
+    /// visual feedback before the reel-in line takes over.
+    /// </summary>
+    IEnumerator BoltFlash(Vector3 from, Vector3 to)
     {
         var boltGO = new GameObject("SpearBolt");
         boltGO.transform.position = (from + to) * 0.5f;
@@ -277,19 +284,19 @@ public class TowerDefenseManager : MonoBehaviour
         float len = delta.magnitude;
         float angle = Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg;
         boltGO.transform.rotation = Quaternion.Euler(0, 0, angle);
-        boltGO.transform.localScale = new Vector3(len, 0.07f, 1f);
+        boltGO.transform.localScale = new Vector3(len, 0.08f, 1f);
 
         var sr = boltGO.AddComponent<SpriteRenderer>();
         sr.sprite = WhitePix;
         sr.color = new Color(0.95f, 0.85f, 0.30f, 1f);
-        sr.sortingOrder = 10;
+        sr.sortingOrder = 12;
 
         float t = 0f;
-        while (t < 0.12f)
+        while (t < 0.10f)
         {
             t += Time.deltaTime;
             if (boltGO == null) yield break;
-            sr.color = new Color(0.95f, 0.85f, 0.30f, 1f - t / 0.12f);
+            sr.color = new Color(0.95f, 0.85f, 0.30f, 1f - t / 0.10f);
             yield return null;
         }
         if (boltGO != null) Destroy(boltGO);
@@ -315,12 +322,10 @@ public class TowerDefenseManager : MonoBehaviour
     public void OnRedFishReachedTower(Vector3 pos, bool wasShot = false)
     {
         combo = 0;
-
         SpawnPopup("BAD FISH!", pos + Vector3.up, new Color(1f, 0.3f, 0.3f));
         TakeDamage();
         if (health > 0)
             commentator?.SayRandom(new[] { "A fish cracked the tower!", "Keep them back!" });
-
         UpdateHUD();
     }
 
@@ -705,7 +710,8 @@ public class TowerDefenseManager : MonoBehaviour
             if (whiteSprite != null) return whiteSprite;
             if (_white != null) return _white;
             var tex = new Texture2D(4, 4);
-            var px = new Color[16]; for (int i = 0; i < 16; i++) px[i] = Color.white;
+            var px = new Color[16];
+            for (int i = 0; i < 16; i++) px[i] = Color.white;
             tex.SetPixels(px); tex.Apply();
             _white = Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f));
             return _white;

@@ -4,54 +4,72 @@ using UnityEngine.UI;
 /// <summary>
 /// MagnifierZoom.cs
 ///
-/// Attached to the MagnifyingGlass GameObject.
-/// Every LateUpdate it takes a snapshot-style zoom approach:
-/// scales the entire canvas and offsets it so that the area under
-/// the magnifier appears enlarged inside the circular lens mask.
-///
-/// How it works:
-///   - The ZoomLayer is a child of the circular mask.
-///   - We set its scale to zoomScale and its anchoredPosition so that
-///     the point under the magnifier centre maps to the lens centre.
-///   - The circular Mask clips everything outside the lens.
-///
-/// This is the standard Unity UI zoom trick — no RenderTexture needed.
+/// Refactored to use the Camera + RenderTexture technique. This is completely
+/// bulletproof for zooming UI without duplicating massive layout groups.
+/// 
+/// The SpotDifferenceBuilder sets the Main Canvas to ScreenSpaceCamera.
+/// This script creates a secondary camera, points it where the cursor is, 
+/// narrows the orthographic field of view to zoom in, and renders the 
+/// result into the circular RawImage mask.
 /// </summary>
 public class MagnifierZoom : MonoBehaviour
 {
     [Header("References — wired by builder")]
-    public RectTransform zoomLayerRT;    // child of MagMask, will be scaled
     public RectTransform mainCanvasRT;   // root canvas RectTransform
     public RectTransform magnifierRT;    // the magnifier GO's own RT (follows cursor)
+    public GameObject maskGo;            // the GameObject containing the Mask
 
     [Header("Settings")]
     public float zoomScale = 2.2f;
 
+    private Camera _magCam;
+    private RenderTexture _rt;
+
+    void Start()
+    {
+        if (Camera.main == null || maskGo == null) return;
+
+        // 1. Create the render texture for the lens
+        _rt = new RenderTexture(512, 512, 16, RenderTextureFormat.ARGB32);
+        _rt.Create();
+
+        // 2. Create the secondary zoomed camera
+        var camObj = new GameObject("MagCamera");
+        camObj.transform.SetParent(transform);
+        _magCam = camObj.AddComponent<Camera>();
+
+        // Inherit everything from Main Camera
+        _magCam.CopyFrom(Camera.main);
+        _magCam.clearFlags = CameraClearFlags.SolidColor;
+        _magCam.backgroundColor = Camera.main.backgroundColor;
+        _magCam.targetTexture = _rt;
+
+        // Zoom in by reducing orthographic size
+        _magCam.orthographicSize = Camera.main.orthographicSize / zoomScale;
+
+        // 3. Apply the texture to a RawImage inside the mask
+        var rawImg = maskGo.AddComponent<RawImage>();
+        rawImg.texture = _rt;
+        rawImg.raycastTarget = false;
+
+        // Ensure raw image fills the mask perfectly
+        rawImg.rectTransform.anchorMin = Vector2.zero;
+        rawImg.rectTransform.anchorMax = Vector2.one;
+        rawImg.rectTransform.offsetMin = Vector2.zero;
+        rawImg.rectTransform.offsetMax = Vector2.zero;
+    }
+
     void LateUpdate()
     {
-        if (zoomLayerRT == null || mainCanvasRT == null || magnifierRT == null) return;
-        if (!gameObject.activeSelf) return;
+        if (_magCam == null || Camera.main == null) return;
 
-        // Position of magnifier centre in canvas local space
-        Vector2 magCentre = magnifierRT.anchoredPosition;
+        // Match camera position to world position of magnifier center
+        Vector3 worldPos = magnifierRT.position;
+        _magCam.transform.position = new Vector3(worldPos.x, worldPos.y, Camera.main.transform.position.z);
+    }
 
-        // The ZoomLayer mirrors the full canvas.
-        // We need: canvas_point_under_mag_centre → maps to lens centre.
-        // If ZoomLayer scale = S, offset = -magCentre * (S - 1)
-        // This means the point at magCentre in canvas space ends up at (0,0)
-        // in the mask's local space (i.e. the lens centre).
-
-        zoomLayerRT.localScale = new Vector3(zoomScale, zoomScale, 1f);
-        zoomLayerRT.anchoredPosition = -magCentre * (zoomScale - 1f);
-
-        // The ZoomLayer needs to span the full canvas to show any area
-        zoomLayerRT.sizeDelta = mainCanvasRT.sizeDelta == Vector2.zero
-            ? new Vector2(1920f, 1080f)
-            : mainCanvasRT.sizeDelta;
-
-        // Anchor to centre of mask so the position math works
-        zoomLayerRT.anchorMin = new Vector2(0.5f, 0.5f);
-        zoomLayerRT.anchorMax = new Vector2(0.5f, 0.5f);
-        zoomLayerRT.pivot = new Vector2(0.5f, 0.5f);
+    void OnDestroy()
+    {
+        if (_rt != null) _rt.Release();
     }
 }
