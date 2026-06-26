@@ -579,6 +579,20 @@ public static class EmailSwiperBuilder
         Stretch(fishCont.GetComponent<RectTransform>());
         var fishContRT = fishCont.GetComponent<RectTransform>();
 
+        // ── Hover animation — makes the net read as a clickable button ──
+        // Lifts + sways the net and brightens its mesh/label while the pointer
+        // is over it. This pairs with the Button click already wired above so
+        // players can either swipe the card OR click a net. It animates only
+        // position + rotation (never scale), so it doesn't fight the catch
+        // bounce in EmailSwiperManager.NetBounce().
+        var netHover = netRoot.AddComponent<NetHoverEffect>();
+        netHover.lift = 14f;
+        netHover.swayAngle = 2.5f;
+        netHover.swaySpeed = 2.4f;
+        netHover.lerpSpeed = 12f;
+        netHover.glowBoost = 0.16f;
+        netHover.glowGraphics = new Graphic[] { netBag, netLbl };
+
         if (isLeft)
         {
             mgr.leftNetRT = nrRT;
@@ -608,10 +622,13 @@ public static class EmailSwiperBuilder
         var rt = go.GetComponent<RectTransform>();
         rt.anchorMin = new Vector2(xAnchor - 0.08f, 0.15f);
         rt.anchorMax = new Vector2(xAnchor + 0.08f, 0.90f);
-        var bg = go.AddComponent<Image>(); bg.color = new Color(0, 0, 0, 0); bg.raycastTarget = true;
-        var cg = go.AddComponent<CanvasGroup>(); cg.alpha = 0f; cg.blocksRaycasts = true;
-        var relay = go.AddComponent<SwipeButtonRelay>(); relay.direction = dir;
-        var btn = go.AddComponent<Button>(); btn.targetGraphic = bg; btn.onClick.AddListener(relay.Fire);
+        // NOTE: these zones used to be edge click-buttons, but they sat ON TOP
+        // of the fishing nets and stole their hover/click events (worst on the
+        // SCAM side, where the zone covered the whole label). The nets are now
+        // the click targets, so the zones are kept ONLY as no-op indicator
+        // holders for SwipeCard and must NOT receive any raycasts.
+        var bg = go.AddComponent<Image>(); bg.color = new Color(0, 0, 0, 0); bg.raycastTarget = false;
+        var cg = go.AddComponent<CanvasGroup>(); cg.alpha = 0f; cg.blocksRaycasts = false; cg.interactable = false;
         return cg;
     }
 

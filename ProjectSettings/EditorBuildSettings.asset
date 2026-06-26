@@ -23,6 +23,18 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/TowerDefense.unity
     guid: dfc8d814fdf999c4eaff1fb2d852a0cf
+  - enabled: 1
+    path: Assets/Scenes/ApartmentInterior.unity
+    guid: 465e09022947c0b4c9e6ddb6e646da70
+  - enabled: 1
+    path: Assets/Scenes/PizzaInterior.unity
+    guid: 6f11a9fc272d69f43baa350ed21e3d2e
+  - enabled: 1
+    path: Assets/Scenes/OfficeInterior.unity
+    guid: 54934fd583aebf54fa11f3dbd48f8740
+  - enabled: 1
+    path: Assets/Scenes/WorldMap2.unity
+    guid: d34ad36bf23250244a0f2e7e5d02e15e
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
   m_UseUCBPForAssetBundles: 0

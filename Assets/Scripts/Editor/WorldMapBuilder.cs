@@ -9,15 +9,17 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 /// <summary>
-/// Builds the WorldMap scene from scratch.
-/// Run via:  Phisherman ▸ Build World Map Scene
+/// Builds the WorldMap scene.
 ///
-/// Club Penguin town-square layout:
-///   - Large open cobblestone plaza fills bottom 70% (walkable)
-///   - Buildings arc across the TOP, pushed to the back wall
-///   - Raised stone ledge separates plaza from buildings
-///   - Sky + distant hills fill behind the buildings
-///   - Click-to-move preserved; bounds keep player on the plaza
+/// - world_stage_1_background fills the camera.
+/// - MapBlocker rects match the actual neighbourhood image:
+///     three houses, fences, pond/river, flower beds, screen edges.
+/// - MapNavAgent on the player does A* around blockers so clicking
+///   an obstructed area routes around the obstacle automatically.
+/// - MapCornerZone (200px screen-space) at bottom-left loads WorldMap2;
+///   bottom-right shows the locked popup.
+/// - MapPathTrigger proximity badges still exist at the path exits.
+/// - M-key world map overlay, dialogue panel, door triggers all unchanged.
 /// </summary>
 public static class WorldMapBuilder
 {
@@ -26,47 +28,20 @@ public static class WorldMapBuilder
 
     private const float OrthoSize = 4.5f;
     private const float AspectW = 16f / 9f;
-    private const float HalfW = OrthoSize * AspectW;
 
-    // Y positions
-    private const float LedgeTopY = 1.40f;
-    private const float LedgeBotY = 0.85f;
-    private const float LedgeMidY = 1.125f;
-    private const float NpcY = 0.55f;
-    private const float PlayerStartY = -1.8f;
+    private const float PlayerStartX = 0.0f;
+    private const float PlayerStartY = -1.5f;
 
-    // Building arc
-    private static readonly float[] BuildingX = { -5.8f, -2.9f, 0f, 2.9f, 5.8f };
-    private static readonly float[] BuildingY = { 1.85f, 2.05f, 2.20f, 2.05f, 1.85f };
-    private static readonly float[] BuildingScale = { 0.88f, 0.95f, 1.0f, 0.95f, 0.88f };
+    // Walkable bounds — must match MapNavAgent.boundsX/Y
+    private static readonly Vector2 BoundsX = new Vector2(-7.8f, 7.8f);
+    private static readonly Vector2 BoundsY = new Vector2(-4.0f, 4.3f);
 
-    // Palette
-    private static readonly Color SkyTop = Hex("#4FA8D9");
-    private static readonly Color SkyBot = Hex("#87CEEB");
-    private static readonly Color HillFar = Hex("#5A9E38");
-    private static readonly Color HillMid = Hex("#4D8B2F");
-    private static readonly Color LedgeTop = Hex("#9E9E8A");
-    private static readonly Color LedgeFront = Hex("#7A7A68");
-    private static readonly Color LedgeShadow = Hex("#5C5C4E");
-    private static readonly Color PlazaMain = Hex("#C4B89A");
-    private static readonly Color PlazaDark = Hex("#B0A488");
-    private static readonly Color PlazaEdge = Hex("#8C7E60");
-    private static readonly Color FgStrip = Hex("#3A7D1E");
+    // UI colours
     private static readonly Color AcceptCol = Hex("#2ECC71");
     private static readonly Color DeclineCol = Hex("#E74C3C");
     private static readonly Color NameCol = Hex("#FFD93D");
     private static readonly Color MapBg = Hex("#1A6E9E");
-    private static readonly Color IslandGreen = Hex("#4A9B2E");
-    private static readonly Color IslandSand = Hex("#D4A853");
-
-    private static readonly (Color wall, Color roof, Color sign, string label)[] BuildingDefs =
-    {
-        (Hex("#F4A7B9"), Hex("#C0392B"), Hex("#E91E8C"), "Grandma's"),
-        (Hex("#FDEAA7"), Hex("#E67E22"), Hex("#F39C12"), "Pizza Shop"),
-        (Hex("#B8D4E8"), Hex("#2980B9"), Hex("#1ABC9C"), "Grandpa's"),
-        (Hex("#C8E6C9"), Hex("#27AE60"), Hex("#2ECC71"), "Mrs. Patel's"),
-        (Hex("#D7BDE2"), Hex("#8E44AD"), Hex("#9B59B6"), "Uncle Rajan's"),
-    };
+    private static readonly Color BadgeAccent = Hex("#2BB3A3");
 
     [MenuItem("Phisherman/Build World Map Scene")]
     public static void Build()
@@ -74,45 +49,127 @@ public static class WorldMapBuilder
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-        Sprite white = EnsureWhitePixel();
-        Sprite phisherman = FindSprite("phisherman");
         Sprite circle = GetCircle();
+        Sprite phisherman = FindSprite("phisherman");
         LogFound("phisherman", phisherman);
 
-        // Camera
+        // ── Camera ───────────────────────────────────────────────────
         var camGo = new GameObject("Main Camera"); camGo.tag = "MainCamera";
         var cam = camGo.AddComponent<Camera>(); camGo.AddComponent<AudioListener>();
-        cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = SkyTop;
-        cam.orthographic = true; cam.orthographicSize = OrthoSize;
+        cam.clearFlags = CameraClearFlags.SolidColor;
+        cam.backgroundColor = Hex("#4FA8D9");
+        cam.orthographic = true;
+        cam.orthographicSize = OrthoSize;
         camGo.transform.position = new Vector3(0, 0, -10);
 
-        // EventSystem
+        // ── EventSystem ───────────────────────────────────────────────
         var es = new GameObject("EventSystem");
         es.AddComponent<EventSystem>(); es.AddComponent<StandaloneInputModule>();
 
-        BuildBackground(white);
+        // ── Background ────────────────────────────────────────────────
+        Sprite bgArt = FindSprite("world_stage_1_background");
+        if (bgArt != null)
+        {
+            var bgGo = new GameObject("WorldBackground");
+            var bgSR = bgGo.AddComponent<SpriteRenderer>();
+            bgSR.sprite = bgArt; bgSR.color = Color.white; bgSR.sortingOrder = -50;
+            float camH = OrthoSize * 2f, camW = camH * AspectW;
+            var bnds = bgArt.bounds;
+            bgGo.transform.localScale = new Vector3(camW / bnds.size.x, camH / bnds.size.y, 1f);
+            bgGo.transform.position = Vector3.zero;
+        }
+        else Debug.LogWarning("[WorldMapBuilder] 'world_stage_1_background' not found.");
 
+        // ── Player ────────────────────────────────────────────────────
+        var playerGo = new GameObject("Phisherman");
+        playerGo.transform.position = new Vector3(PlayerStartX, PlayerStartY, 0f);
+        var playerSR = playerGo.AddComponent<SpriteRenderer>();
+        playerSR.sprite = phisherman; playerSR.color = Color.white; playerSR.sortingOrder = 10;
+        playerGo.transform.localScale = new Vector3(0.55f, 0.55f, 1f);
+
+        // ── GameManager ───────────────────────────────────────────────
         var mgrGo = new GameObject("GameManager");
         var manager = mgrGo.AddComponent<WorldMapManager>();
 
-        var npcTransforms = new Transform[5];
-        var exclamationMarks = new GameObject[5];
-        for (int i = 0; i < 5; i++)
-        {
-            var (npcTr, exclam) = BuildBuilding(i, white, phisherman, circle);
-            npcTransforms[i] = npcTr;
-            exclamationMarks[i] = exclam;
-        }
+        Transform playerT = playerGo.transform;
 
-        // Player
-        var playerGo = new GameObject("Phisherman");
-        playerGo.transform.position = new Vector3(0f, PlayerStartY, 0f);
-        var playerSR = playerGo.AddComponent<SpriteRenderer>();
-        playerSR.sprite = phisherman != null ? phisherman : white;
-        playerSR.color = Color.white; playerSR.sortingOrder = 10;
-        playerGo.transform.localScale = new Vector3(0.55f, 0.55f, 1f);
+        // ── MapNavAgent (A* pathfinding) ──────────────────────────────
+        var nav = playerGo.AddComponent<MapNavAgent>();
+        nav.boundsX = BoundsX;
+        nav.boundsY = BoundsY;
+        nav.gridCols = 64;
+        nav.gridRows = 36;
+        nav.moveSpeed = 5f;
 
-        // Canvas
+        // ── Blockers re-mapped to the neighbourhood image ─────────────
+        //
+        // Camera view: x ∈ [-8, +8],  y ∈ [-4.5, +4.5]
+        // The image shows: three houses along the top half,
+        // cobblestone paths in the lower half, flower beds bottom-centre,
+        // pond/river top-right, fences between houses.
+        //
+        // Coordinate reference (eyeballed from game view screenshot):
+        //   Left house  (red brick)  : x ≈ -5.5 to -2.5,  y ≈ 0.5 to 4.5
+        //   Centre house(yellow)     : x ≈ -1.5 to  1.8,  y ≈  1.2 to 4.5
+        //   Right house (teal)       : x ≈  2.8 to  6.0,  y ≈  0.2 to 4.0
+        //   Pond / river (top-right) : x ≈  3.5 to  8.0,  y ≈  2.8 to 4.5
+        //   Left fence  row          : x ≈ -2.8 to -1.2,  y ≈  0.0 to  1.5
+        //   Right fence row          : x ≈  1.8 to  3.2,  y ≈  0.0 to  1.5
+        //   Flower bed left          : x ≈ -2.2 to  0.0,  y ≈ -4.2 to -2.8
+        //   Flower bed right         : x ≈  0.5 to  2.8,  y ≈ -4.2 to -2.8
+        //   Top-left trees / hedge   : x ≈ -8.0 to -5.5,  y ≈  1.5 to  4.5
+        //   Screen edges             : all four sides
+        //
+        // AddBlocker(name, player, cx, cy, halfW, halfH)
+
+        // Screen edges
+        AddBlocker("Edge_Top", playerT, 0.0f, 5.2f, 9.0f, 0.9f);
+        AddBlocker("Edge_Bottom", playerT, 0.0f, -5.2f, 9.0f, 0.9f);
+        AddBlocker("Edge_Left", playerT, -9.0f, 0.0f, 1.0f, 6.0f);
+        AddBlocker("Edge_Right", playerT, 9.0f, 0.0f, 1.0f, 6.0f);
+
+        // Left house (red brick) — body + roof
+        AddBlocker("House_Left", playerT, -4.0f, 2.5f, 1.8f, 2.2f);
+        AddBlocker("House_Left_Roof", playerT, -4.0f, 4.2f, 2.2f, 0.5f);
+
+        // Centre house (yellow two-storey) — body + porch steps are walkable
+        AddBlocker("House_Centre", playerT, 0.2f, 3.0f, 1.4f, 1.8f);
+        AddBlocker("House_Centre_Roof", playerT, 0.2f, 4.4f, 1.8f, 0.4f);
+
+        // Right house (teal bungalow)
+        AddBlocker("House_Right", playerT, 4.3f, 2.0f, 1.8f, 2.0f);
+        AddBlocker("House_Right_Roof", playerT, 4.3f, 3.8f, 2.0f, 0.5f);
+
+        // Pond / river (top-right)
+        AddBlocker("Pond", playerT, 5.8f, 3.8f, 2.5f, 0.8f);
+        AddBlocker("Pond_Shore", playerT, 6.8f, 2.8f, 1.4f, 1.2f);
+
+        // Left fence between left house and centre path
+        AddBlocker("Fence_Left", playerT, -2.1f, 0.6f, 0.9f, 0.8f);
+
+        // Right fence between centre house and right path
+        AddBlocker("Fence_Right", playerT, 2.5f, 0.5f, 0.8f, 0.8f);
+
+        // Trees / dense hedge top-left
+        AddBlocker("Hedge_TopLeft", playerT, -6.8f, 3.0f, 1.4f, 2.0f);
+
+        // Weeping willow tree (centre-left, y ≈ 1.5 to 3)
+        AddBlocker("Tree_Willow", playerT, -2.8f, 2.2f, 0.9f, 1.2f);
+
+        // Flower beds bottom-centre (player can walk around them)
+        AddBlocker("FlowerBed_L", playerT, -1.2f, -3.4f, 1.2f, 0.8f);
+        AddBlocker("FlowerBed_R", playerT, 1.6f, -3.4f, 1.3f, 0.8f);
+
+        // Dense shrubs along right edge
+        AddBlocker("Shrubs_Right", playerT, 7.0f, 0.5f, 1.2f, 2.0f);
+
+        // ── Door triggers (house doors) ───────────────────────────────
+        // Positions at the doorsteps of each house
+        AddDoor("Door_LeftHouse", playerT, circle, -4.0f, 0.4f, "ApartmentInterior", "ENTER");
+        AddDoor("Door_CentreHouse", playerT, circle, 0.2f, 1.2f, "PizzaInterior", "ENTER");
+        AddDoor("Door_RightHouse", playerT, circle, 4.3f, 0.2f, "OfficeInterior", "ENTER");
+
+        // ── Canvas + dialogue / map UI ────────────────────────────────
         var canvasGo = new GameObject("Canvas");
         var canvas = canvasGo.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -123,6 +180,12 @@ public static class WorldMapBuilder
         canvasGo.AddComponent<GraphicRaycaster>();
         var canvasRT = canvasGo.GetComponent<RectTransform>();
 
+        // Path-exit badges (proximity world-space badges at path ends)
+        AddPathTrigger("Path_World2", playerT, canvasRT, -6.5f, -3.8f,
+            MapPathTrigger.TriggerType.LoadScene, "WorldMap2", "WORLD 2", Hex("#2BB3A3"));
+        AddPathTrigger("Path_Locked", playerT, canvasRT, 6.5f, -3.8f,
+            MapPathTrigger.TriggerType.LockedPopup, "", "LOCKED", Hex("#E74C3C"));
+
         var (dialogPanel, advBtn, nameText, bodyText, hintText,
              choicePanel, acceptBtn, acceptTxt, declineBtn, declineTxt)
             = BuildDialoguePanel(canvasRT);
@@ -130,10 +193,42 @@ public static class WorldMapBuilder
         BuildMapHint(canvasRT);
         var mapPanel = BuildWorldMapPanel(canvasRT, manager);
 
+        // ── Locked popup (used by right corner zone AND right path trigger)
+        var lockedPopup = BuildLockedPopup(canvasRT);
+
+        // Wire locked popup into the right path trigger
+        var rightPathTrigger = GameObject.Find("Path_Locked");
+        if (rightPathTrigger != null)
+        {
+            var pt = rightPathTrigger.GetComponent<MapPathTrigger>();
+            if (pt != null) pt.lockedPopup = lockedPopup;
+        }
+
+        // ── Corner zones (200px screen-space) ─────────────────────────
+        // Bottom-left → World 2
+        var czLeft = new GameObject("CornerZone_World2");
+        var czlComp = czLeft.AddComponent<MapCornerZone>();
+        czlComp.player = playerT;
+        czlComp.corner = MapCornerZone.Corner.BottomLeft;
+        czlComp.action = MapCornerZone.ZoneAction.LoadScene;
+        czlComp.targetScene = "WorldMap2";
+        czlComp.zonePixels = 200;
+
+        // Bottom-right → locked popup
+        var czRight = new GameObject("CornerZone_Locked");
+        var czrComp = czRight.AddComponent<MapCornerZone>();
+        czrComp.player = playerT;
+        czrComp.corner = MapCornerZone.Corner.BottomRight;
+        czrComp.action = MapCornerZone.ZoneAction.LockedPopup;
+        czrComp.lockedPopup = lockedPopup;
+        czrComp.zonePixels = 200;
+        czrComp.popupDuration = 2.8f;
+
+        // ── Wire manager ──────────────────────────────────────────────
         manager.playerTransform = playerGo.transform;
         manager.playerRenderer = playerSR;
-        manager.npcTransforms = npcTransforms;
-        manager.exclamationMarks = exclamationMarks;
+        manager.npcTransforms = new Transform[0];
+        manager.exclamationMarks = new GameObject[0];
         manager.dialoguePanel = dialogPanel;
         manager.advanceButton = advBtn;
         manager.speakerNameText = nameText;
@@ -145,10 +240,8 @@ public static class WorldMapBuilder
         manager.declineButton = declineBtn;
         manager.declineButtonText = declineTxt;
         manager.worldMapPanel = mapPanel;
-
-        // UPDATED: Tighter bounds mapped precisely to the cobblestone plaza floor
-        manager.boundsX = new Vector2(-7.5f, 7.5f);
-        manager.boundsY = new Vector2(-4.0f, 0.5f);
+        manager.boundsX = BoundsX;
+        manager.boundsY = BoundsY;
 
         UnityEventTools.AddPersistentListener(advBtn.onClick, manager.AdvanceDialogue);
         UnityEventTools.AddPersistentListener(acceptBtn.onClick, manager.OnAcceptHelp);
@@ -162,175 +255,148 @@ public static class WorldMapBuilder
     }
 
     // =========================================================================
-    // Background — Club Penguin bowl
+    // Blocker helper
     // =========================================================================
-
-    static void BuildBackground(Sprite white)
+    static void AddBlocker(string name, Transform player, float cx, float cy, float hw, float hh)
     {
-        float fullW = HalfW * 2f + 2f;
-
-        // Sky
-        SR("Sky_Bot", white, SkyBot, new Vector3(0, 4f, 0), new Vector3(fullW, 12f, 1), -30);
-        SR("Sky_Top", white, SkyTop, new Vector3(0, 6f, 0), new Vector3(fullW, 6f, 1), -29);
-
-        // Distant hills behind buildings (3 bumps)
-        float[] hx = { -4.5f, 0f, 4.5f };
-        float[] hw = { 5.5f, 6.2f, 5.5f };
-        for (int h = 0; h < 3; h++)
-        {
-            SR("Hill_" + h, white, HillFar, new Vector3(hx[h], 1.9f, 0), new Vector3(hw[h], 2.4f, 1), -22);
-            SR("HillFg_" + h, white, HillMid, new Vector3(hx[h], 1.3f, 0), new Vector3(hw[h] * 0.8f, 1.0f, 1), -21);
-        }
-
-        // Raised ledge — top surface (lighter, seen from slight above)
-        SR("LedgeTop", white, LedgeTop, new Vector3(0, LedgeMidY + 0.14f, 0), new Vector3(fullW, 0.55f, 1), -15);
-        // Ledge front face (dark vertical face)
-        SR("LedgeFront", white, LedgeFront, new Vector3(0, LedgeBotY - 0.04f, 0), new Vector3(fullW, 0.33f, 1), -14);
-        // Ledge shadow at base
-        SR("LedgeShadow", white, LedgeShadow, new Vector3(0, LedgeBotY - 0.22f, 0), new Vector3(fullW, 0.12f, 1), -13);
-
-        // Large open plaza — main walkable floor
-        SR("Plaza", white, PlazaMain, new Vector3(0, -1.5f, 0), new Vector3(fullW, 7.0f, 1), -12);
-        // Subtle centre path darker strip (like CP's curved dirt path)
-        SR("PlazaMid", white, PlazaDark, new Vector3(0, -1.8f, 0), new Vector3(fullW * 0.60f, 2.2f, 1), -11);
-
-        // Scattered paving stones
-        float[] stoneX = { -5.5f, -2.8f, 0.6f, 3.5f, -4.0f, 1.8f, -1.2f };
-        float[] stoneY = { -0.4f, -1.3f, -0.8f, -2.0f, -2.6f, -2.2f, -1.6f };
-        for (int s = 0; s < stoneX.Length; s++)
-            SR("Stone_" + s, white, PlazaDark,
-                new Vector3(stoneX[s], stoneY[s], 0), new Vector3(0.95f, 0.46f, 1), -10);
-
-        // Plaza front edge strip
-        SR("PlazaEdge", white, PlazaEdge,
-            new Vector3(0, -OrthoSize + 0.6f, 0), new Vector3(fullW, 0.75f, 1), -9);
-
-        // Dark green foreground strip (player's feet area, very bottom)
-        SR("FgStrip", white, FgStrip,
-            new Vector3(0, -OrthoSize - 0.3f, 0), new Vector3(fullW, 1.8f, 1), -8);
+        var go = new GameObject(name);
+        go.transform.position = new Vector3(cx, cy, 0f);
+        var b = go.AddComponent<MapBlocker>();
+        b.player = player; b.halfW = hw; b.halfH = hh;
     }
 
     // =========================================================================
-    // Building + NPC
+    // Door trigger helper
     // =========================================================================
-
-    static (Transform npcTr, GameObject exclam) BuildBuilding(
-        int i, Sprite white, Sprite phisherman, Sprite circle)
+    static void AddDoor(string name, Transform player, Sprite circle,
+        float cx, float cy, string scene, string label)
     {
-        var def = BuildingDefs[i];
-        float bx = BuildingX[i];
-        float by = BuildingY[i];
-        float scl = BuildingScale[i];
-        float bw = 1.6f * scl;
-        float bh = 1.9f * scl;
+        var go = new GameObject(name);
+        go.transform.position = new Vector3(cx, cy, 0f);
+        var dt = go.AddComponent<MapDoorTrigger>();
+        dt.player = player; dt.targetScene = scene;
+        dt.triggerRadius = 0.55f; dt.promptProximity = 1.8f;
 
-        var bRoot = new GameObject("Building_" + i);
-        bRoot.transform.position = new Vector3(bx, by, 0f);
+        // Badge prompt
+        var promptGo = new GameObject("Prompt");
+        promptGo.transform.SetParent(go.transform, false);
+        promptGo.transform.localPosition = new Vector3(0f, 0.9f, -0.5f);
 
-        // Wall
-        SR("Wall", white, def.wall, Vector3.zero, new Vector3(bw, bh, 1), 1, bRoot.transform);
+        var bgGo = new GameObject("Badge");
+        bgGo.transform.SetParent(promptGo.transform, false);
+        bgGo.transform.localPosition = Vector3.zero;
+        bgGo.transform.localScale = new Vector3(0.012f, 0.012f, 1f);
+        var bgCanvas = bgGo.AddComponent<Canvas>();
+        bgCanvas.renderMode = RenderMode.WorldSpace; bgCanvas.sortingOrder = 30;
+        bgGo.GetComponent<RectTransform>().sizeDelta = new Vector2(200, 70);
 
-        // Roof base + peak
-        SR("RoofBase", white, def.roof,
-            new Vector3(0, bh * 0.5f + 0.10f, 0), new Vector3(bw + 0.32f * scl, 0.32f * scl, 1), 2, bRoot.transform);
-        SR("RoofPeak", white, def.roof,
-            new Vector3(0, bh * 0.5f + 0.34f, 0), new Vector3(bw * 0.55f, 0.32f * scl, 1), 2, bRoot.transform);
-        SR("RoofShadow", white, new Color(def.roof.r * 0.6f, def.roof.g * 0.6f, def.roof.b * 0.6f),
-            new Vector3(0, bh * 0.5f + 0.04f, 0), new Vector3(bw + 0.36f * scl, 0.10f * scl, 1), 2, bRoot.transform);
+        var borderGo = new GameObject("Border", typeof(RectTransform));
+        borderGo.transform.SetParent(bgGo.transform, false);
+        var bImg = borderGo.AddComponent<Image>(); bImg.color = BadgeAccent; bImg.raycastTarget = false;
+        var brt = borderGo.GetComponent<RectTransform>();
+        brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one;
+        brt.offsetMin = new Vector2(-5, -5); brt.offsetMax = new Vector2(5, 5);
 
-        // Sign
-        SR("Sign", white, def.sign,
-            new Vector3(0, bh * 0.18f, 0), new Vector3(bw * 0.72f, 0.28f * scl, 1), 3, bRoot.transform);
-        AddWorldText(def.label, new Vector3(bx, by + bh * 0.18f, -0.15f), 0.14f * scl, Color.white, 4);
+        var fillGo = new GameObject("Fill", typeof(RectTransform));
+        fillGo.transform.SetParent(bgGo.transform, false);
+        var fImg = fillGo.AddComponent<Image>(); fImg.color = new Color(0.08f, 0.10f, 0.18f, 0.96f); fImg.raycastTarget = false;
+        var frt = fillGo.GetComponent<RectTransform>();
+        frt.anchorMin = Vector2.zero; frt.anchorMax = Vector2.one; frt.offsetMin = frt.offsetMax = Vector2.zero;
 
-        // Windows
-        Color winCol = new Color(0.88f, 0.96f, 1.0f);
-        Color frameCol = new Color(0.42f, 0.32f, 0.22f);
-        float wx = bw * 0.26f, wy = bh * 0.08f, ws = 0.34f * scl;
-        for (int w = -1; w <= 1; w += 2)
-        {
-            SR("Win_" + w, white, winCol, new Vector3(w * wx, wy, 0), new Vector3(ws, ws, 1), 3, bRoot.transform);
-            SR("WinH_" + w, white, frameCol, new Vector3(w * wx, wy, 0), new Vector3(ws, 0.04f * scl, 1), 4, bRoot.transform);
-            SR("WinV_" + w, white, frameCol, new Vector3(w * wx, wy, 0), new Vector3(0.04f * scl, ws, 1), 4, bRoot.transform);
-        }
-
-        // Door
-        Color doorCol = new Color(0.32f, 0.20f, 0.10f);
-        float dh = 0.56f * scl, dw = 0.34f * scl, dy = -bh * 0.33f;
-        SR("Door", white, doorCol,
-            new Vector3(0, dy, 0), new Vector3(dw, dh, 1), 3, bRoot.transform);
-        SR("DoorArc", white, def.roof,
-            new Vector3(0, dy + dh * 0.47f, 0), new Vector3(dw, dh * 0.28f, 1), 4, bRoot.transform);
-        SR("Knob", white, new Color(0.88f, 0.78f, 0.12f),
-            new Vector3(dw * 0.32f, dy, 0), new Vector3(0.07f * scl, 0.07f * scl, 1), 4, bRoot.transform);
-
-        // Chimney on even buildings
-        if (i % 2 == 0)
-            SR("Chimney", white,
-                new Color(def.roof.r * 0.75f, def.roof.g * 0.75f, def.roof.b * 0.75f),
-                new Vector3(bw * 0.30f, bh * 0.54f, 0), new Vector3(0.20f * scl, 0.42f * scl, 1),
-                2, bRoot.transform);
-
-        // NPC sprite on the ledge in front of building
-        var npcGo = new GameObject("NPC_" + i);
-        npcGo.transform.position = new Vector3(bx, NpcY, -0.3f);
-        var npcSR = npcGo.AddComponent<SpriteRenderer>();
-        Color[] tints = {
-            new Color(1.0f, 0.82f, 0.86f),
-            new Color(1.0f, 0.88f, 0.60f),
-            new Color(0.70f, 0.88f, 1.0f),
-            new Color(0.72f, 1.0f, 0.76f),
-            new Color(0.86f, 0.72f, 1.0f),
-        };
-        npcSR.sprite = phisherman != null ? phisherman : white;
-        npcSR.color = tints[i]; npcSR.sortingOrder = 5;
-        npcGo.transform.localScale = new Vector3(0.45f * scl, 0.45f * scl, 1f);
-        npcGo.AddComponent<CircleCollider2D>().radius = 0.50f;
-        npcGo.AddComponent<NPCMarker>().npcIndex = i;
-
-        // Exclamation mark
-        var exclamGo = new GameObject("Exclam_" + i);
-        exclamGo.transform.position = new Vector3(bx, NpcY + 1.1f, -0.5f);
-        var bgGo = new GameObject("BG"); bgGo.transform.SetParent(exclamGo.transform, false);
-        var bgSR = bgGo.AddComponent<SpriteRenderer>();
-        bgSR.sprite = circle != null ? circle : white;
-        bgSR.color = new Color(1f, 0.88f, 0.10f); bgSR.sortingOrder = 15;
-        bgGo.transform.localScale = Vector3.one * 0.36f;
-        AddWorldText("!", exclamGo.transform.position + new Vector3(0, 0, -0.1f),
-            0.34f, new Color(0.12f, 0.08f, 0.02f), 16);
-        exclamGo.SetActive(false);
-
-        return (npcGo.transform, exclamGo);
-    }
-
-    // =========================================================================
-    // World-space text
-    // =========================================================================
-
-    static void AddWorldText(string text, Vector3 pos, float worldSize, Color col, int order)
-    {
-        string safeName = text.Length > 8 ? text.Substring(0, 8).Replace(" ", "") : text.Replace(" ", "");
-        var go = new GameObject("WT_" + safeName);
-        go.transform.position = pos;
-        const float k = 0.012f;
-        go.transform.localScale = Vector3.one * k;
-        var c = go.AddComponent<Canvas>();
-        c.renderMode = RenderMode.WorldSpace; c.sortingOrder = order;
-        go.GetComponent<RectTransform>().sizeDelta = new Vector2(220, 70);
-        var tgo = new GameObject("T"); tgo.transform.SetParent(go.transform, false);
-        var tmp = tgo.AddComponent<TextMeshProUGUI>();
-        tmp.text = text; tmp.fontSize = worldSize / k; tmp.color = col;
-        tmp.fontStyle = FontStyles.Bold; tmp.alignment = TextAlignmentOptions.Center;
+        var txtGo = new GameObject("Label", typeof(RectTransform));
+        txtGo.transform.SetParent(bgGo.transform, false);
+        var tmp = txtGo.AddComponent<TMPro.TextMeshProUGUI>();
+        tmp.text = label; tmp.fontSize = 32; tmp.color = Color.white;
+        tmp.fontStyle = TMPro.FontStyles.Bold; tmp.alignment = TMPro.TextAlignmentOptions.Center;
         tmp.raycastTarget = false;
-        var rt = tgo.GetComponent<RectTransform>();
-        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
-        rt.offsetMin = rt.offsetMax = Vector2.zero;
+        var trt = txtGo.GetComponent<RectTransform>();
+        trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
+        trt.offsetMin = new Vector2(6, 0); trt.offsetMax = new Vector2(-6, 0);
+
+        dt.prompt = promptGo;
+        promptGo.SetActive(false);
+    }
+
+    // =========================================================================
+    // Path-exit trigger helper (proximity badge + scene load or locked popup)
+    // =========================================================================
+    static void AddPathTrigger(string name, Transform player, RectTransform canvasRT,
+        float cx, float cy, MapPathTrigger.TriggerType type,
+        string targetScene, string badgeLabel, Color accentCol)
+    {
+        var go = new GameObject(name);
+        go.transform.position = new Vector3(cx, cy, 0f);
+        var pt = go.AddComponent<MapPathTrigger>();
+        pt.player = player; pt.type = type; pt.targetScene = targetScene;
+        pt.promptProximity = 2.0f; pt.triggerRadius = 1.0f;
+
+        var promptGo = new GameObject("Prompt");
+        promptGo.transform.SetParent(go.transform, false);
+        promptGo.transform.localPosition = new Vector3(0f, 1.0f, -0.5f);
+
+        var bgGo = new GameObject("Badge");
+        bgGo.transform.SetParent(promptGo.transform, false);
+        bgGo.transform.localPosition = Vector3.zero;
+        bgGo.transform.localScale = new Vector3(0.012f, 0.012f, 1f);
+        var bgCanvas = bgGo.AddComponent<Canvas>();
+        bgCanvas.renderMode = RenderMode.WorldSpace; bgCanvas.sortingOrder = 30;
+        bgGo.GetComponent<RectTransform>().sizeDelta = new Vector2(240, 75);
+
+        void MakeImg(Transform p, Color c, Vector2 oMin, Vector2 oMax)
+        {
+            var g = new GameObject("I", typeof(RectTransform)); g.transform.SetParent(p, false);
+            var img = g.AddComponent<Image>(); img.color = c; img.raycastTarget = false;
+            var r = g.GetComponent<RectTransform>();
+            r.anchorMin = Vector2.zero; r.anchorMax = Vector2.one; r.offsetMin = oMin; r.offsetMax = oMax;
+        }
+        MakeImg(bgGo.transform, accentCol, new Vector2(-6, -6), new Vector2(6, 6));
+        MakeImg(bgGo.transform, new Color(0.08f, 0.10f, 0.18f, 0.96f), Vector2.zero, Vector2.zero);
+
+        var tGo = new GameObject("Label", typeof(RectTransform)); tGo.transform.SetParent(bgGo.transform, false);
+        var tmp2 = tGo.AddComponent<TMPro.TextMeshProUGUI>();
+        tmp2.text = badgeLabel; tmp2.fontSize = 34; tmp2.color = Color.white;
+        tmp2.fontStyle = TMPro.FontStyles.Bold; tmp2.alignment = TMPro.TextAlignmentOptions.Center;
+        tmp2.raycastTarget = false;
+        var tr2 = tGo.GetComponent<RectTransform>();
+        tr2.anchorMin = Vector2.zero; tr2.anchorMax = Vector2.one;
+        tr2.offsetMin = new Vector2(8, 0); tr2.offsetMax = new Vector2(-8, 0);
+
+        pt.prompt = promptGo;
+        promptGo.SetActive(false);
+        // lockedPopup wired after canvas is built (see Build())
+    }
+
+    // =========================================================================
+    // Locked popup
+    // =========================================================================
+    static GameObject BuildLockedPopup(RectTransform canvasRT)
+    {
+        var ov = UImg(canvasRT, "LockedPopup", new Color(0, 0, 0, 0));
+        Stretch(ov.rectTransform); ov.raycastTarget = false;
+
+        var card = UImg(ov.rectTransform, "Card", new Color(0.08f, 0.10f, 0.20f, 0.93f));
+        var crt = card.rectTransform;
+        crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.62f);
+        crt.pivot = new Vector2(0.5f, 0.5f); crt.sizeDelta = new Vector2(740, 150);
+
+        var border = UImg(crt, "Border", Hex("#E74C3C"));
+        var brt = border.rectTransform;
+        brt.anchorMin = new Vector2(0, 1); brt.anchorMax = new Vector2(1, 1);
+        brt.pivot = new Vector2(0.5f, 1); brt.sizeDelta = new Vector2(0, 6);
+
+        var txt = UTxt(crt, "Msg",
+            "You haven't unlocked this area yet!\nExplore the neighbourhood first.",
+            30, Color.white, TextAlignmentOptions.Center);
+        txt.textWrappingMode = TextWrappingModes.Normal;
+        Stretch(txt.rectTransform);
+
+        ov.gameObject.SetActive(false);
+        return ov.gameObject;
     }
 
     // =========================================================================
     // Dialogue panel
     // =========================================================================
-
     static (GameObject panel, Button adv, TMP_Text name, TMP_Text body, TMP_Text hint,
             GameObject choicePanel, Button acceptBtn, TMP_Text acceptTxt,
             Button declineBtn, TMP_Text declineTxt)
@@ -354,7 +420,6 @@ public static class WorldMapBuilder
         var nbrrt = nameBar.rectTransform;
         nbrrt.anchorMin = new Vector2(0, 1); nbrrt.anchorMax = new Vector2(0.42f, 1);
         nbrrt.pivot = new Vector2(0, 1); nbrrt.sizeDelta = new Vector2(0, 44);
-
         var nameText = UTxt(nbrrt, "Name", "Speaker", 30, NameCol,
             TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
         var ntrt = nameText.rectTransform;
@@ -399,9 +464,8 @@ public static class WorldMapBuilder
     }
 
     // =========================================================================
-    // M-key hint
+    // Map hint + world map panel
     // =========================================================================
-
     static void BuildMapHint(RectTransform canvasRT)
     {
         var go = new GameObject("MapHint", typeof(RectTransform));
@@ -411,208 +475,71 @@ public static class WorldMapBuilder
         rt.pivot = new Vector2(1, 1);
         rt.sizeDelta = new Vector2(230, 44); rt.anchoredPosition = new Vector2(-24, -24);
         go.AddComponent<Image>().color = new Color(0, 0, 0, 0.45f);
-        var txt = UTxt(rt, "T", "[ M ]  World Map", 22,
-            new Color(0.9f, 0.9f, 1f), TextAlignmentOptions.Center);
+        var txt = UTxt(rt, "T", "[ M ]  World Map", 22, new Color(0.9f, 0.9f, 1f), TextAlignmentOptions.Center);
         Stretch(txt.rectTransform);
     }
 
-    // =========================================================================
-    // World map overlay
-    // =========================================================================
-
     static GameObject BuildWorldMapPanel(RectTransform canvasRT, WorldMapManager manager)
     {
-        var ov = UImg(canvasRT, "WorldMapOverlay", new Color(0, 0, 0, 0.82f));
+        var ov = UImg(canvasRT, "WorldMapOverlay", new Color(0, 0, 0, 0.88f));
         Stretch(ov.rectTransform); ov.raycastTarget = true;
 
-        var card = UImg(ov.rectTransform, "MapCard", MapBg);
+        var card = UImg(ov.rectTransform, "MapCard", new Color(0, 0, 0, 0));
         var crt = card.rectTransform;
-        crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.5f);
-        crt.pivot = new Vector2(0.5f, 0.5f); crt.sizeDelta = new Vector2(1280, 720);
+        crt.anchorMin = new Vector2(0.05f, 0.06f); crt.anchorMax = new Vector2(0.95f, 0.94f);
+        crt.offsetMin = crt.offsetMax = Vector2.zero;
 
-        var title = UTxt(crt, "Title", "PHISHERMAN", 56, Color.white,
+        Sprite mapSpr = FindSprite("map");
+        if (mapSpr != null)
+        {
+            var mapImg = UImg(crt, "MapImage", Color.white);
+            mapImg.sprite = mapSpr; mapImg.type = Image.Type.Simple;
+            mapImg.preserveAspect = true; mapImg.raycastTarget = false;
+            Stretch(mapImg.rectTransform);
+        }
+        else
+        {
+            card.color = MapBg;
+            Debug.LogWarning("[WorldMapBuilder] 'map' sprite not found.");
+        }
+
+        var titleBg = UImg(ov.rectTransform, "TitleBar", new Color(0.05f, 0.08f, 0.15f, 0.92f));
+        var tbr = titleBg.rectTransform;
+        tbr.anchorMin = new Vector2(0, 1); tbr.anchorMax = new Vector2(1, 1);
+        tbr.pivot = new Vector2(0.5f, 1); tbr.sizeDelta = new Vector2(0, 64); tbr.anchoredPosition = Vector2.zero;
+        var titleTxt = UTxt(tbr, "Title", "PHISHERMAN  WORLD MAP", 36, Color.white,
             TextAlignmentOptions.Center, FontStyles.Bold);
-        var trt = title.rectTransform;
-        trt.anchorMin = new Vector2(0, 1); trt.anchorMax = new Vector2(1, 1);
-        trt.pivot = new Vector2(0.5f, 1);
-        trt.sizeDelta = new Vector2(0, 80); trt.anchoredPosition = new Vector2(0, -10);
+        Stretch(titleTxt.rectTransform);
 
-        var sea = UTxt(crt, "Sea", "THE PHISH BOWL SEA", 24,
-            new Color(0.85f, 0.95f, 1f), TextAlignmentOptions.Center);
-        sea.rectTransform.anchoredPosition = Vector2.zero;
-
-        BuildIsland(crt, "Start", new Vector2(430, -200), 200, 75, IslandSand, IslandGreen, "START", false);
-        BuildIsland(crt, "Messaging", new Vector2(-360, 130), 185, 70, IslandGreen, IslandGreen, "THE MESSAGING ISLE\n(Email / SMS)", true);
-        BuildIsland(crt, "GlitchGrove", new Vector2(320, 150), 165, 68, IslandGreen, IslandGreen, "THE GLITCH GROVE\n(Social / Spam)", true);
-        BuildIsland(crt, "Vortex", new Vector2(-370, -170), 135, 55,
-            new Color(0.15f, 0.20f, 0.35f), IslandGreen, "VORTEX POINT\n(Voice)", true);
-        BuildIslandMarker(crt, new Vector2(-360, 195), "WORLD 1\nActive", new Color(1f, 0.9f, 0.2f));
-
-        // UPDATED: Fixed Unicode character here
-        var closeBtn = UBtn(crt, "CloseBtn", "X  Close Map  (M)", 26,
-            new Color(0.18f, 0.28f, 0.45f), Color.white);
+        var closeBtn = UBtn(ov.rectTransform, "CloseBtn", "X  Close Map  ( M )", 26,
+            new Color(0.18f, 0.28f, 0.45f, 0.95f), Color.white);
         var cbrt = closeBtn.GetComponent<RectTransform>();
         cbrt.anchorMin = new Vector2(0.5f, 0); cbrt.anchorMax = new Vector2(0.5f, 0);
-        cbrt.pivot = new Vector2(0.5f, 0);
-        cbrt.sizeDelta = new Vector2(340, 62); cbrt.anchoredPosition = new Vector2(0, 24);
+        cbrt.pivot = new Vector2(0.5f, 0); cbrt.sizeDelta = new Vector2(360, 56);
+        cbrt.anchoredPosition = new Vector2(0, 12);
         UnityEventTools.AddPersistentListener(closeBtn.GetComponent<Button>().onClick, manager.CloseMap);
 
         ov.gameObject.SetActive(false);
         return ov.gameObject;
     }
 
-    static void BuildIsland(RectTransform parent, string name, Vector2 centre,
-        float w, float h, Color mainCol, Color accentCol, string label, bool locked)
-    {
-        var go = new GameObject("Island_" + name, typeof(RectTransform));
-        go.transform.SetParent(parent, false);
-        var rt = go.GetComponent<RectTransform>();
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(w, h); rt.anchoredPosition = centre;
-        go.AddComponent<Image>().color = mainCol;
-        var ac = UImg(rt, "Top", accentCol);
-        ac.rectTransform.anchorMin = new Vector2(0, 0.6f); ac.rectTransform.anchorMax = Vector2.one;
-        ac.rectTransform.offsetMin = ac.rectTransform.offsetMax = Vector2.zero; ac.raycastTarget = false;
-        var lbl = UTxt(rt, "L", label, 16,
-            locked ? new Color(0.9f, 0.9f, 0.6f) : Color.white,
-            TextAlignmentOptions.Center, locked ? FontStyles.Normal : FontStyles.Bold);
-        lbl.textWrappingMode = TextWrappingModes.Normal; Stretch(lbl.rectTransform);
-    }
-
-    static void BuildIslandMarker(RectTransform parent, Vector2 pos, string label, Color col)
-    {
-        var go = new GameObject("Marker", typeof(RectTransform));
-        go.transform.SetParent(parent, false);
-        var rt = go.GetComponent<RectTransform>();
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(130, 52); rt.anchoredPosition = pos;
-        go.AddComponent<Image>().color = new Color(0, 0, 0, 0.55f);
-        var txt = UTxt(rt, "T", label, 17, col, TextAlignmentOptions.Center, FontStyles.Bold);
-        txt.textWrappingMode = TextWrappingModes.Normal; Stretch(txt.rectTransform);
-    }
-
     // =========================================================================
-    // Sprite helpers
+    // Utilities
     // =========================================================================
-
     static Sprite FindSprite(string name)
     {
         foreach (var g in AssetDatabase.FindAssets(name + " t:Sprite"))
-        {
-            var path = AssetDatabase.GUIDToAssetPath(g);
-            if (System.IO.Path.GetFileNameWithoutExtension(path).ToLower() == name.ToLower())
-            {
-                var s = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-                if (s != null) return s;
-            }
-        }
-        foreach (var g in AssetDatabase.FindAssets(name + " t:Texture2D"))
-        {
-            var path = AssetDatabase.GUIDToAssetPath(g);
-            if (System.IO.Path.GetFileNameWithoutExtension(path).ToLower().Contains(name.ToLower()))
-            {
-                var s = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-                if (s != null) return s;
-            }
-        }
+        { var p = AssetDatabase.GUIDToAssetPath(g); if (Path.GetFileNameWithoutExtension(p).ToLower() == name.ToLower()) { var s = AssetDatabase.LoadAssetAtPath<Sprite>(p); if (s != null) return s; } }
         return null;
     }
-
-    static void LogFound(string n, Sprite s) =>
-        Debug.Log($"[WorldMapBuilder] {n}: " + (s != null ? "✓" : "✗ not found (placeholder)"));
-
-    static Sprite GetCircle()
-    {
-        try { return AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd"); }
-        catch { return null; }
-    }
-
-    // UPDATED: Generates a 1x1 sprite and sets PPU to 1f so scales match Unity units perfectly
-    static Sprite EnsureWhitePixel()
-    {
-        const string dir = "Assets/Sprites";
-        const string path = "Assets/Sprites/world_white_pixel.png";
-        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-        if (!File.Exists(path))
-        {
-            var tex = new Texture2D(1, 1);
-            tex.SetPixel(0, 0, Color.white);
-            tex.Apply();
-            File.WriteAllBytes(path, tex.EncodeToPNG());
-            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
-        }
-        var imp = AssetImporter.GetAtPath(path) as TextureImporter;
-        if (imp != null)
-        {
-            bool ch = false;
-            if (imp.textureType != TextureImporterType.Sprite) { imp.textureType = TextureImporterType.Sprite; ch = true; }
-            if (imp.filterMode != FilterMode.Point) { imp.filterMode = FilterMode.Point; ch = true; }
-            if (imp.spritePixelsPerUnit != 1f) { imp.spritePixelsPerUnit = 1f; ch = true; }
-            if (ch) imp.SaveAndReimport();
-        }
-        return AssetDatabase.LoadAssetAtPath<Sprite>(path);
-    }
-
-    // =========================================================================
-    // Low-level helpers
-    // =========================================================================
-
-    static SpriteRenderer SR(string name, Sprite spr, Color col,
-        Vector3 localPos, Vector3 scale, int order, Transform parent = null)
-    {
-        var go = new GameObject(name);
-        if (parent != null) go.transform.SetParent(parent, false);
-        go.transform.localPosition = localPos;
-        go.transform.localScale = scale;
-        var sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = spr; sr.color = col; sr.sortingOrder = order;
-        return sr;
-    }
-
-    static Image UImg(Transform p, string n, Color c)
-    {
-        var go = new GameObject(n, typeof(RectTransform));
-        go.transform.SetParent(p, false);
-        var img = go.AddComponent<Image>(); img.color = c; return img;
-    }
-
-    static TMP_Text UTxt(Transform p, string n, string text, int size, Color col,
-        TextAlignmentOptions align, FontStyles style = FontStyles.Normal)
-    {
-        var go = new GameObject(n, typeof(RectTransform));
-        go.transform.SetParent(p, false);
-        var t = go.AddComponent<TextMeshProUGUI>();
-        t.text = text; t.fontSize = size; t.color = col;
-        t.alignment = align; t.fontStyle = style; t.raycastTarget = false;
-        return t;
-    }
-
+    static void LogFound(string n, Sprite s) => Debug.Log($"[WorldMapBuilder] {n}: " + (s != null ? "✓" : "✗ not found"));
+    static Sprite GetCircle() { try { return AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd"); } catch { return null; } }
+    static Image UImg(Transform p, string n, Color c) { var go = new GameObject(n, typeof(RectTransform)); go.transform.SetParent(p, false); var img = go.AddComponent<Image>(); img.color = c; return img; }
+    static TMP_Text UTxt(Transform p, string n, string text, int size, Color col, TextAlignmentOptions align, FontStyles style = FontStyles.Normal)
+    { var go = new GameObject(n, typeof(RectTransform)); go.transform.SetParent(p, false); var t = go.AddComponent<TextMeshProUGUI>(); t.text = text; t.fontSize = size; t.color = col; t.alignment = align; t.fontStyle = style; t.raycastTarget = false; return t; }
     static GameObject UBtn(Transform p, string n, string label, int size, Color bg, Color tc)
-    {
-        var go = new GameObject(n, typeof(RectTransform));
-        go.transform.SetParent(p, false);
-        var img = go.AddComponent<Image>(); img.color = bg;
-        var btn = go.AddComponent<Button>(); btn.targetGraphic = img;
-        var t = UTxt(go.transform, "Label", label, size, tc,
-            TextAlignmentOptions.Center, FontStyles.Bold);
-        Stretch(t.rectTransform); return go;
-    }
-
-    static void Stretch(RectTransform r)
-    { r.anchorMin = Vector2.zero; r.anchorMax = Vector2.one; r.offsetMin = r.offsetMax = Vector2.zero; }
-
-    static Color Hex(string h) =>
-        ColorUtility.TryParseHtmlString(h, out var c) ? c : Color.magenta;
-
-    static void AddToBuild(string path)
-    {
-        var scenes = EditorBuildSettings.scenes.ToList();
-        if (!scenes.Any(s => s.path == path))
-        {
-            scenes.Add(new EditorBuildSettingsScene(path, true));
-            EditorBuildSettings.scenes = scenes.ToArray();
-        }
-    }
+    { var go = new GameObject(n, typeof(RectTransform)); go.transform.SetParent(p, false); var img = go.AddComponent<Image>(); img.color = bg; var btn = go.AddComponent<Button>(); btn.targetGraphic = img; var t = UTxt(go.transform, "Label", label, size, tc, TextAlignmentOptions.Center, FontStyles.Bold); Stretch(t.rectTransform); return go; }
+    static void Stretch(RectTransform r) { r.anchorMin = Vector2.zero; r.anchorMax = Vector2.one; r.offsetMin = r.offsetMax = Vector2.zero; }
+    static Color Hex(string h) => ColorUtility.TryParseHtmlString(h, out var c) ? c : Color.magenta;
+    static void AddToBuild(string path) { var scenes = EditorBuildSettings.scenes.ToList(); if (!scenes.Any(s => s.path == path)) { scenes.Add(new EditorBuildSettingsScene(path, true)); EditorBuildSettings.scenes = scenes.ToArray(); } }
 }

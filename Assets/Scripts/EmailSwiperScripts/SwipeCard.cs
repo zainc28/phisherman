@@ -88,10 +88,38 @@ public class SwipeCard : MonoBehaviour,
     public void Lock() { locked = true; HideRod(); }
     public void Unlock() { locked = false; }
 
+    /// <summary>
+    /// Called when a net is CLICKED (via SwipeButtonRelay). To make a click
+    /// feel identical to a drag-swipe, we first fling the card toward the
+    /// chosen side, then commit — so the manager's CardMorphToFish picks up
+    /// the card already at the edge and plays the same arc-into-net animation.
+    /// </summary>
     public void SimulateSwipe(int dir)
     {
         if (locked) return;
-        locked = true; HideRod();
+        locked = true;
+        HideRod();
+        StartCoroutine(SimulateSwipeRoutine(dir));
+    }
+
+    IEnumerator SimulateSwipeRoutine(int dir)
+    {
+        if (cardRoot != null)
+        {
+            Vector2 start = cardRoot.anchoredPosition;
+            Vector2 end = origin + new Vector2(dir * swipeThreshold, 0f);
+            float dur = 0.16f, t = 0f;
+            while (t < dur)
+            {
+                t += Time.deltaTime;
+                float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / dur), 3f);
+                cardRoot.anchoredPosition = Vector2.Lerp(start, end, p);
+                cardRoot.localRotation = Quaternion.Euler(0, 0, -dir * maxRotation * p);
+                SetIndicators(dir * p);
+                yield return null;
+            }
+            cardRoot.anchoredPosition = end;
+        }
         onSwipeCommit?.Invoke(dir);
     }
 
@@ -339,4 +367,91 @@ public class SwipeButtonRelay : MonoBehaviour
     public SwipeCard target;
     public int direction;
     public void Fire() => target?.SimulateSwipe(direction);
+}
+
+/// <summary>
+/// Hover animation for the fishing nets so they read as clickable buttons.
+///
+/// On pointer-enter the net gently rises (lift) and sways like it's
+/// catching the current, and an optional set of graphics brightens; on
+/// pointer-exit it eases back to rest.
+///
+/// IMPORTANT: this deliberately animates anchoredPosition + rotation only,
+/// never localScale. The net catch-feedback in EmailSwiperManager.NetBounce()
+/// scales the same net root, so by leaving scale alone the two effects can
+/// run at the same time without fighting each other.
+/// </summary>
+[RequireComponent(typeof(RectTransform))]
+public class NetHoverEffect : MonoBehaviour,
+    IPointerEnterHandler, IPointerExitHandler
+{
+    [Header("Lift")]
+    public float lift = 14f;        // pixels the net rises on hover
+
+    [Header("Sway")]
+    public float swayAngle = 2.5f;  // degrees
+    public float swaySpeed = 2.4f;
+
+    [Header("Feel")]
+    public float lerpSpeed = 12f;   // higher = snappier
+
+    [Header("Glow (optional)")]
+    public Graphic[] glowGraphics;  // mesh / label that brightens on hover
+    public float glowBoost = 0.16f;
+
+    private RectTransform rt;
+    private Vector2 basePos;
+    private bool hovering;
+    private Color[] baseColors;
+
+    void Awake()
+    {
+        rt = GetComponent<RectTransform>();
+        basePos = rt.anchoredPosition;
+
+        if (glowGraphics != null)
+        {
+            baseColors = new Color[glowGraphics.Length];
+            for (int i = 0; i < glowGraphics.Length; i++)
+                if (glowGraphics[i] != null) baseColors[i] = glowGraphics[i].color;
+        }
+    }
+
+    public void OnPointerEnter(PointerEventData e) => hovering = true;
+    public void OnPointerExit(PointerEventData e) => hovering = false;
+
+    void Update()
+    {
+        // Frame-rate independent easing
+        float k = 1f - Mathf.Exp(-lerpSpeed * Time.deltaTime);
+
+        // Lift
+        Vector2 wantPos = hovering ? basePos + new Vector2(0f, lift) : basePos;
+        rt.anchoredPosition = Vector2.Lerp(rt.anchoredPosition, wantPos, k);
+
+        // Sway (rotation only — does not touch scale)
+        float z = rt.localEulerAngles.z;
+        if (z > 180f) z -= 360f;
+        float wantZ = hovering ? Mathf.Sin(Time.time * swaySpeed) * swayAngle : 0f;
+        rt.localEulerAngles = new Vector3(0f, 0f, Mathf.Lerp(z, wantZ, k));
+
+        // Glow
+        if (glowGraphics != null && baseColors != null)
+        {
+            for (int i = 0; i < glowGraphics.Length; i++)
+            {
+                var g = glowGraphics[i];
+                if (g == null) continue;
+                Color bc = baseColors[i];
+                Color target = hovering
+                    ? new Color(
+                        Mathf.Min(1f, bc.r + glowBoost),
+                        Mathf.Min(1f, bc.g + glowBoost),
+                        Mathf.Min(1f, bc.b + glowBoost),
+                        Mathf.Min(1f, bc.a + glowBoost))
+                    : bc;
+                g.color = Color.Lerp(g.color, target, k);
+            }
+        }
+    }
 }

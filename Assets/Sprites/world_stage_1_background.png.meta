@@ -1,10 +1,10 @@
 fileFormatVersion: 2
-guid: d5e650dedd4597943a4cdf0282a86334
+guid: 0bea44387386e72438d066ca6c7b84f9
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: -976447471917408282
-    second: speargun 1_0
+      213: -6765868121305690924
+    second: world_stage_1_background 1_0
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -126,13 +126,13 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: speargun 1_0
+      name: world_stage_1_background 1_0
       rect:
         serializedVersion: 2
         x: 0
         y: 0
-        width: 512
-        height: 512
+        width: 1376
+        height: 768
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
@@ -141,8 +141,8 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 6efd88e9236f272f0800000000000000
-      internalID: -976447471917408282
+      spriteID: 4dc4f607aceca12a0800000000000000
+      internalID: -6765868121305690924
       vertices: []
       indices: 
       edges: []
@@ -161,7 +161,7 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      speargun 1_0: -976447471917408282
+      world_stage_1_background 1_0: -6765868121305690924
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 
