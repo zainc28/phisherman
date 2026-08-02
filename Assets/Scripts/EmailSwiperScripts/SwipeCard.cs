@@ -1,457 +1,369 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-/// <summary>
-/// Reigns-style card swiping with fishing rod visual.
-///
-/// Rod uses a 4-segment cubic Bezier approximation so the line curves
-/// naturally like a real fishing string under tension — no sharp vertex.
-/// </summary>
-public class SwipeCard : MonoBehaviour,
-    IBeginDragHandler, IDragHandler, IEndDragHandler,
-    IPointerDownHandler, IPointerUpHandler
+// ============================================================
+//  CardDotAnimator  (merged from CardDotAnimator.cs)
+//  Attached to the dots row at the bottom of each email card.
+//  Each dot independently pulses through aquarium colours.
+// ============================================================
+public class CardDotAnimator : MonoBehaviour
 {
-    [Header("Swipe Feel")]
-    public float swipeThreshold = 220f;
-    public float maxRotation = 15f;
-    public float snapSpeed = 12f;
-    public float scaleOnPickup = 1.03f;
+    [HideInInspector] public Image[] dots;
 
-    [Header("References")]
-    public RectTransform cardRoot;
-    public CanvasGroup scamIndicator;
-    public CanvasGroup safeIndicator;
-    public Image cardBorder;
-
-    [Header("Fishing Rod — 4-segment Bezier")]
-    public RectTransform rodTipRT;      // fixed anchor at top-centre (just below HUD)
-    public RectTransform rodLineRT;     // segment 0-1
-    public RectTransform rodLine2RT;    // segment 1-2
-    public RectTransform rodLine3RT;    // segment 2-3
-    public RectTransform rodLine4RT;    // segment 3-bob
-    public RectTransform rodBobRT;      // orb at hook end
-    public Canvas rootCanvas;
-
-    // ── Colours ──
-    private static readonly Color ScamTint = new Color(1f, 0.42f, 0.42f);
-    private static readonly Color SafeTint = new Color(0.31f, 0.80f, 0.77f);
-    private static readonly Color Neutral = new Color(1f, 1f, 1f, 0f);
-
-    private RectTransform rt;
-    private Vector2 origin;
-    private bool dragging, locked;
-    private float dragX, bobTime;
-    private Vector2 _bobOffset;
-
-    public System.Action<int> onSwipeCommit;
-
-    void Awake()
+    static readonly Color[] Palette =
     {
-        rt = GetComponent<RectTransform>();
-        origin = rt.anchoredPosition;
-        HideRod();
+        new Color(1.00f,0.42f,0.20f), new Color(1.00f,0.85f,0.20f),
+        new Color(0.20f,0.75f,1.00f), new Color(0.35f,0.95f,0.55f),
+        new Color(0.90f,0.30f,0.60f), new Color(0.85f,0.85f,1.00f),
+        new Color(0.45f,0.90f,0.90f), new Color(1.00f,0.60f,0.80f),
+        new Color(0.60f,0.40f,1.00f), new Color(1.00f,0.95f,0.70f),
+    };
+
+    void Start()
+    {
+        if (dots == null) return;
+        for (int i = 0; i < dots.Length; i++)
+            StartCoroutine(AnimateDot(dots[i], i * 0.12f));
+    }
+
+    IEnumerator AnimateDot(Image dot, float initialDelay)
+    {
+        yield return new WaitForSeconds(initialDelay);
+        Color current = Palette[UnityEngine.Random.Range(0, Palette.Length)];
+        dot.color = current;
+        while (true)
+        {
+            float holdTime = UnityEngine.Random.Range(0.25f, 0.90f);
+            yield return new WaitForSeconds(holdTime);
+            Color next;
+            do { next = Palette[UnityEngine.Random.Range(0, Palette.Length)]; } while (next == current);
+            float fadeDur = UnityEngine.Random.Range(0.10f, 0.28f);
+            float t = 0f;
+            while (t < fadeDur) { t += Time.deltaTime; if (dot == null) yield break; dot.color = Color.Lerp(current, next, t / fadeDur); yield return null; }
+            current = next;
+        }
+    }
+}
+
+// ============================================================
+//  SwipeButtonRelay
+//  Sits on each net root Button — fires SimulateSwipe on the
+//  SwipeCard with the correct direction when clicked.
+// ============================================================
+public class SwipeButtonRelay : MonoBehaviour
+{
+    public SwipeCard target;
+    public int direction; // -1 = SCAM (left), +1 = SAFE (right)
+    public void Fire() { if (target != null) target.SimulateSwipe(direction); }
+}
+
+// ============================================================
+//  NetHoverEffect
+//  Lifts and sways the net while the pointer hovers over it.
+//  Animates position + rotation only (never scale) to avoid
+//  fighting EmailSwiperManager.NetBounce().
+// ============================================================
+public class NetHoverEffect : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+{
+    [Header("Bob")]
+    public float lift = 14f;
+    public float swayAngle = 2.5f;
+    public float swaySpeed = 2.4f;
+    public float lerpSpeed = 12f;
+
+    [Header("Glow")]
+    public float glowBoost = 0.16f;
+    public Graphic[] glowGraphics;
+
+    bool _hovered;
+    Vector2 _basePos;
+    float _baseRot;
+    Color[] _baseColors;
+    bool _basesCached;
+
+    void CacheBases()
+    {
+        if (_basesCached) return;
+        _basesCached = true;
+        var rt = GetComponent<RectTransform>();
+        _basePos = rt != null ? rt.anchoredPosition : Vector2.zero;
+        _baseRot = rt != null ? rt.localEulerAngles.z : 0f;
+        if (glowGraphics != null)
+        {
+            _baseColors = new Color[glowGraphics.Length];
+            for (int i = 0; i < glowGraphics.Length; i++)
+                _baseColors[i] = glowGraphics[i] != null ? glowGraphics[i].color : Color.white;
+        }
     }
 
     void Update()
     {
-        if (rodBobRT != null && rodBobRT.gameObject.activeSelf)
+        CacheBases();
+        var rt = GetComponent<RectTransform>();
+        if (rt == null) return;
+
+        float targetY = _hovered ? _basePos.y + lift : _basePos.y;
+        float targetRot = _hovered ? Mathf.Sin(Time.time * swaySpeed) * swayAngle : _baseRot;
+
+        Vector2 curPos = rt.anchoredPosition;
+        float curRot = rt.localEulerAngles.z;
+        rt.anchoredPosition = Vector2.Lerp(curPos, new Vector2(_basePos.x, targetY), lerpSpeed * Time.deltaTime);
+        float newRot = Mathf.LerpAngle(curRot > 180f ? curRot - 360f : curRot, targetRot, lerpSpeed * Time.deltaTime);
+        rt.localEulerAngles = new Vector3(0, 0, newRot);
+
+        if (glowGraphics != null && _baseColors != null)
         {
-            bobTime += Time.deltaTime;
-            _bobOffset = new Vector2(
-                Mathf.Sin(bobTime * 2.2f) * 3f,
-                Mathf.Sin(bobTime * 3.5f) * 4f - 2f);
+            for (int i = 0; i < glowGraphics.Length; i++)
+            {
+                if (glowGraphics[i] == null) continue;
+                Color bc = _baseColors[i];
+                Color tc = _hovered ? new Color(Mathf.Min(bc.r + glowBoost, 1f), Mathf.Min(bc.g + glowBoost, 1f), Mathf.Min(bc.b + glowBoost, 1f), bc.a) : bc;
+                glowGraphics[i].color = Color.Lerp(glowGraphics[i].color, tc, lerpSpeed * Time.deltaTime);
+            }
         }
     }
 
-    // ================================================================
-    // Public API
-    // ================================================================
+    public void OnPointerEnter(PointerEventData _) => _hovered = true;
+    public void OnPointerExit(PointerEventData _) => _hovered = false;
+}
+
+// ============================================================
+//  SwipeCard
+//  Handles drag + swipe physics, rod line update, and fling.
+// ============================================================
+public class SwipeCard : MonoBehaviour,
+    IPointerDownHandler, IPointerUpHandler, IDragHandler
+{
+    // ── Refs wired by builder ─────────────────────────────────
+    [Header("Card")]
+    public RectTransform cardRoot;
+    public Image cardBorder;
+    public CanvasGroup cardCanvasGroup;
+    public Canvas rootCanvas;
+
+    [Header("Swipe indicators")]
+    public CanvasGroup scamIndicator;
+    public CanvasGroup safeIndicator;
+
+    [Header("Rod line segments")]
+    public RectTransform rodTipRT;
+    public RectTransform rodLineRT;
+    public RectTransform rodLine2RT;
+    public RectTransform rodLine3RT;
+    public RectTransform rodLine4RT;
+    public RectTransform rodBobRT;
+
+    // ── Colours ───────────────────────────────────────────────
+    static readonly Color ScamBorderCol = new Color(0.85f, 0.20f, 0.20f, 0.88f);
+    static readonly Color SafeBorderCol = new Color(0.18f, 0.70f, 0.65f, 0.88f);
+    static readonly Color NeutralCol = new Color(0f, 0f, 0f, 0f);
+
+    // ── Tuning ────────────────────────────────────────────────
+    const float SwipeThreshold = 80f;
+    const float FlingSpeed = 2200f;
+    const float RotationScale = 0.08f;
+    const float IndicatorFade = 5f;
+    const float ReturnSpeed = 12f;
+
+    // ── State ─────────────────────────────────────────────────
+    bool _dragging;
+    bool locked;
+    Vector2 _pointerStart;
+    Vector2 _cardStart;
+
+    public Action<int> onSwipeCommit;  // -1 or +1
+
+    // ── Public API ────────────────────────────────────────────
+    public bool IsLocked => locked;
+    public void Lock() => locked = true;
+    public void Unlock() => locked = false;
 
     public void ResetPosition()
     {
-        rt.anchoredPosition = origin;
-        if (cardRoot != null)
-        {
-            cardRoot.anchoredPosition = origin;
-            cardRoot.localRotation = Quaternion.identity;
-            cardRoot.localScale = Vector3.one;
-            var cg = cardRoot.GetComponent<CanvasGroup>();
-            if (cg != null) cg.alpha = 1f;
-        }
-        dragX = 0f; locked = false;
-        SetIndicators(0f);
-        HideRod();
+        locked = false;
+        if (cardRoot == null) return;
+        cardRoot.anchoredPosition = Vector2.zero;
+        cardRoot.localEulerAngles = Vector3.zero;
+        if (cardBorder != null) cardBorder.color = NeutralCol;
+        if (scamIndicator != null) scamIndicator.alpha = 0f;
+        if (safeIndicator != null) safeIndicator.alpha = 0f;
+        UpdateRodLine(Vector2.zero);
+        ShowBob(false);
     }
 
-    public void Lock() { locked = true; HideRod(); }
-    public void Unlock() { locked = false; }
+    public void ShowBob(bool show)
+    {
+        if (rodBobRT != null) rodBobRT.gameObject.SetActive(show);
+        if (rodLineRT != null) rodLineRT.gameObject.SetActive(show);
+        if (rodLine2RT != null) rodLine2RT.gameObject.SetActive(show);
+        if (rodLine3RT != null) rodLine3RT.gameObject.SetActive(show);
+        if (rodLine4RT != null) rodLine4RT.gameObject.SetActive(show);
+    }
 
-    /// <summary>
-    /// Called when a net is CLICKED (via SwipeButtonRelay). To make a click
-    /// feel identical to a drag-swipe, we first fling the card toward the
-    /// chosen side, then commit — so the manager's CardMorphToFish picks up
-    /// the card already at the edge and plays the same arc-into-net animation.
-    /// </summary>
     public void SimulateSwipe(int dir)
     {
         if (locked) return;
         locked = true;
-        HideRod();
-        StartCoroutine(SimulateSwipeRoutine(dir));
+        float targetX = dir < 0 ? -1800f : 1800f;
+        StartCoroutine(FlingRoutine(new Vector2(targetX, 200f * dir)));
     }
 
-    IEnumerator SimulateSwipeRoutine(int dir)
-    {
-        if (cardRoot != null)
-        {
-            Vector2 start = cardRoot.anchoredPosition;
-            Vector2 end = origin + new Vector2(dir * swipeThreshold, 0f);
-            float dur = 0.16f, t = 0f;
-            while (t < dur)
-            {
-                t += Time.deltaTime;
-                float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / dur), 3f);
-                cardRoot.anchoredPosition = Vector2.Lerp(start, end, p);
-                cardRoot.localRotation = Quaternion.Euler(0, 0, -dir * maxRotation * p);
-                SetIndicators(dir * p);
-                yield return null;
-            }
-            cardRoot.anchoredPosition = end;
-        }
-        onSwipeCommit?.Invoke(dir);
-    }
-
-    // ================================================================
-    // Pointer / Drag
-    // ================================================================
-
+    // ── Pointer events ────────────────────────────────────────
     public void OnPointerDown(PointerEventData e)
     {
         if (locked) return;
-        if (cardRoot != null) cardRoot.localScale = Vector3.one * scaleOnPickup;
+        _dragging = true;
+        _pointerStart = e.position;
+        _cardStart = cardRoot != null ? cardRoot.anchoredPosition : Vector2.zero;
+        ShowBob(true);
     }
 
     public void OnPointerUp(PointerEventData e)
     {
-        if (!dragging && cardRoot != null) cardRoot.localScale = Vector3.one;
-    }
+        if (!_dragging) return;
+        _dragging = false;
 
-    public void OnBeginDrag(PointerEventData e)
-    {
-        if (locked) return;
-        dragging = true; ShowRod();
+        if (locked || cardRoot == null) return;
+
+        Vector2 delta = (Vector2)cardRoot.anchoredPosition - _cardStart;
+        if (Mathf.Abs(delta.x) >= SwipeThreshold)
+        {
+            locked = true;
+            StartCoroutine(FlingRoutine(delta));
+        }
+        else
+        {
+            StartCoroutine(ReturnRoutine());
+        }
     }
 
     public void OnDrag(PointerEventData e)
     {
-        if (locked || !dragging) return;
-        dragX += e.delta.x;
+        if (!_dragging || locked || cardRoot == null) return;
 
-        rt.anchoredPosition = origin + new Vector2(dragX, 0f);
-        if (cardRoot != null)
-        {
-            cardRoot.anchoredPosition = rt.anchoredPosition;
-            float norm = Mathf.Clamp(dragX / swipeThreshold, -1f, 1f);
-            cardRoot.localRotation = Quaternion.Euler(0, 0, -norm * maxRotation);
-        }
-        SetIndicators(Mathf.Clamp(dragX / swipeThreshold, -1f, 1f));
-        UpdateRod();
+        Vector2 localDelta;
+        float scaleFactor = rootCanvas != null ? rootCanvas.scaleFactor : 1f;
+        localDelta = (e.position - _pointerStart) / scaleFactor;
+
+        cardRoot.anchoredPosition = _cardStart + localDelta;
+
+        float rot = -localDelta.x * RotationScale;
+        cardRoot.localEulerAngles = new Vector3(0, 0, rot);
+
+        float t = Mathf.Clamp01(Mathf.Abs(localDelta.x) / 300f);
+        if (cardBorder != null)
+            cardBorder.color = Color.Lerp(NeutralCol, localDelta.x < 0 ? ScamBorderCol : SafeBorderCol, t);
+
+        if (scamIndicator != null) scamIndicator.alpha = localDelta.x < 0 ? Mathf.Lerp(0, 1, t * IndicatorFade) : 0;
+        if (safeIndicator != null) safeIndicator.alpha = localDelta.x > 0 ? Mathf.Lerp(0, 1, t * IndicatorFade) : 0;
+
+        UpdateRodLine(localDelta);
     }
 
-    public void OnEndDrag(PointerEventData e)
+    // ── Coroutines ────────────────────────────────────────────
+    IEnumerator FlingRoutine(Vector2 direction)
     {
-        if (locked) { dragging = false; return; }
-        dragging = false; HideRod();
-
-        if (Mathf.Abs(dragX / swipeThreshold) >= 1f)
-        {
-            locked = true;
-            onSwipeCommit?.Invoke(dragX < 0 ? -1 : 1);
-        }
-        else StartCoroutine(SpringBack());
-    }
-
-    // ================================================================
-    // Rod — cubic Bezier, 4 segments
-    // ================================================================
-
-    void ShowRod()
-    {
-        SetRodActive(true);
-        bobTime = 0f;
-    }
-
-    void HideRod()
-    {
-        SetRodActive(false);
-    }
-
-    void SetRodActive(bool on)
-    {
-        if (rodLineRT != null) rodLineRT.gameObject.SetActive(on);
-        if (rodLine2RT != null) rodLine2RT.gameObject.SetActive(on);
-        if (rodLine3RT != null) rodLine3RT.gameObject.SetActive(on);
-        if (rodLine4RT != null) rodLine4RT.gameObject.SetActive(on);
-        if (rodBobRT != null) rodBobRT.gameObject.SetActive(on);
-    }
-
-    Vector2 ToCanvasSpace(RectTransform target)
-    {
-        if (rootCanvas == null || target == null) return Vector2.zero;
-        Camera cam = rootCanvas.renderMode == RenderMode.ScreenSpaceOverlay
-            ? null : Camera.main;
-        Vector2 screen;
-        screen = RectTransformUtility.WorldToScreenPoint(cam, target.position);
-        Vector2 local;
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            rootCanvas.GetComponent<RectTransform>(), screen, cam, out local);
-        return local;
-    }
-
-    /// <summary>
-    /// Cubic Bezier: P(t) = (1-t)³P0 + 3(1-t)²tP1 + 3(1-t)t²P2 + t³P3
-    ///
-    /// Control points are chosen so the rod:
-    ///   - Leaves the tip going slightly downward (like a bent rod tip)
-    ///   - Droops in the middle under "gravity"
-    ///   - Arrives at the bob from above
-    ///
-    /// We approximate the smooth curve with 4 line segments (t = 0, 0.25, 0.5, 0.75, 1.0)
-    /// which looks smooth at normal view distances.
-    /// </summary>
-    void UpdateRod()
-    {
-        if (rodLineRT == null || rodTipRT == null || cardRoot == null) return;
-
-        Vector2 p0 = ToCanvasSpace(rodTipRT);                    // rod tip (top)
-        Vector2 p3 = ToCanvasSpace(cardRoot) + _bobOffset;       // bob end (card)
-
-        // Horizontal drag offset biases control points so the line leans with the card
-        float horizLean = (p3.x - p0.x) * 0.35f;
-
-        // Control point 1: just below the tip, leaning in drag direction
-        // (gives the "bent rod" look at the top)
-        Vector2 p1 = p0 + new Vector2(horizLean * 0.5f, -80f);
-
-        // Control point 2: drooped low in the middle
-        // droop deepens with total line length so short lines are tighter
-        float lineLen = (p3 - p0).magnitude;
-        float droop = 100f + lineLen * 0.22f;
-        Vector2 p2 = (p0 + p3) * 0.5f + new Vector2(horizLean * 0.3f, -droop);
-
-        // Sample 5 points along the cubic Bezier (t = 0, 0.25, 0.5, 0.75, 1)
-        Vector2 b0 = CubicBezier(p0, p1, p2, p3, 0.00f);
-        Vector2 b1 = CubicBezier(p0, p1, p2, p3, 0.25f);
-        Vector2 b2 = CubicBezier(p0, p1, p2, p3, 0.50f);
-        Vector2 b3 = CubicBezier(p0, p1, p2, p3, 0.75f);
-        Vector2 b4 = CubicBezier(p0, p1, p2, p3, 1.00f);
-
-        DrawSeg(rodLineRT, b0, b1);
-        DrawSeg(rodLine2RT, b1, b2);
-        DrawSeg(rodLine3RT, b2, b3);
-        DrawSeg(rodLine4RT, b3, b4);
-
-        // Bob orb sits at the end of the line
-        if (rodBobRT != null) rodBobRT.anchoredPosition = b4;
-    }
-
-    static Vector2 CubicBezier(Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3, float t)
-    {
-        float u = 1f - t;
-        float u2 = u * u;
-        float u3 = u2 * u;
-        float t2 = t * t;
-        float t3 = t2 * t;
-        return u3 * p0 + 3f * u2 * t * p1 + 3f * u * t2 * p2 + t3 * p3;
-    }
-
-    static void DrawSeg(RectTransform seg, Vector2 from, Vector2 to)
-    {
-        if (seg == null) return;
-        Vector2 delta = to - from;
-        seg.anchoredPosition = (from + to) * 0.5f;
-        seg.sizeDelta = new Vector2(delta.magnitude, seg.sizeDelta.y);
-        seg.localRotation = Quaternion.Euler(0, 0, Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg);
-    }
-
-    // ================================================================
-    // Spring back
-    // ================================================================
-
-    IEnumerator SpringBack()
-    {
-        float startX = dragX, startRot = 0f;
-        if (cardRoot != null)
-        {
-            startRot = cardRoot.localRotation.eulerAngles.z;
-            if (startRot > 180f) startRot -= 360f;
-        }
-
+        if (cardRoot == null) yield break;
+        Vector2 start = cardRoot.anchoredPosition;
+        Vector2 target = start + direction.normalized * 1600f;
         float t = 0f;
         while (t < 1f)
         {
-            t += Time.deltaTime * snapSpeed;
-            float ease = 1f - Mathf.Pow(1f - Mathf.Clamp01(t), 3f);
-            dragX = Mathf.Lerp(startX, 0f, ease);
-            rt.anchoredPosition = origin + new Vector2(dragX, 0f);
-            if (cardRoot != null)
-            {
-                cardRoot.anchoredPosition = rt.anchoredPosition;
-                cardRoot.localRotation = Quaternion.Euler(0, 0, Mathf.Lerp(startRot, 0f, ease));
-                cardRoot.localScale = Vector3.Lerp(Vector3.one * scaleOnPickup, Vector3.one, ease);
-            }
-            SetIndicators(Mathf.Lerp(startX / swipeThreshold, 0f, ease));
-            UpdateRod();
+            t += Time.deltaTime * (FlingSpeed / 1600f);
+            if (cardRoot == null) yield break;
+            cardRoot.anchoredPosition = Vector2.Lerp(start, target, Mathf.SmoothStep(0, 1, t));
+            float rot = -direction.x * RotationScale * Mathf.Lerp(1, 3, t);
+            cardRoot.localEulerAngles = new Vector3(0, 0, rot);
+            UpdateRodLine(cardRoot.anchoredPosition - _cardStart);
             yield return null;
         }
 
-        dragX = 0f; rt.anchoredPosition = origin;
-        if (cardRoot != null)
-        {
-            cardRoot.anchoredPosition = origin;
-            cardRoot.localRotation = Quaternion.identity;
-            cardRoot.localScale = Vector3.one;
-        }
-        SetIndicators(0f); HideRod();
+        int dir = direction.x < 0 ? -1 : 1;
+        onSwipeCommit?.Invoke(dir);
+        ShowBob(false);
     }
 
-    public IEnumerator FlyOffAndCrumple(int dir, float dur = 0.32f)
+    IEnumerator ReturnRoutine()
     {
         if (cardRoot == null) yield break;
-        HideRod();
-        Vector2 start = cardRoot.anchoredPosition;
-        Vector2 end = start + new Vector2(dir * 500f, -80f);
-        float sRot = cardRoot.localRotation.eulerAngles.z;
-        if (sRot > 180f) sRot -= 360f;
-        CanvasGroup cg = cardRoot.GetComponent<CanvasGroup>();
-        float t = 0f;
-        while (t < dur)
+        while (cardRoot.anchoredPosition.sqrMagnitude > 1f)
         {
-            t += Time.deltaTime;
-            float p = Mathf.Clamp01(t / dur), ease = p * p;
-            cardRoot.anchoredPosition = Vector2.Lerp(start, end, ease);
-            cardRoot.localRotation = Quaternion.Euler(0, 0, Mathf.Lerp(sRot, dir * -45f, ease));
-            cardRoot.localScale = Vector3.one * Mathf.Lerp(1f, 0.12f, ease);
-            if (cg != null) cg.alpha = 1f - Mathf.Clamp01((p - 0.4f) / 0.6f);
+            cardRoot.anchoredPosition = Vector2.Lerp(cardRoot.anchoredPosition, Vector2.zero, ReturnSpeed * Time.deltaTime);
+            cardRoot.localEulerAngles = Vector3.Lerp(cardRoot.localEulerAngles, Vector3.zero, ReturnSpeed * Time.deltaTime);
+            if (cardBorder != null) cardBorder.color = Color.Lerp(cardBorder.color, NeutralCol, ReturnSpeed * Time.deltaTime);
+            if (scamIndicator != null) scamIndicator.alpha = Mathf.Lerp(scamIndicator.alpha, 0f, ReturnSpeed * Time.deltaTime);
+            if (safeIndicator != null) safeIndicator.alpha = Mathf.Lerp(safeIndicator.alpha, 0f, ReturnSpeed * Time.deltaTime);
+            UpdateRodLine(cardRoot.anchoredPosition);
             yield return null;
         }
-        if (cg != null) cg.alpha = 0f;
+        ResetPosition();
     }
 
-    public Vector2 GetCardPosition() =>
-        cardRoot != null ? cardRoot.anchoredPosition : rt.anchoredPosition;
-
-    // ================================================================
-    // Indicators
-    // ================================================================
-
-    void SetIndicators(float norm)
+    // ── Rod line ──────────────────────────────────────────────
+    void UpdateRodLine(Vector2 cardOffset)
     {
-        float scamA = Mathf.Clamp01(-norm), safeA = Mathf.Clamp01(norm);
-        if (scamIndicator != null) scamIndicator.alpha = scamA * 0.95f;
-        if (safeIndicator != null) safeIndicator.alpha = safeA * 0.95f;
-        if (cardBorder != null)
+        if (rodTipRT == null || rodLineRT == null) return;
+
+        // Tip world position
+        Vector2 tipWorld = GetWorldPos(rodTipRT);
+        // Bob tracks top-centre of the card
+        Vector2 bobCanvas = _cardStart + cardOffset + new Vector2(0, 330f);
+        Vector2 bobWorld = CanvasToWorld(bobCanvas);
+
+        if (rodBobRT != null)
         {
-            if (Mathf.Abs(norm) < 0.05f) cardBorder.color = Neutral;
-            else if (norm < 0) cardBorder.color = Color.Lerp(Neutral, ScamTint, scamA);
-            else cardBorder.color = Color.Lerp(Neutral, SafeTint, safeA);
+            rodBobRT.position = new Vector3(bobWorld.x, bobWorld.y, rodBobRT.position.z);
         }
-    }
-}
 
-/// <summary>Relay so swipe-zone buttons can trigger SimulateSwipe.</summary>
-public class SwipeButtonRelay : MonoBehaviour
-{
-    public SwipeCard target;
-    public int direction;
-    public void Fire() => target?.SimulateSwipe(direction);
-}
-
-/// <summary>
-/// Hover animation for the fishing nets so they read as clickable buttons.
-///
-/// On pointer-enter the net gently rises (lift) and sways like it's
-/// catching the current, and an optional set of graphics brightens; on
-/// pointer-exit it eases back to rest.
-///
-/// IMPORTANT: this deliberately animates anchoredPosition + rotation only,
-/// never localScale. The net catch-feedback in EmailSwiperManager.NetBounce()
-/// scales the same net root, so by leaving scale alone the two effects can
-/// run at the same time without fighting each other.
-/// </summary>
-[RequireComponent(typeof(RectTransform))]
-public class NetHoverEffect : MonoBehaviour,
-    IPointerEnterHandler, IPointerExitHandler
-{
-    [Header("Lift")]
-    public float lift = 14f;        // pixels the net rises on hover
-
-    [Header("Sway")]
-    public float swayAngle = 2.5f;  // degrees
-    public float swaySpeed = 2.4f;
-
-    [Header("Feel")]
-    public float lerpSpeed = 12f;   // higher = snappier
-
-    [Header("Glow (optional)")]
-    public Graphic[] glowGraphics;  // mesh / label that brightens on hover
-    public float glowBoost = 0.16f;
-
-    private RectTransform rt;
-    private Vector2 basePos;
-    private bool hovering;
-    private Color[] baseColors;
-
-    void Awake()
-    {
-        rt = GetComponent<RectTransform>();
-        basePos = rt.anchoredPosition;
-
-        if (glowGraphics != null)
-        {
-            baseColors = new Color[glowGraphics.Length];
-            for (int i = 0; i < glowGraphics.Length; i++)
-                if (glowGraphics[i] != null) baseColors[i] = glowGraphics[i].color;
-        }
+        // Distribute 4 segments as a catenary-ish curve from tip to bob
+        PlaceSegment(rodLineRT, tipWorld, Vector2.Lerp(tipWorld, bobWorld, 0.33f));
+        PlaceSegment(rodLine2RT, Vector2.Lerp(tipWorld, bobWorld, 0.33f), Vector2.Lerp(tipWorld, bobWorld, 0.66f));
+        PlaceSegment(rodLine3RT, Vector2.Lerp(tipWorld, bobWorld, 0.66f), bobWorld);
+        if (rodLine4RT != null)
+            PlaceSegment(rodLine4RT, tipWorld, bobWorld);  // overlay thin full line
     }
 
-    public void OnPointerEnter(PointerEventData e) => hovering = true;
-    public void OnPointerExit(PointerEventData e) => hovering = false;
-
-    void Update()
+    void PlaceSegment(RectTransform seg, Vector2 worldA, Vector2 worldB)
     {
-        // Frame-rate independent easing
-        float k = 1f - Mathf.Exp(-lerpSpeed * Time.deltaTime);
+        if (seg == null) return;
+        Vector2 mid = (worldA + worldB) * 0.5f;
+        seg.position = new Vector3(mid.x, mid.y, seg.position.z);
+        float len = Vector2.Distance(worldA, worldB);
+        Vector2 cur = seg.sizeDelta; seg.sizeDelta = new Vector2(len, cur.y);
+        float angle = Mathf.Atan2(worldB.y - worldA.y, worldB.x - worldA.x) * Mathf.Rad2Deg;
+        seg.localEulerAngles = new Vector3(0, 0, angle);
+        seg.gameObject.SetActive(true);
+    }
 
-        // Lift
-        Vector2 wantPos = hovering ? basePos + new Vector2(0f, lift) : basePos;
-        rt.anchoredPosition = Vector2.Lerp(rt.anchoredPosition, wantPos, k);
+    Vector2 GetWorldPos(RectTransform rt)
+    {
+        if (rt == null) return Vector2.zero;
+        return rt.position;
+    }
 
-        // Sway (rotation only — does not touch scale)
-        float z = rt.localEulerAngles.z;
-        if (z > 180f) z -= 360f;
-        float wantZ = hovering ? Mathf.Sin(Time.time * swaySpeed) * swayAngle : 0f;
-        rt.localEulerAngles = new Vector3(0f, 0f, Mathf.Lerp(z, wantZ, k));
+    Vector2 CanvasToWorld(Vector2 canvasPos)
+    {
+        if (rootCanvas == null) return canvasPos;
+        // Screen-space overlay: canvas pos maps 1:1 to screen at scale 1
+        float sf = rootCanvas.scaleFactor > 0 ? rootCanvas.scaleFactor : 1f;
+        // canvasPos is in reference resolution space, convert to screen then to world
+        // For screen-space overlay canvases the canvas rect IS screen coords * scaleFactor
+        Vector2 screenPos = canvasPos * sf + new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+        if (Camera.main == null) return screenPos;
+        return Camera.main.ScreenToWorldPoint(new Vector3(screenPos.x, screenPos.y, 10f));
+    }
 
-        // Glow
-        if (glowGraphics != null && baseColors != null)
-        {
-            for (int i = 0; i < glowGraphics.Length; i++)
-            {
-                var g = glowGraphics[i];
-                if (g == null) continue;
-                Color bc = baseColors[i];
-                Color target = hovering
-                    ? new Color(
-                        Mathf.Min(1f, bc.r + glowBoost),
-                        Mathf.Min(1f, bc.g + glowBoost),
-                        Mathf.Min(1f, bc.b + glowBoost),
-                        Mathf.Min(1f, bc.a + glowBoost))
-                    : bc;
-                g.color = Color.Lerp(g.color, target, k);
-            }
-        }
+    // Canvas-space position relative to canvas centre
+    Vector2 ToCanvasSpace(RectTransform rt)
+    {
+        if (rt == null || rootCanvas == null) return Vector2.zero;
+        Vector2 screenPos = rt.position;
+        float sf = rootCanvas.scaleFactor > 0 ? rootCanvas.scaleFactor : 1f;
+        return (screenPos - new Vector2(Screen.width * 0.5f, Screen.height * 0.5f)) / sf;
     }
 }

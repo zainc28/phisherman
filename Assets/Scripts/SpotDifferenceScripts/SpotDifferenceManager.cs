@@ -14,9 +14,13 @@ using UnityEngine.UI;
 // CLICK BUG FIX: DifferenceMarker now sets a static flag (_markerClickedThisFrame)
 // when it handles a click, and resets it next frame via a coroutine.
 // PanelClickReceiver checks this flag first and bails out if set.
-// This is the most reliable approach across all Unity versions/platforms because
-// it does not depend on eventData.hovered, pointerPressRaycast, or selectedObject,
-// all of which can be empty or stale depending on the Unity version and platform.
+//
+// LEVEL SYSTEM INTEGRATION:
+//   • Each correctly found red flag registers a "fish_detective" sticker —
+//     this game doesn't have literal fish on screen, so Detective Fish
+//     represents the player's sharp eye for red flags.
+//   • On end game, XP is queued using the same 0-1 accuracy scale as every
+//     other minigame: found / total, so XP stays fair across all three games.
 // =============================================================================
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -40,9 +44,6 @@ public class DifferenceMarker : MonoBehaviour, IPointerClickHandler
 
     private Image _hitZone;
 
-    // ── Static frame-gate ──────────────────────────────────────────────────
-    // Set to true in OnPointerClick; reset to false the following frame.
-    // PanelClickReceiver reads this before deciding whether to count a miss.
     public static bool MarkerClickedThisFrame { get; private set; }
 
     private static readonly Color HiddenColor = new Color(1f, 0f, 0f, 0f);
@@ -57,7 +58,6 @@ public class DifferenceMarker : MonoBehaviour, IPointerClickHandler
 
     public void OnPointerClick(PointerEventData eventData)
     {
-        // Signal to PanelClickReceiver that this frame's click landed on a marker.
         MarkerClickedThisFrame = true;
         StartCoroutine(ResetFlagNextFrame());
 
@@ -71,7 +71,7 @@ public class DifferenceMarker : MonoBehaviour, IPointerClickHandler
 
     private IEnumerator ResetFlagNextFrame()
     {
-        yield return null; // wait one frame
+        yield return null;
         MarkerClickedThisFrame = false;
     }
 }
@@ -80,26 +80,14 @@ public class DifferenceMarker : MonoBehaviour, IPointerClickHandler
 // PanelClickReceiver
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// <summary>
-/// Catches wrong clicks on the scam email body.
-///
-/// FIX: Checks DifferenceMarker.MarkerClickedThisFrame first — this static flag
-/// is set by DifferenceMarker.OnPointerClick the same frame a marker is tapped.
-/// All the eventData inspection approaches (pointerPressRaycast, hovered,
-/// selectedObject) can be empty on certain Unity/platform combos, so the flag
-/// is the only truly reliable gate.
-/// </summary>
 public class PanelClickReceiver : MonoBehaviour, IPointerClickHandler
 {
     public SpotDifferenceManager manager;
 
     public void OnPointerClick(PointerEventData eventData)
     {
-        // Primary gate: a DifferenceMarker already consumed this click this frame.
         if (DifferenceMarker.MarkerClickedThisFrame) return;
 
-        // Belt-and-suspenders: also walk the hit-test results in case the flag
-        // somehow didn't fire (e.g. marker script disabled mid-frame).
         if (eventData.pointerPressRaycast.gameObject != null)
         {
             var hit = eventData.pointerPressRaycast.gameObject;
@@ -131,7 +119,6 @@ public class PanelClickReceiver : MonoBehaviour, IPointerClickHandler
 
 public class SpotDifferenceManager : MonoBehaviour
 {
-    // ── Scoring ──
     [Header("Scoring")]
     public int correctPoints = 120;
     public int wrongPenalty = 30;
@@ -140,7 +127,6 @@ public class SpotDifferenceManager : MonoBehaviour
     [Header("Lives")]
     public int maxLives = 3;
 
-    // ── HUD ──
     [Header("HUD")]
     public TMP_Text scoreText;
     public TMP_Text counterText;
@@ -150,8 +136,9 @@ public class SpotDifferenceManager : MonoBehaviour
 
     [Header("Hearts")]
     public Image[] heartImages;
+    [Tooltip("Assets/Sprites/UI/heart — used for the lives HUD instead of a drawn placeholder.")]
+    public Sprite heartSprite;
 
-    // ── Magnifier ──
     [Header("Magnifying Glass")]
     public RectTransform magnifyingGlassRT;
     public Canvas mainCanvas;
@@ -163,53 +150,47 @@ public class SpotDifferenceManager : MonoBehaviour
     public GameObject phishermanWithMagGlass;
     public GameObject phishermanNoMagGlass;
 
-    // ── Timer ──
     [Header("Timer")]
     public float totalTime = 60f;
 
-    // ── Result ──
     [Header("Result Screen")]
     public GameObject resultPanel;
     public TMP_Text resultTitle;
     public TMP_Text resultBreakdown;
     public TMP_Text resultScore;
 
-    // ── Markers ──
     [Header("Markers")]
     public List<DifferenceMarker> markers = new List<DifferenceMarker>();
 
-    // ── Simulation ──
     [Header("Simulation")]
     public LureSimulation lureSimulation;
 
-    // ── Effects ──
     [Header("Water Drip Effect")]
     public RectTransform effectLayer;
     public Sprite circleSprite;
 
-    // ── Audio ──
     [Header("Audio")]
     public AudioSource sfxSource;
-    public AudioSource bgMusicSource;  // shark_music_v1 loops here
+    public AudioSource bgMusicSource;
     public AudioClip sfxSplash;
     public AudioClip sfxWrong;
     public AudioClip sfxImpact;
     public AudioClip sfxRodWinding;
 
-    // ── Commentator ──
     [Header("Commentator")]
     public Commentator commentator;
 
-    // ── Private state ──
     private int _score, _found, _total, _streak, _lives;
     private bool _gameOver, _magActive;
     private float _timeRemaining;
 
     private HashSet<DifferenceMarker> _foundMarkers = new HashSet<DifferenceMarker>();
     private List<string> _evidenceItems = new List<string>();
+    private MinigameLivesHUD livesHUD;
 
-    private static readonly Color HeartFull = new Color(0.75f, 0.18f, 0.18f);
-    private static readonly Color HeartLost = new Color(0.30f, 0.25f, 0.20f);
+    // Guards against double-queueing XP when the player clears every flag
+    // (that path skips EndGame() and calls ShowResult() directly).
+    private bool _xpQueuedForClear;
 
     private static readonly string[] ProgressiveHints =
     {
@@ -237,7 +218,14 @@ public class SpotDifferenceManager : MonoBehaviour
         _gameOver = false;
         _magActive = false;
 
-        UpdateHud(); UpdateHearts(); UpdateEvidenceLog(); HideFeedback();
+        // Consistent 3-heart HUD shared across every minigame — hide any
+        // legacy scene-wired heart images so we don't double-render.
+        if (heartImages != null)
+            foreach (var img in heartImages) if (img != null) img.gameObject.SetActive(false);
+        livesHUD = gameObject.AddComponent<MinigameLivesHUD>();
+        livesHUD.Initialize(maxLives, heartSprite);
+
+        UpdateHud(); UpdateEvidenceLog(); HideFeedback();
         if (resultPanel != null) resultPanel.SetActive(false);
         if (magnifyingGlassRT != null) magnifyingGlassRT.gameObject.SetActive(false);
         UpdateMagButton();
@@ -335,12 +323,13 @@ public class SpotDifferenceManager : MonoBehaviour
         ShowFeedback($"+{gain}   {marker.flagName}", new Color(0.18f, 0.62f, 0.20f));
         UpdateHud();
 
-        // Rod winding sound + hook rises
+        // Sticker book — spotting a red flag is Detective Fish's specialty
+        PlayerProgress.RegisterFish("fish_detective");
+
         PlaySFX(sfxRodWinding);
         int findIdx = markers.IndexOf(marker);
         lureSimulation?.OnCorrectFind(findIdx);
 
-        // Splash + drips
         PlaySFX(sfxSplash);
         var rt = marker.GetComponent<RectTransform>();
         if (rt != null) StartCoroutine(WaterDrips(rt));
@@ -375,9 +364,9 @@ public class SpotDifferenceManager : MonoBehaviour
         _score = Mathf.Max(0, _score - wrongPenalty);
         _streak = 0;
 
-        UpdateHearts(); UpdateHud();
+        livesHUD?.LoseLife(); UpdateHud();
         PlaySFX(sfxWrong);
-        lureSimulation?.OnWrongClick();   // shark advances + impact sound handled in sim
+        lureSimulation?.OnWrongClick();
 
         ShowFeedback($"-{wrongPenalty}   Not a red flag  (−1 life)",
             new Color(0.78f, 0.20f, 0.20f));
@@ -402,18 +391,6 @@ public class SpotDifferenceManager : MonoBehaviour
     void PlaySFX(AudioClip clip)
     {
         if (sfxSource != null && clip != null) sfxSource.PlayOneShot(clip, 0.85f);
-    }
-
-    // =================================================================
-    // Hearts
-    // =================================================================
-
-    void UpdateHearts()
-    {
-        if (heartImages == null) return;
-        for (int i = 0; i < heartImages.Length; i++)
-            if (heartImages[i] != null)
-                heartImages[i].color = i < _lives ? HeartFull : HeartLost;
     }
 
     // =================================================================
@@ -487,6 +464,13 @@ public class SpotDifferenceManager : MonoBehaviour
         if (_gameOver) return;
         _gameOver = true;
         lureSimulation?.StopSim();
+
+        // Queue XP using the same 0-1 accuracy scale every minigame uses:
+        // fraction of red flags actually found.
+        float accuracy = _total > 0 ? (float)_found / _total : 0f;
+        PlayerProgress.QueueFromPerformance(accuracy);
+        _xpQueuedForClear = true;
+
         Invoke(nameof(ShowResult), 0.8f);
     }
 
@@ -517,6 +501,16 @@ public class SpotDifferenceManager : MonoBehaviour
     void ShowResult()
     {
         if (resultPanel == null) return;
+
+        // The "found everything" path calls ShowResult() directly without
+        // going through EndGame(), so queue XP here if it hasn't happened yet.
+        if (!_xpQueuedForClear)
+        {
+            _xpQueuedForClear = true;
+            float accuracy = _total > 0 ? (float)_found / _total : 0f;
+            PlayerProgress.QueueFromPerformance(accuracy);
+        }
+
         resultPanel.SetActive(true);
         if (resultTitle != null)
             resultTitle.text = _found >= _total

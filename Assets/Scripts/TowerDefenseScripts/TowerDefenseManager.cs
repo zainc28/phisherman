@@ -14,12 +14,30 @@ using UnityEngine.UI;
 ///
 /// REEL-IN: clicking a fish now reels it toward the tower on a visible
 /// spear-line before triggering the red/green outcome at the wall.
+///
+/// LEVEL SYSTEM INTEGRATION:
+///   • Every spawned fish registers a sticker-book entry (fish_swimmer).
+///   • Correctly speared scam fish register fish_speared.
+///   • Safe fish welcomed into the tower register fish_happy.
+///   • On win/loss, XP is queued via PlayerProgress.QueueFromPerformance()
+///     using the same 0-1 accuracy scale every minigame uses, so XP is
+///     fair and consistent regardless of which game was played.
 /// </summary>
 public class TowerDefenseManager : MonoBehaviour
 {
     [Header("Game Settings")]
-    public int startingHealth = 5;
+    public int startingHealth = 3;
     public float spearSpeed = 22f;
+
+    [Header("Win Condition")]
+    [Tooltip("Survive this many seconds with the tower still standing to win.")]
+    public float surviveDuration = 60f;
+
+    [Header("Existing sprites — drag your project's assets in")]
+    [Tooltip("Assets/Sprites/UI/heart — used for the lives HUD instead of a drawn placeholder.")]
+    public Sprite heartSprite;
+    [Tooltip("Assets/Sprites/UI/hourglass — used for the survival timer icon.")]
+    public Sprite hourglassSprite;
 
     // Single neutral tint passed to every fish — player must read the label
     private static readonly Color NeutralFishColor = new Color(0.55f, 0.82f, 0.95f);
@@ -39,6 +57,8 @@ public class TowerDefenseManager : MonoBehaviour
     public Sprite phishermanSprite;
     public Sprite speargunSprite;
     public Sprite whiteSprite;
+    [Tooltip("Assets/Sprites/Minigames/td_hanging_fish — hangs from each log banner as a child sprite.")]
+    public Sprite hangingFishSprite;
 
     [Header("Scene References")]
     public Transform spawnPoint;
@@ -81,7 +101,10 @@ public class TowerDefenseManager : MonoBehaviour
     private int score, health, combo, tutStep, currentWave, enemiesRemaining;
     private bool gameActive, spawning, advancingWave;
     private List<FishUnit> liveFish = new List<FishUnit>();
-    private List<Image> heartImages = new List<Image>();
+    private MinigameLivesHUD livesHUD;
+    private MinigameTimerHUD timerHUD;
+    private float surviveTimeRemaining;
+    private bool gameEnded;
 
     // Per-fish pool swim state
     private struct TowerFishState
@@ -93,9 +116,6 @@ public class TowerDefenseManager : MonoBehaviour
         public float ampX, ampY;
     }
     private List<TowerFishState> towerFishStates = new List<TowerFishState>();
-
-    private static readonly Color HeartFull = new Color(0.91f, 0.30f, 0.24f);
-    private static readonly Color HeartEmpty = new Color(0.40f, 0.40f, 0.45f);
 
     // ── Wave / password data ──
     struct ED
@@ -176,6 +196,16 @@ public class TowerDefenseManager : MonoBehaviour
     {
         if (!gameActive) return;
 
+        // Survival countdown — surviving the full duration with the tower
+        // still standing is the win condition, replacing the old "clear
+        // all waves" requirement.
+        surviveTimeRemaining -= Time.deltaTime;
+        timerHUD?.SetTime(surviveTimeRemaining);
+        if (surviveTimeRemaining <= 0f && !gameEnded)
+        {
+            WinGame();
+        }
+
         // Speargun tracks mouse
         if (speargunPivot != null)
         {
@@ -226,9 +256,25 @@ public class TowerDefenseManager : MonoBehaviour
     void StartGame()
     {
         score = 0; health = startingHealth; combo = 0;
-        currentWave = 0; gameActive = true;
+        currentWave = 0; gameActive = true; gameEnded = false;
+        surviveTimeRemaining = surviveDuration;
         hudPanel.SetActive(true);
-        SpawnHearts();
+
+        // Shrink the tower to 50% of whatever the designer set in the scene
+        if (towerRoot != null)
+            towerRoot.localScale = towerRoot.localScale * 0.5f;
+
+        // Consistent 3-heart HUD shared across every minigame — hide any
+        // legacy scene-wired hearts container so we don't double-render.
+        if (heartsContainer != null) heartsContainer.gameObject.SetActive(false);
+        livesHUD = gameObject.AddComponent<MinigameLivesHUD>();
+        livesHUD.Initialize(startingHealth, heartSprite);
+
+        // Top-right survival countdown
+        timerHUD = gameObject.AddComponent<MinigameTimerHUD>();
+        timerHUD.Initialize(hourglassSprite);
+        timerHUD.SetTime(surviveTimeRemaining);
+
         UpdateHUD();
         StartCoroutine(WaveDelay(1.5f));
         commentator?.Say("Read the label — shoot the weak passwords, let the strong ones through!");
@@ -314,6 +360,10 @@ public class TowerDefenseManager : MonoBehaviour
         SpawnPopup("+" + pts + (combo >= 3 ? " COMBO!" : ""), pos + Vector3.up,
             combo >= 3 ? new Color(1f, 0.85f, 0.1f) : new Color(0.3f, 1f, 0.5f));
         UpdateHUD();
+
+        // Sticker book — a scam fish was successfully speared; register hanging fish
+        PlayerProgress.RegisterFish("fish_hanging");
+
         if (combo == 3) commentator?.Say("Three in a row -- wonderful!");
         else if (combo == 6) commentator?.Say("Oh my, you are unstoppable!");
         else commentator?.SayRandom(new[] { "Got one!", "Nice shot, dear.", "That's the spirit!" });
@@ -332,6 +382,10 @@ public class TowerDefenseManager : MonoBehaviour
     public void OnGreenFishCollected(GameObject fishGO, Sprite fishSpr, bool isDefused = false)
     {
         SpawnTowerFish(fishSpr);
+
+        // Sticker book — a safe/strong-password fish joined the tower pool
+        PlayerProgress.RegisterFish(PlayerProgress.GetRandomNetFishId());
+
         if (!isDefused)
         {
             score += 5;
@@ -409,7 +463,26 @@ public class TowerDefenseManager : MonoBehaviour
                   fishNormalSprite, fishHappySprite, fishPuffedSprite, logSprite,
                   NeutralFishColor);
 
+        // Attach td_hanging_fish below the log banner as a child sprite
+        if (hangingFishSprite != null)
+        {
+            var hfGo = new GameObject("HangingFish");
+            hfGo.transform.SetParent(go.transform, false);
+            // Hang below the fish body — adjust y offset to taste
+            hfGo.transform.localPosition = new Vector3(0f, -0.30f, 0.01f);
+            hfGo.transform.localScale = new Vector3(0.55f, 0.55f, 1f);
+            var hfSR = hfGo.AddComponent<SpriteRenderer>();
+            hfSR.sprite = hangingFishSprite;
+            hfSR.color = Color.white;
+            hfSR.sortingOrder = 9; // just below the main fish body (order 10)
+        }
+
         liveFish.Add(fish);
+
+        // Sticker book — every log-banner fish counts as a fish_hanging encounter
+        PlayerProgress.RegisterFish("fish_hanging");
+        // Also a chance to discover the shark (always lurking in TD waters)
+        PlayerProgress.RegisterFish("fish_shark");
     }
 
     List<ED> BuildPool(int count, float scamRatio)
@@ -516,7 +589,7 @@ public class TowerDefenseManager : MonoBehaviour
     void TakeDamage()
     {
         health = Mathf.Max(0, health - 1);
-        UpdateHearts();
+        livesHUD?.LoseLife();
         SpawnCrack();
         StartCoroutine(ShakeTower(0.20f, 0.35f));
         if (health <= 0) StartCoroutine(BreakSequence());
@@ -578,8 +651,11 @@ public class TowerDefenseManager : MonoBehaviour
         if (advancingWave || !gameActive) return;
         advancingWave = true;
         currentWave++;
-        if (currentWave >= waves.Length) WinGame();
-        else StartCoroutine(NextWaveRoutine());
+        // Once all authored waves are spent, keep looping the final wave's
+        // difficulty rather than ending the game — surviving the full
+        // surviveDuration is what actually wins it now.
+        if (currentWave >= waves.Length) currentWave = waves.Length - 1;
+        StartCoroutine(NextWaveRoutine());
     }
 
     IEnumerator NextWaveRoutine()
@@ -592,28 +668,6 @@ public class TowerDefenseManager : MonoBehaviour
     // =================================================================
     // HUD
     // =================================================================
-
-    void SpawnHearts()
-    {
-        foreach (Transform t in heartsContainer) Destroy(t.gameObject);
-        heartImages.Clear();
-        for (int i = 0; i < startingHealth; i++)
-        {
-            var go = new GameObject("Life" + i, typeof(RectTransform));
-            go.transform.SetParent(heartsContainer, false);
-            var img = go.AddComponent<Image>();
-            img.color = HeartFull; img.raycastTarget = false; img.preserveAspect = true;
-            var le = go.AddComponent<LayoutElement>();
-            le.preferredWidth = le.preferredHeight = 38;
-            heartImages.Add(img);
-        }
-    }
-
-    void UpdateHearts()
-    {
-        for (int i = 0; i < heartImages.Count; i++)
-            heartImages[i].color = i < health ? HeartFull : HeartEmpty;
-    }
 
     void UpdateHUD()
     {
@@ -667,8 +721,32 @@ public class TowerDefenseManager : MonoBehaviour
     // End game
     // =================================================================
 
+    /// <summary>
+    /// Shared fair-scaling helper: how well did the player do vs the
+    /// maximum possible score for the waves faced so far? Returns 0-1.
+    /// Same accuracy-based approach used by every minigame manager.
+    /// </summary>
+    float ComputeAccuracy()
+    {
+        int maxPossible = 0;
+        // Only count waves the player actually reached
+        int wavesReached = Mathf.Min(currentWave + 1, waves.Length);
+        for (int i = 0; i < wavesReached; i++)
+        {
+            var w = waves[i];
+            int scamCount = Mathf.RoundToInt(w.count * w.scamRatio);
+            int safeCount = w.count - scamCount;
+            // Best case: every scam speared at combo (15) + every safe collected (5)
+            maxPossible += scamCount * 15 + safeCount * 5;
+        }
+        if (maxPossible <= 0) return 0f;
+        return Mathf.Clamp01((float)score / maxPossible);
+    }
+
     void GameOver()
     {
+        if (gameEnded) return;
+        gameEnded = true;
         gameActive = false;
         StopAllCoroutines();
         foreach (var f in liveFish) if (f != null) Destroy(f.gameObject);
@@ -679,10 +757,15 @@ public class TowerDefenseManager : MonoBehaviour
             "Your tower cracked! Weak passwords like '123456' let the bad fish through.\n" +
             "Strong passwords (symbols + numbers) keep them out.";
         commentator?.Say("The tower fell! We'll be stronger next time, dear.");
+
+        // Queue XP even on a loss — partial credit for progress made
+        PlayerProgress.QueueFromPerformance(ComputeAccuracy());
     }
 
     void WinGame()
     {
+        if (gameEnded) return;
+        gameEnded = true;
         gameActive = false;
         winPanel.SetActive(true);
         int max = 0;
@@ -693,6 +776,9 @@ public class TowerDefenseManager : MonoBehaviour
         commentator?.Say(pct >= 0.9f
             ? "Perfect defence! The tower is safe, dear."
             : "We did it! Strong passwords saved the day.");
+
+        // Queue fair XP based on overall accuracy across all waves
+        PlayerProgress.QueueFromPerformance(ComputeAccuracy());
     }
 
     public void OnRetry() { SceneManager.LoadScene("TowerDefense"); }

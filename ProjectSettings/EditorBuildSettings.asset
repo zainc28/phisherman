@@ -35,6 +35,45 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/WorldMap2.unity
     guid: d34ad36bf23250244a0f2e7e5d02e15e
+  - enabled: 1
+    path: Assets/Scenes/Backstory.unity
+    guid: 9790aeaea870f9c4fa5bf57e35a7c542
+  - enabled: 1
+    path: Assets/Scenes/WorldMap3.unity
+    guid: 65d5ee284754a274ca572ac1d994c764
+  - enabled: 1
+    path: Assets/Scenes/WorldMap4.unity
+    guid: f9002f3ae78432e489fb75dc2f636253
+  - enabled: 1
+    path: Assets/Scenes/WorldMap5.unity
+    guid: b8d7e0ae1d45a924dad8a4c7bf3ac05b
+  - enabled: 1
+    path: Assets/Scenes/AuntCarolInterior.unity
+    guid: d0e16c9ebde0cb64c81bbad33b9ede78
+  - enabled: 1
+    path: Assets/Scenes/UncleMarcusInterior.unity
+    guid: 48b1a584ad3656741b1ceb0adcb7e640
+  - enabled: 1
+    path: Assets/Scenes/GrandpaLouInterior.unity
+    guid: f8008ea613a456646a8ad9d34375ba4a
+  - enabled: 1
+    path: Assets/Scenes/GrandmaIrisInterior.unity
+    guid: 42e6e458159c11740a19bd4426fd6b8c
+  - enabled: 1
+    path: Assets/Scenes/UncleFelixInterior.unity
+    guid: 55d33411fa294a4439f18dfb5a23e7a9
+  - enabled: 1
+    path: Assets/Scenes/AuntDanaInterior.unity
+    guid: 6fd0a3dd443b3dc41845ddb45c0b5145
+  - enabled: 1
+    path: Assets/Scenes/GrandpaErnestInterior.unity
+    guid: 49c25aa297ad7544f85b029eb98fa8c4
+  - enabled: 1
+    path: Assets/Scenes/AuntPriyaInterior.unity
+    guid: 97f7af77bf761af4c86a958a5b6f3d8a
+  - enabled: 1
+    path: Assets/Scenes/UncleDiegoInterior.unity
+    guid: c4a11bd716519984d8af2d8ed1b050ce
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
   m_UseUCBPForAssetBundles: 0
