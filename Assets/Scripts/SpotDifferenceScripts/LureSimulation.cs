@@ -3,99 +3,122 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// LureSimulation.cs  —  Cage & Diver edition
+/// LureSimulation.cs — Cage & Diver edition
 ///
-/// Layout (all positions are normalised fractions of the sim panel rect):
-///
-///   RIGHT SIDE  (nx ≈ 0.78)  Phisherman diver swims up-and-down idly.
-///   CENTRE-LEFT (nx ≈ 0.30)  Shark lurks inside a cage.
-///
-/// Game flow
-///   • Start   : cage drops from top and lands over the shark.
-///   • Wrong ×1: cage lifts one third of the way up  (shark visible below bars).
-///   • Wrong ×2: cage lifts two thirds.
-///   • Wrong ×3: cage fully lifted → shark swims free → breach animation.
-///   • Periodically the shark bangs the cage bars (idle taunt).
-///   • Success  : diver gives a thumbs-up bob; shark stays caged.
+/// FIX: Shark Update now sets both X and Y from NormToLocal every frame
+///      (previously only set X, leaving Y stuck at the pre-layout zero).
+/// FIX: Cage stays at rest position during breach — no fly-off or sink.
+/// FIX: NormToLocal defers positioning until panelRT.rect is valid
+///      (avoids first-frame zero-rect placing everything at centre).
 /// </summary>
 public class LureSimulation : MonoBehaviour
 {
-    // ── References wired by the builder ──────────────────────────────────────
     [Header("References — wired by builder")]
-    public RectTransform rodLineRT;      // kept for compatibility (hidden / unused)
-    public RectTransform hookRT;         // kept for compatibility (hidden / unused)
-    public RectTransform[] debrisLayers; // not used in cage edition — kept so builder compiles
-    public Image[] debrisImages; // not used in cage edition — kept so builder compiles
+    public RectTransform rodLineRT;
+    public RectTransform hookRT;
+    public RectTransform[] debrisLayers;
+    public Image[] debrisImages;
 
     public RectTransform sharkRT;
     public Image sharkImage;
-    public RectTransform panelRT;        // sim root RectTransform (for size look-up)
+    public RectTransform panelRT;
 
-    // Cage visuals — four bars + a base, all children of the panel
-    public RectTransform cageRT;         // the whole cage group
-    public Image[] cageBars;       // 3 horizontal bars; index 0 = bottom bar
-    public Image cageBase;       // solid floor of the cage
-    public Image cageShadow;     // subtle shadow beneath cage
+    public RectTransform cageRT;
+    public Image cageImage;
+    public Sprite cageSprite;
+    public Sprite cagedamaged1;
+    public Sprite cagedamaged2;
+    public Sprite cagedamaged3;
 
-    // Diver (phisherman sprite)
+    // Legacy fields kept for compile compatibility
+    public Image[] cageBars;
+    public Image cageBase;
+    public Image cageShadow;
+
     public RectTransform diverRT;
     public Image diverImage;
+    public Sprite diverNormal;
+    public Sprite diverPointing;
+    public Sprite diverScared;
 
-    // Audio callbacks
     [Header("Audio callbacks")]
     public System.Action onImpact;
     public System.Action onRodWinding;
+    public System.Action onWrongClick;
 
     [Header("Settings")]
     public float totalTime = 60f;
 
-    // ── Private state ─────────────────────────────────────────────────────────
+    // ── Private state ─────────────────────────────────────────────────
     private int _wrongClicks;
     private bool _active;
     private bool _resolved;
     private float _idleTimer;
     private float _bangCooldown;
     private float _diverBobTimer;
+    private bool _layoutReady;      // FIX: true once panelRT.rect is valid
 
-    // Cage lift stages (normalised Y offsets added to cage rest position)
-    // 0 = fully down (shark trapped), 1.0 = fully lifted
-    private static readonly float[] CageLiftNY = { 0f, 0.28f, 0.56f, 1.0f };
-
-    // Cage rest position (normalised, in panel space)
     private const float CageNX = 0.30f;
-    private const float CageNYRest = 0.10f;   // cage bottom sits here when fully down
-    private const float CageNYTop = 0.90f;   // cage top anchor when fully raised
+    private const float CageNYRest = 0.10f;
+    private const float CageNYTop = 0.90f;
 
-    // Shark rests at the cage centre
     private const float SharkNX = 0.30f;
     private const float SharkNYRest = 0.38f;
 
-    // Diver swims on the right
     private const float DiverNX = 0.78f;
     private const float DiverNYMid = 0.50f;
-    private const float DiverBobAmp = 0.10f;   // normalised units
+    private const float DiverBobAmp = 0.10f;
     private const float DiverBobFreq = 0.55f;
 
-    // Bar colours
-    private static readonly Color BarSafe = new Color(0.72f, 0.58f, 0.22f, 0.92f);  // gold bars
-    private static readonly Color BarStressed = new Color(0.85f, 0.40f, 0.10f, 0.95f);  // orange-red when shark bangs
-    private static readonly Color BarShattered = new Color(0.92f, 0.20f, 0.10f, 1.00f);  // red when fully lifted
-
-    // ==========================================================================
-    // Helpers — normalised panel coords → anchoredPosition
-    // ==========================================================================
+    // =================================================================
+    // Helpers
+    // =================================================================
 
     Vector2 NormToLocal(float nx, float ny)
     {
         Rect r = panelRT != null ? panelRT.rect : new Rect(0, 0, 1920, 291);
-        return new Vector2(
-            (nx - 0.5f) * r.width,
-            (ny - 0.5f) * r.height);
+        return new Vector2((nx - 0.5f) * r.width, (ny - 0.5f) * r.height);
     }
 
-    // ==========================================================================
+    /// <summary>Returns true once panelRT.rect has non-zero dimensions.</summary>
+    bool CheckLayoutReady()
+    {
+        if (_layoutReady) return true;
+        if (panelRT == null) return false;
+        Rect r = panelRT.rect;
+        if (r.width > 1f && r.height > 1f)
+        {
+            _layoutReady = true;
+
+            // Now that layout is valid, place everything at its correct
+            // starting position (StartSim may have run before layout).
+            if (_active) ApplyInitialPositions();
+            return true;
+        }
+        return false;
+    }
+
+    void ApplyInitialPositions()
+    {
+        if (sharkRT != null)
+            sharkRT.anchoredPosition = NormToLocal(SharkNX, SharkNYRest);
+        if (diverRT != null)
+            diverRT.anchoredPosition = NormToLocal(DiverNX, DiverNYMid);
+        // Cage is handled by the DropCage coroutine.
+    }
+
+    // =================================================================
+    // Start
+    // =================================================================
+
+    void Start()
+    {
+        // No idle bob coroutine needed — Update handles all positioning.
+    }
+
+    // =================================================================
     // Public API
-    // ==========================================================================
+    // =================================================================
 
     public void StartSim(int maxLives, int totalFlags)
     {
@@ -105,24 +128,23 @@ public class LureSimulation : MonoBehaviour
         _idleTimer = 0f;
         _bangCooldown = 0f;
         _diverBobTimer = 0f;
+        _layoutReady = false;
 
-        // Place shark at rest
+        // Try to place now; if rect isn't valid yet, CheckLayoutReady
+        // will do it on the first Update after layout.
+        CheckLayoutReady();
+
         if (sharkRT != null)
             sharkRT.anchoredPosition = NormToLocal(SharkNX, SharkNYRest);
-
-        // Place diver
         if (diverRT != null)
             diverRT.anchoredPosition = NormToLocal(DiverNX, DiverNYMid);
 
-        // Reset cage bars
-        if (cageBars != null)
-            foreach (var bar in cageBars)
-                if (bar != null) bar.color = BarSafe;
+        SetDiverSprite(diverPointing);
+        SetCageSprite(cageSprite);
 
-        // Drop cage from above
         if (cageRT != null)
         {
-            cageRT.anchoredPosition = NormToLocal(CageNX, CageNYTop + 0.25f); // start above panel
+            cageRT.anchoredPosition = NormToLocal(CageNX, CageNYTop + 0.25f);
             cageRT.gameObject.SetActive(true);
             StartCoroutine(DropCage());
         }
@@ -134,26 +156,23 @@ public class LureSimulation : MonoBehaviour
     {
         if (_resolved) return;
         _wrongClicks = Mathf.Min(_wrongClicks + 1, 3);
-        StartCoroutine(LiftCage(_wrongClicks));
 
-        // Colour bars progressively
-        if (cageBars != null)
+        switch (_wrongClicks)
         {
-            for (int i = 0; i < cageBars.Length; i++)
-            {
-                if (cageBars[i] == null) continue;
-                cageBars[i].color = (_wrongClicks >= 3) ? BarShattered
-                                  : (_wrongClicks >= 2) ? BarStressed
-                                  : BarSafe;
-            }
+            case 1: SetCageSprite(cagedamaged1); break;
+            case 2: SetCageSprite(cagedamaged2); break;
+            case 3: SetCageSprite(cagedamaged3); break;
         }
+
+        StartCoroutine(ShakeRT(cageRT, 0.30f, 14f));
+        onImpact?.Invoke();
+        onWrongClick?.Invoke();
+        StartCoroutine(DiverScaredBriefly());
     }
 
     public void OnCorrectFind(int findIndex)
     {
-        // No hook mechanic in cage edition — kept for API compatibility
         if (_resolved) return;
-        // Optional: diver does a small celebratory bob
         StartCoroutine(DiverCelebrate());
     }
 
@@ -173,34 +192,38 @@ public class LureSimulation : MonoBehaviour
         StartCoroutine(BreachSequence());
     }
 
-    // ==========================================================================
-    // Update — idle animations
-    // ==========================================================================
+    // =================================================================
+    // Update — FIX: sets both X and Y for shark every frame, and
+    // defers positioning until layout is ready.
+    // =================================================================
 
     void Update()
     {
         if (!_active) return;
 
+        // Wait for layout so NormToLocal returns real coordinates.
+        if (!CheckLayoutReady()) return;
+
         _idleTimer += Time.deltaTime;
         _bangCooldown -= Time.deltaTime;
         _diverBobTimer += Time.deltaTime;
 
-        // Diver bobs up and down
+        // ── Diver bob ────────────────────────────────────────────────
         if (diverRT != null)
         {
             float bobY = Mathf.Sin(_diverBobTimer * DiverBobFreq * Mathf.PI * 2f) * DiverBobAmp;
             diverRT.anchoredPosition = NormToLocal(DiverNX, DiverNYMid + bobY);
         }
 
-        // Shark idle sway (small horizontal wiggle inside cage)
+        // ── Shark idle sway — FIX: sets BOTH x and y ─────────────────
         if (sharkRT != null && !_resolved)
         {
             float sway = Mathf.Sin(_idleTimer * 1.2f) * 5f;
             Vector2 rest = NormToLocal(SharkNX, SharkNYRest);
-            sharkRT.anchoredPosition = new Vector2(rest.x + sway, sharkRT.anchoredPosition.y);
+            sharkRT.anchoredPosition = new Vector2(rest.x + sway, rest.y);
         }
 
-        // Periodic shark bang — more frequent with each wrong click
+        // ── Shark bang timer ─────────────────────────────────────────
         float bangInterval = Mathf.Lerp(5.5f, 1.8f, _wrongClicks / 3f);
         if (_bangCooldown <= 0f && !_resolved)
         {
@@ -209,17 +232,48 @@ public class LureSimulation : MonoBehaviour
         }
     }
 
-    // ==========================================================================
-    // Cage drop (start of game)
-    // ==========================================================================
+    // =================================================================
+    // Sprite helpers
+    // =================================================================
+
+    void SetDiverSprite(Sprite spr)
+    {
+        if (diverImage == null || spr == null) return;
+        diverImage.sprite = spr;
+    }
+
+    void SetCageSprite(Sprite spr)
+    {
+        if (cageImage == null || spr == null) return;
+        cageImage.sprite = spr;
+    }
+
+    // =================================================================
+    // Diver scared briefly (wrong click)
+    // =================================================================
+
+    IEnumerator DiverScaredBriefly()
+    {
+        SetDiverSprite(diverScared);
+        yield return new WaitForSeconds(2.0f);
+        if (!_resolved) SetDiverSprite(diverNormal);
+    }
+
+    // =================================================================
+    // Cage drop
+    // =================================================================
 
     IEnumerator DropCage()
     {
         if (cageRT == null) yield break;
-        Vector2 start = cageRT.anchoredPosition;
+
+        // Wait for layout so start/target positions are correct.
+        while (!_layoutReady) yield return null;
+
+        Vector2 start = NormToLocal(CageNX, CageNYTop + 0.25f);
+        cageRT.anchoredPosition = start;
         Vector2 target = CageRestPos();
-        float dur = 0.55f;
-        float t = 0f;
+        float dur = 0.55f, t = 0f;
 
         while (t < dur)
         {
@@ -230,102 +284,52 @@ public class LureSimulation : MonoBehaviour
         }
         cageRT.anchoredPosition = target;
 
-        // Thud shake
         onImpact?.Invoke();
         StartCoroutine(ShakeRT(cageRT, 0.28f, 10f));
+
+        yield return new WaitForSeconds(0.4f);
+        SetDiverSprite(diverNormal);
     }
 
     Vector2 CageRestPos() => NormToLocal(CageNX, CageNYRest);
 
-    Vector2 CageLiftedPos(int wrongCount)
-    {
-        float liftFraction = wrongCount < CageLiftNY.Length
-            ? CageLiftNY[wrongCount] : 1f;
-        float ny = Mathf.Lerp(CageNYRest, CageNYTop, liftFraction);
-        return NormToLocal(CageNX, ny);
-    }
-
-    // ==========================================================================
-    // Cage lift (per wrong click)
-    // ==========================================================================
-
-    IEnumerator LiftCage(int wrongCount)
-    {
-        if (cageRT == null) yield break;
-        onRodWinding?.Invoke();
-
-        Vector2 start = cageRT.anchoredPosition;
-        Vector2 target = CageLiftedPos(wrongCount);
-        float dur = 0.50f;
-        float t = 0f;
-
-        while (t < dur)
-        {
-            t += Time.deltaTime;
-            float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / dur), 3f);
-            cageRT.anchoredPosition = Vector2.Lerp(start, target, p);
-            yield return null;
-        }
-        cageRT.anchoredPosition = target;
-
-        // Brief cage shake after lift
-        StartCoroutine(ShakeRT(cageRT, 0.22f, 8f));
-        onImpact?.Invoke();
-    }
-
-    // ==========================================================================
-    // Shark bangs the cage
-    // ==========================================================================
+    // =================================================================
+    // Shark bangs cage
+    // =================================================================
 
     IEnumerator SharkBangCage()
     {
         if (sharkRT == null || _resolved) yield break;
 
         Vector2 restPos = NormToLocal(SharkNX, SharkNYRest);
-
-        // Lunge toward cage bar on the right side
         Rect r = panelRT != null ? panelRT.rect : new Rect(0, 0, 1920, 291);
         Vector2 lungeTarget = restPos + new Vector2(r.width * 0.08f, 0f);
 
-        // Quick lunge right
         float t = 0f;
         while (t < 0.10f)
         {
             t += Time.deltaTime;
-            if (sharkRT != null)
-                sharkRT.anchoredPosition = Vector2.Lerp(restPos, lungeTarget, t / 0.10f);
+            if (sharkRT != null) sharkRT.anchoredPosition = Vector2.Lerp(restPos, lungeTarget, t / 0.10f);
             yield return null;
         }
 
-        // Flash bars orange
         onImpact?.Invoke();
-        if (cageBars != null && _wrongClicks < 3)
-        {
-            foreach (var bar in cageBars) if (bar != null) bar.color = BarStressed;
-        }
         if (cageRT != null) StartCoroutine(ShakeRT(cageRT, 0.20f, 12f));
 
-        // Recoil back
         t = 0f;
         while (t < 0.25f)
         {
             t += Time.deltaTime;
             float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / 0.25f), 2f);
-            if (sharkRT != null)
-                sharkRT.anchoredPosition = Vector2.Lerp(lungeTarget, restPos, p);
+            if (sharkRT != null) sharkRT.anchoredPosition = Vector2.Lerp(lungeTarget, restPos, p);
             yield return null;
         }
         if (sharkRT != null) sharkRT.anchoredPosition = restPos;
-
-        // Restore bar colour after a beat
-        yield return new WaitForSeconds(0.35f);
-        if (cageBars != null && _wrongClicks < 3)
-            foreach (var bar in cageBars) if (bar != null) bar.color = BarSafe;
     }
 
-    // ==========================================================================
-    // Diver celebratory bob
-    // ==========================================================================
+    // =================================================================
+    // Diver celebrate
+    // =================================================================
 
     IEnumerator DiverCelebrate()
     {
@@ -342,13 +346,12 @@ public class LureSimulation : MonoBehaviour
         diverRT.anchoredPosition = origin;
     }
 
-    // ==========================================================================
-    // Success sequence — cage stays down, diver cheers
-    // ==========================================================================
+    // =================================================================
+    // Success sequence
+    // =================================================================
 
     IEnumerator SuccessSequence()
     {
-        // Diver big bob + shake cage triumphantly
         if (diverRT != null)
         {
             Vector2 orig = diverRT.anchoredPosition;
@@ -357,47 +360,48 @@ public class LureSimulation : MonoBehaviour
             {
                 t += Time.deltaTime;
                 float bump = Mathf.Sin(t / 0.7f * Mathf.PI * 2f) * 22f;
-                if (diverRT != null)
-                    diverRT.anchoredPosition = orig + new Vector2(0f, bump);
+                if (diverRT != null) diverRT.anchoredPosition = orig + new Vector2(0f, bump);
                 yield return null;
             }
             if (diverRT != null) diverRT.anchoredPosition = orig;
         }
 
         if (cageRT != null) StartCoroutine(ShakeRT(cageRT, 0.4f, 6f));
-        if (cageBars != null)
-            foreach (var bar in cageBars) if (bar != null) bar.color = BarSafe;
+        SetCageSprite(cageSprite);
     }
 
-    // ==========================================================================
-    // Breach sequence — cage fully lifted, shark swims free toward diver
-    // ==========================================================================
+    // =================================================================
+    // Breach sequence — FIX: cage stays at rest, only shark + diver move
+    // =================================================================
 
     IEnumerator BreachSequence()
     {
-        // 1. Flash all bars red
-        if (cageBars != null)
-            foreach (var bar in cageBars) if (bar != null) bar.color = BarShattered;
+        SetCageSprite(cagedamaged3);
+        SetDiverSprite(diverScared);
 
-        // 2. Lift cage all the way off screen
-        if (cageRT != null)
+        // Shake cage violently but keep it in place
+        if (cageRT != null) StartCoroutine(ShakeRT(cageRT, 0.30f, 20f));
+        yield return new WaitForSeconds(0.15f);
+
+        // Shark moves through cage position
+        if (sharkRT != null)
         {
-            Vector2 start = cageRT.anchoredPosition;
-            Vector2 target = NormToLocal(CageNX, CageNYTop + 0.60f);
+            Vector2 startShark = sharkRT.anchoredPosition;
+            Vector2 throughCage = NormToLocal(CageNX + 0.18f, SharkNYRest);
             float t = 0f;
-            while (t < 0.38f)
+            while (t < 0.25f)
             {
                 t += Time.deltaTime;
-                float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / 0.38f), 3f);
-                if (cageRT != null) cageRT.anchoredPosition = Vector2.Lerp(start, target, p);
+                if (sharkRT != null)
+                    sharkRT.anchoredPosition = Vector2.Lerp(startShark, throughCage, t / 0.25f);
                 yield return null;
             }
         }
 
         onImpact?.Invoke();
-        yield return new WaitForSeconds(0.15f);
+        yield return new WaitForSeconds(0.10f);
 
-        // 3. Shark charges toward diver (right side)
+        // Shark charges toward diver
         if (sharkRT != null)
         {
             Vector2 start = sharkRT.anchoredPosition;
@@ -407,17 +411,15 @@ public class LureSimulation : MonoBehaviour
             {
                 t += Time.deltaTime;
                 float p = Mathf.Clamp01(t / 0.35f);
-                if (sharkRT != null)
-                    sharkRT.anchoredPosition = Vector2.Lerp(start, target, p * p);
+                if (sharkRT != null) sharkRT.anchoredPosition = Vector2.Lerp(start, target, p * p);
                 yield return null;
             }
         }
 
         onImpact?.Invoke();
-        // Diver shakes in panic
         if (diverRT != null) StartCoroutine(ShakeRT(diverRT, 0.5f, 14f));
 
-        // 4. Sink everything off the bottom of the panel
+        // Sink shark and diver off screen — cage stays in place
         yield return new WaitForSeconds(0.25f);
         float sink = 0f;
         Rect pr = panelRT != null ? panelRT.rect : new Rect(0, 0, 1920, 291);
@@ -429,14 +431,13 @@ public class LureSimulation : MonoBehaviour
             Vector2 d = new Vector2(speed * 0.1f, -speed) * Time.deltaTime;
             if (sharkRT != null) sharkRT.anchoredPosition += d;
             if (diverRT != null) diverRT.anchoredPosition += d;
-            if (cageRT != null) cageRT.anchoredPosition += d;
             yield return null;
         }
     }
 
-    // ==========================================================================
+    // =================================================================
     // Shake utility
-    // ==========================================================================
+    // =================================================================
 
     IEnumerator ShakeRT(RectTransform rt, float dur, float intensity)
     {

@@ -12,31 +12,22 @@ using UnityEngine.UI;
 /// <summary>
 /// Builds the Spot the Difference scene — Detective Dossier theme.
 ///
-/// Visual language: manila folder, dark brown HUD, "CLASSIFIED" stamp,
-/// dashed inner borders, monospace case number, red pen circles on found flags.
-///
-/// Layout (bottom → top):
-///   0%   – 27%  Cage + diver simulation panel
-///   27%  – 29%  Sim hint strip
-///   29%  – 89%  Email panels (real vs phishing) inside folder
-///   89%  – 93%  Evidence log strip
-///   93%  – 100% HUD bar
-///
-/// Sim revamp (cage edition):
-///   • Phisherman diver swims idly on the RIGHT side of the sim panel.
-///   • A shark sits in the CENTRE-LEFT behind cage bars.
-///   • At Start, a cage drops from above and traps the shark.
-///   • Each wrong click lifts the cage one stage (3 stages = fully free).
-///   • The shark periodically bangs the cage bars to pressure the player.
-///   • Success: diver cheers, cage stays locked.
-///   • Breach (3 wrong / time out): cage rises, shark charges the diver.
+/// FIX: Shark/diver/cage anchors at (0.5,0.5) so NormToLocal works.
+/// FIX: Viewport raycastTarget always true so both pages can scroll.
+/// FIX: Marker hit zones reduced from ±12 to ±4 so adjacent found
+///      markers don't swallow clicks meant for unfound neighbours.
+/// FIX: Cage size increased 50%.
+/// FIX: force an immediate layout rebuild after building each email's
+///      scroll content (see BuildEmailPanel) — without this, the
+///      ContentSizeFitter can still hold a stale/undersized content
+///      height when the ScrollRect first measures it, making that
+///      panel appear non-scrollable even though it has overflow.
 /// </summary>
 public static class SpotDifferenceBuilder
 {
     private const string ScenesDir = "Assets/Scenes";
     private const string ScenePath = "Assets/Scenes/SpotDifference.unity";
 
-    // ── Detective Dossier palette ──────────────────────────────────────
     private static readonly Color HudDark = Hex("#1A140E");
     private static readonly Color HudBorder = Hex("#8B6914");
     private static readonly Color FolderOuter = Hex("#C8A96E");
@@ -60,24 +51,12 @@ public static class SpotDifferenceBuilder
     private static readonly Color CtaScam = Hex("#B71C1C");
     private static readonly Color EvidenceBg = Hex("#2B1F0E");
     private static readonly Color EvidenceGold = Hex("#C8A060");
-    // Sim palette — deep ocean
     private static readonly Color SimDeep = Hex("#071824");
     private static readonly Color SimMid = Hex("#0A2840");
     private static readonly Color SimHintBg = new Color(0.18f, 0.28f, 0.40f, 0.85f);
-    // Cage palette
-    private static readonly Color CageBarColor = Hex("#C8A060");          // gold bars
-    private static readonly Color CageBaseColor = new Color(0.55f, 0.35f, 0.10f, 0.95f); // dark wood base
-    private static readonly Color CageShadowC = new Color(0f, 0f, 0f, 0.30f);
-    // Other sim colours
-    private static readonly Color RodLineColor = new Color(0.85f, 0.70f, 0.40f, 0.90f);
-    private static readonly Color HookColor = Hex("#C8A060");
-    private static readonly Color HeartFull = new Color(0.75f, 0.18f, 0.18f);
     private static readonly Color PenRed = Hex("#C0392B");
     private static readonly Color OverlayColor = new Color(0f, 0f, 0f, 0.72f);
-
-    // =================================================================
-    // Build entry-point
-    // =================================================================
+    private static readonly Color HeartRed = new Color(0.75f, 0.18f, 0.18f);
 
     [MenuItem("Phisherman/Build Spot the Difference Scene")]
     public static void Build()
@@ -86,27 +65,42 @@ public static class SpotDifferenceBuilder
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
         Sprite spCircle = TryGetCircleSprite();
-        Sprite spPhisherman = FindSprite("phisherman");
-        Sprite spMagGlass = FindSprite("magnifying_glass");
-        Sprite spFish = FindSprite("fish_normal") ?? FindSprite("td_hanging_fish");
-        Sprite spShark = FindSprite("shark");
-        LogFound("phisherman", spPhisherman);
-        LogFound("magnifying_glass", spMagGlass);
-        LogFound("fish", spFish);
-        LogFound("shark", spShark);
 
-        // Camera
+        Sprite spDiverNormal = FindSprite("phisherman_underwater");
+        Sprite spDiverPointing = FindSprite("phisherman_underwater_pointing");
+        Sprite spDiverScared = FindSprite("phisherman_underwater_slightly_scared");
+        if (spDiverNormal == null) spDiverNormal = FindSprite("phisherman");
+        if (spDiverPointing == null) spDiverPointing = spDiverNormal;
+        if (spDiverScared == null) spDiverScared = spDiverNormal;
+
+        Sprite spCage = FindSprite("cage");
+        Sprite spCaged1 = FindSprite("cage_damaged_1");
+        Sprite spCaged2 = FindSprite("cage_damaged_2");
+        Sprite spCaged3 = FindSprite("cage_damaged_3");
+
+        Sprite spMagGlass = FindSprite("magnifying_glass");
+        Sprite spShark = FindSprite("shark");
+        Sprite spHeart = FindSprite("heart");
+
+        LogFound("phisherman_underwater", spDiverNormal);
+        LogFound("phisherman_underwater_pointing", spDiverPointing);
+        LogFound("phisherman_underwater_slightly_scared", spDiverScared);
+        LogFound("cage", spCage);
+        LogFound("cage_damaged_1", spCaged1);
+        LogFound("cage_damaged_2", spCaged2);
+        LogFound("cage_damaged_3", spCaged3);
+        LogFound("shark", spShark);
+        LogFound("heart", spHeart);
+
         var camGo = new GameObject("Main Camera"); camGo.tag = "MainCamera";
         var cam = camGo.AddComponent<Camera>(); camGo.AddComponent<AudioListener>();
         cam.clearFlags = CameraClearFlags.SolidColor;
         cam.backgroundColor = Hex("#1A140E");
         cam.orthographic = true;
 
-        // EventSystem
         var es = new GameObject("EventSystem");
         es.AddComponent<EventSystem>(); es.AddComponent<StandaloneInputModule>();
 
-        // Canvas
         var canvasGo = new GameObject("Canvas");
         var canvas = canvasGo.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceCamera;
@@ -119,7 +113,6 @@ public static class SpotDifferenceBuilder
         canvasGo.AddComponent<GraphicRaycaster>();
         var canvasRT = canvasGo.GetComponent<RectTransform>();
 
-        // Manager
         var mgrGo = new GameObject("GameManager");
         var manager = mgrGo.AddComponent<SpotDifferenceManager>();
         var sfxSrc = mgrGo.AddComponent<AudioSource>(); sfxSrc.playOnAwake = false;
@@ -130,26 +123,19 @@ public static class SpotDifferenceBuilder
         manager.mainCanvas = canvas;
         manager.mainCanvasRT = canvasRT;
         manager.circleSprite = spCircle;
+        manager.heartSprite = spHeart;
         manager.sfxSource = sfxSrc;
         manager.sfxSplash = FindAudioClip("water_splash");
         manager.sfxWrong = FindAudioClip("glass_crack");
         manager.sfxImpact = FindAudioClip("impact");
         manager.sfxRodWinding = FindAudioClip("fishing_rod_winding");
 
-        // Background
         var bgImg = AddImage(canvasRT, "Background", HudDark);
         Stretch(bgImg.rectTransform); bgImg.raycastTarget = false;
 
-        // HUD
-        BuildHud(canvasRT, manager, spPhisherman, spMagGlass, spCircle);
-
-        // Evidence log strip
-        BuildEvidenceStrip(canvasRT, manager);
-
-        // Folder + email panels
+        BuildHud(canvasRT, manager, spDiverNormal, spMagGlass, spCircle, spHeart);
         BuildFolder(canvasRT, manager);
 
-        // Sim hint strip
         var simHintBg = AddImage(canvasRT, "SimHintBg", SimHintBg);
         var shrt = simHintBg.rectTransform;
         shrt.anchorMin = new Vector2(0, 0.27f); shrt.anchorMax = new Vector2(1, 0.29f);
@@ -159,10 +145,12 @@ public static class SpotDifferenceBuilder
             19, new Color(0.90f, 0.90f, 1f), TextAlignmentOptions.Center, FontStyles.Italic);
         Stretch(simHintTxt.rectTransform); simHintTxt.raycastTarget = false;
 
-        // Cage + diver simulation
-        BuildSimulation(canvasRT, manager, spPhisherman, spShark, spCircle);
+        BuildSimulation(canvasRT, manager,
+            spDiverNormal, spDiverPointing, spDiverScared,
+            spShark,
+            spCage, spCaged1, spCaged2, spCaged3,
+            spCircle);
 
-        // Effect layer (water drips)
         var effectLayerGo = new GameObject("EffectLayer", typeof(RectTransform));
         effectLayerGo.transform.SetParent(canvasRT, false);
         Stretch(effectLayerGo.GetComponent<RectTransform>());
@@ -171,10 +159,6 @@ public static class SpotDifferenceBuilder
         eImg.color = new Color(0, 0, 0, 0); eImg.raycastTarget = false;
         manager.effectLayer = effectLayerGo.GetComponent<RectTransform>();
 
-        // Magnifying glass overlay
-        BuildMagnifyingGlass(canvasRT, manager, spMagGlass, spCircle);
-
-        // Feedback popup
         var feedback = AddText(canvasRT, "Feedback", string.Empty,
             38, Color.green, TextAlignmentOptions.Center, FontStyles.Bold);
         var fbRT = feedback.rectTransform;
@@ -182,12 +166,9 @@ public static class SpotDifferenceBuilder
         fbRT.pivot = new Vector2(0.5f, 1); fbRT.sizeDelta = new Vector2(1100, 56);
         fbRT.anchoredPosition = new Vector2(0, -118); feedback.raycastTarget = false;
 
-        // Result panel
         var resultPanel = BuildResultPanel(canvasRT, manager);
 
-        // Commentator
-        manager.commentator = BuildCommentator(canvasRT);
-
+        manager.commentator = BuildHiddenCommentator(canvasRT);
         manager.feedbackText = feedback;
         manager.resultPanel = resultPanel;
 
@@ -203,8 +184,10 @@ public static class SpotDifferenceBuilder
     // =================================================================
 
     static void BuildHud(RectTransform parent, SpotDifferenceManager manager,
-        Sprite spPhisherman, Sprite spMagGlass, Sprite spCircle)
+        Sprite spPhisherman, Sprite spMagGlass, Sprite spCircle, Sprite spHeart)
     {
+        Sprite spHourglass = FindSprite("hourglass");
+
         var hud = AddImage(parent, "HUD", HudDark);
         AnchorTopStretch(hud.rectTransform, 100);
         hud.raycastTarget = false;
@@ -215,73 +198,12 @@ public static class SpotDifferenceBuilder
         brt.pivot = new Vector2(0.5f, 0); brt.sizeDelta = new Vector2(0, 2);
         border.raycastTarget = false;
 
-        float phX = 24f;
-        if (spPhisherman != null)
-        {
-            var phH = new GameObject("PhishermanHolder", typeof(RectTransform));
-            phH.transform.SetParent(hud.rectTransform, false);
-            var phRT = phH.GetComponent<RectTransform>();
-            phRT.anchorMin = new Vector2(0, 0); phRT.anchorMax = new Vector2(0, 1);
-            phRT.pivot = new Vector2(0, 0.5f); phRT.sizeDelta = new Vector2(70, 0);
-            phRT.anchoredPosition = new Vector2(14, 0);
-
-            var noMag = NewGO("NoMagGlass", phH.transform); Stretch(noMag.GetComponent<RectTransform>());
-            var wMag = NewGO("WithMagGlass", phH.transform); Stretch(wMag.GetComponent<RectTransform>());
-            var nmI = noMag.AddComponent<Image>(); nmI.sprite = spPhisherman; nmI.preserveAspect = true; nmI.raycastTarget = false;
-            var wmI = wMag.AddComponent<Image>(); wmI.sprite = spPhisherman; wmI.preserveAspect = true; wmI.raycastTarget = false;
-            if (spMagGlass != null)
-            {
-                var mgi = NewGO("MagIcon", wMag.transform);
-                var mgRT = mgi.GetComponent<RectTransform>();
-                mgRT.anchorMin = mgRT.anchorMax = new Vector2(1, 0); mgRT.pivot = new Vector2(1, 0);
-                mgRT.sizeDelta = new Vector2(28, 28); mgRT.anchoredPosition = new Vector2(-2, 2);
-                var mgImg = mgi.AddComponent<Image>(); mgImg.sprite = spMagGlass; mgImg.preserveAspect = true; mgImg.raycastTarget = false;
-            }
-            wMag.SetActive(false);
-            manager.phishermanNoMagGlass = noMag;
-            manager.phishermanWithMagGlass = wMag;
-            phX = 96f;
-        }
-
-        var title = AddText(hud.rectTransform, "Title",
-            "Case File #4471 — Spot the Phishing Red Flags",
-            26, HudGold, TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
-        AnchorRect(title.rectTransform, new Vector2(0, 0.5f), new Vector2(0.30f, 1),
-            new Vector2(phX, 0), Vector2.zero);
-
-        var sub = AddText(hud.rectTransform, "CaseSub",
-            "INVESTIGATOR: PHISHERMAN  |  AMAZON IMPERSONATION  |  WORLD 1",
-            14, HudMuted, TextAlignmentOptions.MidlineLeft);
-        AnchorRect(sub.rectTransform, new Vector2(0, 0), new Vector2(0.30f, 0.5f),
-            new Vector2(phX, 0), Vector2.zero);
-
-        var timerBox = AddImage(hud.rectTransform, "TimerBox", new Color(0.10f, 0.07f, 0.03f, 1f));
-        AnchorRect(timerBox.rectTransform, new Vector2(0.30f, 0), new Vector2(0.46f, 1),
-            new Vector2(8, 8), new Vector2(-8, -8));
-        timerBox.raycastTarget = false;
-        var timerTxt = AddText(timerBox.rectTransform, "Timer", "1:00",
-            40, HudGold, TextAlignmentOptions.Center, FontStyles.Bold);
-        Stretch(timerTxt.rectTransform);
-
-        var magBtnGo = NewGO("MagToggleBtn", hud.rectTransform);
-        var magBtnRT = magBtnGo.GetComponent<RectTransform>();
-        AnchorRect(magBtnRT, new Vector2(0.46f, 0), new Vector2(0.58f, 1),
-            new Vector2(8, 14), new Vector2(-8, -14));
-        var magBtnImg = magBtnGo.AddComponent<Image>(); magBtnImg.color = new Color(0.22f, 0.16f, 0.06f, 1f);
-        var magBtn = magBtnGo.AddComponent<Button>(); magBtn.targetGraphic = magBtnImg;
-        var magLbl = AddText(magBtnGo.transform, "MagLabel", "🔍 Magnifier",
-            18, HudGold, TextAlignmentOptions.Center, FontStyles.Bold);
-        Stretch(magLbl.rectTransform);
-        UnityEventTools.AddPersistentListener(magBtn.onClick, manager.ToggleMagnifier);
-        manager.magToggleButton = magBtn;
-        manager.magToggleLabel = magLbl;
-
         var heartsH = NewGO("HeartsHolder", hud.rectTransform);
         var heartsHRT = heartsH.GetComponent<RectTransform>();
-        AnchorRect(heartsHRT, new Vector2(0.58f, 0), new Vector2(0.68f, 1),
-            new Vector2(8, 0), Vector2.zero);
+        AnchorRect(heartsHRT, new Vector2(0f, 0), new Vector2(0.14f, 1),
+            new Vector2(18, 0), Vector2.zero);
         var hlg = heartsH.AddComponent<HorizontalLayoutGroup>();
-        hlg.childAlignment = TextAnchor.MiddleCenter; hlg.spacing = 6;
+        hlg.childAlignment = TextAnchor.MiddleLeft; hlg.spacing = 8;
         hlg.childForceExpandWidth = hlg.childForceExpandHeight = false;
         hlg.childControlWidth = hlg.childControlHeight = false;
         hlg.padding = new RectOffset(0, 0, 18, 18);
@@ -289,26 +211,53 @@ public static class SpotDifferenceBuilder
         for (int i = 0; i < 3; i++)
         {
             var hgo = NewGO("Heart_" + i, heartsH.transform);
-            hgo.GetComponent<RectTransform>().sizeDelta = new Vector2(30, 30);
-            var hi = hgo.AddComponent<Image>(); hi.sprite = spCircle; hi.color = HeartFull;
+            hgo.GetComponent<RectTransform>().sizeDelta = new Vector2(44, 44);
+            var hi = hgo.AddComponent<Image>();
+            if (spHeart != null) { hi.sprite = spHeart; hi.color = Color.white; }
+            else { hi.sprite = spCircle; hi.color = HeartRed; }
             hi.preserveAspect = true; hi.raycastTarget = false;
             heartImages[i] = hi;
         }
         manager.heartImages = heartImages;
 
-        var counter = AddText(hud.rectTransform, "Counter", "Found: 0 / 5",
-            26, HudGold, TextAlignmentOptions.Midline, FontStyles.Bold);
-        AnchorRect(counter.rectTransform, new Vector2(0.68f, 0), new Vector2(0.84f, 1),
+        var timerBox = AddImage(hud.rectTransform, "TimerBox", new Color(0.10f, 0.07f, 0.03f, 1f));
+        AnchorRect(timerBox.rectTransform, new Vector2(0.14f, 0), new Vector2(0.35f, 1),
+            new Vector2(8, 8), new Vector2(-8, -8));
+        timerBox.raycastTarget = false;
+
+        if (spHourglass != null)
+        {
+            var hgGo = NewGO("HourglassIcon", timerBox.rectTransform);
+            var hgRT = hgGo.GetComponent<RectTransform>();
+            hgRT.anchorMin = new Vector2(0, 0.5f); hgRT.anchorMax = new Vector2(0, 0.5f);
+            hgRT.pivot = new Vector2(0, 0.5f);
+            hgRT.sizeDelta = new Vector2(38, 38); hgRT.anchoredPosition = new Vector2(10, 0);
+            var hgImg = hgGo.AddComponent<Image>();
+            hgImg.sprite = spHourglass; hgImg.color = HudGold;
+            hgImg.preserveAspect = true; hgImg.raycastTarget = false;
+        }
+
+        var timerTxt = AddText(timerBox.rectTransform, "Timer", "1:00",
+            40, HudGold, TextAlignmentOptions.Center, FontStyles.Bold);
+        Stretch(timerTxt.rectTransform);
+
+        var counter = AddText(hud.rectTransform, "Counter", "Found: 0 / 6",
+            30, HudGold, TextAlignmentOptions.Center, FontStyles.Bold);
+        AnchorRect(counter.rectTransform, new Vector2(0.35f, 0), new Vector2(0.65f, 1),
             Vector2.zero, Vector2.zero);
 
         var score = AddText(hud.rectTransform, "Score", "Score: 0",
-            26, HudGold, TextAlignmentOptions.MidlineRight, FontStyles.Bold);
-        AnchorRect(score.rectTransform, new Vector2(0.84f, 0), new Vector2(1f, 1),
-            Vector2.zero, new Vector2(-18, 0));
+            30, HudGold, TextAlignmentOptions.MidlineRight, FontStyles.Bold);
+        AnchorRect(score.rectTransform, new Vector2(0.65f, 0), new Vector2(1f, 1),
+            Vector2.zero, new Vector2(-22, 0));
 
         manager.timerText = timerTxt;
         manager.counterText = counter;
         manager.scoreText = score;
+        manager.magToggleButton = null;
+        manager.magToggleLabel = null;
+        manager.phishermanNoMagGlass = null;
+        manager.phishermanWithMagGlass = null;
     }
 
     // =================================================================
@@ -328,8 +277,7 @@ public static class SpotDifferenceBuilder
         tlrt.pivot = new Vector2(0.5f, 1); tlrt.sizeDelta = new Vector2(0, 1);
         topLine.raycastTarget = false;
 
-        var row = NewGO("EvidenceRow", rt);
-        Stretch(row.GetComponent<RectTransform>());
+        var row = NewGO("EvidenceRow", rt); Stretch(row.GetComponent<RectTransform>());
 
         var lbl = AddText(row.transform, "EvLabel", "EVIDENCE LOG:", 14,
             EvidenceGold, TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
@@ -346,7 +294,7 @@ public static class SpotDifferenceBuilder
         ert.offsetMin = new Vector2(155, 0); ert.offsetMax = new Vector2(-18, 0);
         evLog.raycastTarget = false;
 
-        manager.evidenceLogText = evLog;
+        manager.evidenceLogText = null;
     }
 
     // =================================================================
@@ -359,15 +307,6 @@ public static class SpotDifferenceBuilder
         var frt = folder.rectTransform;
         frt.anchorMin = new Vector2(0.010f, 0.290f); frt.anchorMax = new Vector2(0.990f, 0.893f);
         frt.offsetMin = frt.offsetMax = Vector2.zero; folder.raycastTarget = false;
-
-        var tabGo = NewGO("FolderTab", folder.rectTransform);
-        var tabRT = tabGo.GetComponent<RectTransform>();
-        tabRT.anchorMin = new Vector2(0.02f, 1); tabRT.anchorMax = new Vector2(0.16f, 1);
-        tabRT.pivot = new Vector2(0, 0); tabRT.sizeDelta = new Vector2(0, 28);
-        var tabImg = tabGo.AddComponent<Image>(); tabImg.color = Hex("#B8944A"); tabImg.raycastTarget = false;
-        var tabTxt = AddText(tabGo.transform, "TabText", "EVIDENCE DOSSIER",
-            12, Hex("#3D2B0E"), TextAlignmentOptions.Center, FontStyles.Bold);
-        Stretch(tabTxt.rectTransform); tabTxt.raycastTarget = false;
 
         var inner = AddImage(folder.rectTransform, "FolderInner", FolderInner);
         var irt = inner.rectTransform;
@@ -382,28 +321,14 @@ public static class SpotDifferenceBuilder
         stamp.gameObject.AddComponent<Outline>().effectColor =
             new Color(ClassifiedRed.r, ClassifiedRed.g, ClassifiedRed.b, 0.5f);
 
-        var caseNum = AddText(inner.rectTransform, "CaseNumber",
-            "CASE #4471-B  |  FILED: MAY 5 2024  |  Identify 6 red flags in the suspect document",
-            14, CaseMono, TextAlignmentOptions.MidlineLeft, FontStyles.Normal);
-        var cnrt = caseNum.rectTransform;
-        cnrt.anchorMin = new Vector2(0, 0.92f); cnrt.anchorMax = new Vector2(0.76f, 1f);
-        cnrt.offsetMin = new Vector2(14, 0); cnrt.offsetMax = Vector2.zero;
-        caseNum.raycastTarget = false;
-
-        var cdiv = AddImage(inner.rectTransform, "CaseDivider", FolderDash);
-        var cdrt = cdiv.rectTransform;
-        cdrt.anchorMin = new Vector2(0, 0.91f); cdrt.anchorMax = new Vector2(1, 0.915f);
-        cdrt.offsetMin = new Vector2(8, 0); cdrt.offsetMax = new Vector2(-8, 0);
-        cdiv.raycastTarget = false;
-
         BuildEmailPanel(inner.rectTransform, manager, isScam: false,
-            new Vector2(0.01f, 0.01f), new Vector2(0.492f, 0.908f));
+            new Vector2(0.01f, 0.01f), new Vector2(0.492f, 0.99f));
         BuildEmailPanel(inner.rectTransform, manager, isScam: true,
-            new Vector2(0.508f, 0.01f), new Vector2(0.99f, 0.908f));
+            new Vector2(0.508f, 0.01f), new Vector2(0.99f, 0.99f));
     }
 
     // =================================================================
-    // Email panel
+    // Email panel — FIX: viewport raycastTarget always true for scroll
     // =================================================================
 
     static void BuildEmailPanel(RectTransform parent, SpotDifferenceManager manager,
@@ -415,8 +340,7 @@ public static class SpotDifferenceBuilder
         rt.offsetMin = rt.offsetMax = Vector2.zero;
         panel.raycastTarget = false;
 
-        var brd = AddImage(rt, "DocBorder", PanelBorder);
-        Stretch(brd.rectTransform); brd.raycastTarget = false;
+        var brd = AddImage(rt, "DocBorder", PanelBorder); Stretch(brd.rectTransform); brd.raycastTarget = false;
         var face = AddImage(rt, "DocFace", PanelBg);
         var faceRT = face.rectTransform;
         faceRT.anchorMin = Vector2.zero; faceRT.anchorMax = Vector2.one;
@@ -453,7 +377,8 @@ public static class SpotDifferenceBuilder
         var srrt = senderRow.rectTransform;
         srrt.anchorMin = new Vector2(0, 1); srrt.anchorMax = new Vector2(1, 1);
         srrt.pivot = new Vector2(0.5f, 1); srrt.sizeDelta = new Vector2(0, 58);
-        srrt.anchoredPosition = new Vector2(0, -96); senderRow.raycastTarget = false;
+        srrt.anchoredPosition = new Vector2(0, -96);
+        senderRow.raycastTarget = false;  // FIX: was default true, blocking wrong-click on face
 
         var avatar = AddImage(senderRow.rectTransform, "Avatar", AmazonOrange);
         avatar.sprite = TryGetCircleSprite(); avatar.preserveAspect = true;
@@ -509,7 +434,10 @@ public static class SpotDifferenceBuilder
         sr.movementType = ScrollRect.MovementType.Clamped;
 
         var vpGo = NewGO("Viewport", scrollRT); Stretch(vpGo.GetComponent<RectTransform>());
-        var vpImg = vpGo.AddComponent<Image>(); vpImg.color = PanelBg; vpImg.raycastTarget = isScam;
+        var vpImg = vpGo.AddComponent<Image>(); vpImg.color = PanelBg;
+        // FIX: always true — needed for ScrollRect drag events on BOTH pages
+        vpImg.raycastTarget = true;
+        // Only the scam page gets the wrong-click receiver
         if (isScam) { var recv2 = vpGo.AddComponent<PanelClickReceiver>(); recv2.manager = manager; }
         vpGo.AddComponent<Mask>().showMaskGraphic = false;
 
@@ -527,10 +455,20 @@ public static class SpotDifferenceBuilder
         sr.viewport = vpGo.GetComponent<RectTransform>(); sr.content = contentRT;
 
         BuildEmailBody(contentGo.transform, manager, isScam);
+
+        // FIX: force the VerticalLayoutGroup/ContentSizeFitter to resolve the
+        // content's real height right now, before the ScrollRect gets a
+        // chance to measure it on its own. Without this, one of the two
+        // panels could end up with a stale/zero content size cached by the
+        // ScrollRect, which makes it appear un-scrollable even though the
+        // text clearly overflows the viewport. Also make sure both panels
+        // start scrolled to the top.
+        LayoutRebuilder.ForceRebuildLayoutImmediate(contentRT);
+        sr.verticalNormalizedPosition = 1f;
     }
 
     // =================================================================
-    // Email body (6 markers on scam side)
+    // Email body
     // =================================================================
 
     static void BuildEmailBody(Transform content, SpotDifferenceManager manager, bool isScam)
@@ -614,13 +552,15 @@ public static class SpotDifferenceBuilder
     }
 
     // =================================================================
-    // SIMULATION — Cage + Diver edition
+    // Simulation — anchors at (0.5,0.5), cage 50% larger
     // =================================================================
 
     static void BuildSimulation(RectTransform parent, SpotDifferenceManager manager,
-        Sprite spDiver, Sprite spShark, Sprite spCircle)
+        Sprite spDiverNormal, Sprite spDiverPointing, Sprite spDiverScared,
+        Sprite spShark,
+        Sprite spCage, Sprite spCaged1, Sprite spCaged2, Sprite spCaged3,
+        Sprite spCircle)
     {
-        // ── Root panel: bottom 27 % of canvas ────────────────────────
         var root = AddImage(parent, "SimulationRoot", SimDeep);
         var rrt = root.rectTransform;
         rrt.anchorMin = new Vector2(0, 0); rrt.anchorMax = new Vector2(1, 0.270f);
@@ -633,14 +573,12 @@ public static class SpotDifferenceBuilder
         mrt.offsetMin = mrt.offsetMax = Vector2.zero;
         mid.raycastTarget = false;
 
-        // Water surface shimmer strip
         var surf = AddImage(rrt, "Surface", new Color(0.15f, 0.40f, 0.65f, 0.38f));
         var srt2 = surf.rectTransform;
         srt2.anchorMin = new Vector2(0, 0.85f); srt2.anchorMax = new Vector2(1, 0.91f);
         srt2.offsetMin = srt2.offsetMax = Vector2.zero;
         surf.raycastTarget = false;
 
-        // ── "DANGER ZONE" label (top-left) ───────────────────────────
         var dangerLbl = AddText(rrt, "DangerLabel", "DANGER ZONE", 14,
             new Color(0.9f, 0.2f, 0.2f, 0.65f), TextAlignmentOptions.Center, FontStyles.Bold);
         var dlrt = dangerLbl.rectTransform;
@@ -648,30 +586,31 @@ public static class SpotDifferenceBuilder
         dlrt.offsetMin = dlrt.offsetMax = Vector2.zero;
         dangerLbl.raycastTarget = false;
 
-        // ── SHARK (centre-left, nx ≈ 0.30) ───────────────────────────
+        // ── SHARK — anchor at centre ─────────────────────────────────
         var sharkImg = AddImage(rrt, "Shark", Color.white);
         if (spShark != null) { sharkImg.sprite = spShark; sharkImg.preserveAspect = true; }
         else if (spCircle != null) { sharkImg.sprite = spCircle; sharkImg.color = new Color(0.25f, 0.32f, 0.42f); }
         var sharkRT = sharkImg.rectTransform;
         sharkRT.anchorMin = sharkRT.anchorMax = new Vector2(0.5f, 0.5f);
         sharkRT.pivot = new Vector2(0.5f, 0.5f);
-        sharkRT.sizeDelta = new Vector2(100f, 68f);
-        sharkRT.anchoredPosition = Vector2.zero;           // builder sets runtime position
-        sharkRT.localScale = new Vector3(-1f, 1f, 1f);       // face right
+        sharkRT.sizeDelta = new Vector2(120f, 80f);
+        sharkRT.anchoredPosition = Vector2.zero;
+        sharkRT.localScale = new Vector3(-1f, 1f, 1f);
         sharkImg.raycastTarget = false;
 
-        // ── DIVER / Phisherman (right side, nx ≈ 0.78) ───────────────
+        // ── DIVER — anchor at centre ─────────────────────────────────
         var diverImg = AddImage(rrt, "Diver", Color.white);
-        if (spDiver != null) { diverImg.sprite = spDiver; diverImg.preserveAspect = true; }
+        if (spDiverPointing != null) { diverImg.sprite = spDiverPointing; diverImg.preserveAspect = true; }
+        else if (spDiverNormal != null) { diverImg.sprite = spDiverNormal; diverImg.preserveAspect = true; }
         else { diverImg.color = new Color(0.20f, 0.55f, 0.85f); }
         var diverRT = diverImg.rectTransform;
         diverRT.anchorMin = diverRT.anchorMax = new Vector2(0.5f, 0.5f);
         diverRT.pivot = new Vector2(0.5f, 0.5f);
         diverRT.sizeDelta = new Vector2(80f, 90f);
-        diverRT.anchoredPosition = Vector2.zero;           // runtime
+        diverRT.anchoredPosition = Vector2.zero;
         diverImg.raycastTarget = false;
+        diverRT.localScale = new Vector3(-1f, 1f, 1f);
 
-        // Bubble label above diver
         var bubbleLbl = AddText(rrt, "DiverBubble", "Find the flags!",
             13, new Color(0.80f, 0.95f, 1f, 0.90f), TextAlignmentOptions.Center, FontStyles.Italic);
         var blrt = bubbleLbl.rectTransform;
@@ -679,151 +618,68 @@ public static class SpotDifferenceBuilder
         blrt.offsetMin = blrt.offsetMax = Vector2.zero;
         bubbleLbl.raycastTarget = false;
 
-        // ── CAGE GROUP ────────────────────────────────────────────────
-        // We build the cage as a group of child RectTransforms under a pivot GO.
-        // The LureSimulation script animates cageGO as a whole (drop + lift).
+        // ── CAGE — anchor at centre, 50% larger ─────────────────────
         var cageGO = new GameObject("CageGroup", typeof(RectTransform));
         cageGO.transform.SetParent(rrt, false);
         var cageGroupRT = cageGO.GetComponent<RectTransform>();
-        // Cage size: 130 × 120 px in panel space
         cageGroupRT.anchorMin = cageGroupRT.anchorMax = new Vector2(0.5f, 0.5f);
-        cageGroupRT.pivot = new Vector2(0.5f, 0f);     // pivot at bottom so "lift" raises from bottom
-        cageGroupRT.sizeDelta = new Vector2(130f, 120f);
-        cageGroupRT.anchoredPosition = Vector2.zero;  // runtime
+        cageGroupRT.pivot = new Vector2(0.5f, 0f);
+        cageGroupRT.sizeDelta = new Vector2(315f, 293f);
+        cageGroupRT.anchoredPosition = Vector2.zero;
 
-        // Shadow under cage
-        var shadowImg = AddImage(cageGroupRT, "CageShadow", CageShadowC);
-        var shadowRT = shadowImg.rectTransform;
-        shadowRT.anchorMin = new Vector2(0.05f, -0.06f); shadowRT.anchorMax = new Vector2(0.95f, 0.04f);
-        shadowRT.offsetMin = shadowRT.offsetMax = Vector2.zero;
-        shadowImg.sprite = spCircle; shadowImg.raycastTarget = false;
+        var cageImg = cageGO.AddComponent<Image>();
+        if (spCage != null) { cageImg.sprite = spCage; cageImg.preserveAspect = true; }
+        else { cageImg.color = new Color(0.78f, 0.60f, 0.15f, 0.90f); }
+        cageImg.raycastTarget = false;
 
-        // Cage base (floor)
-        var cageBaseImg = AddImage(cageGroupRT, "CageBase", CageBaseColor);
-        var baseRT = cageBaseImg.rectTransform;
-        baseRT.anchorMin = new Vector2(0, 0); baseRT.anchorMax = new Vector2(1, 0.08f);
-        baseRT.offsetMin = baseRT.offsetMax = Vector2.zero;
-        cageBaseImg.raycastTarget = false;
-
-        // Left vertical bar
-        var leftBar = BuildCageVertBar(cageGroupRT, "BarLeft", 0.05f, spCircle);
-        // Right vertical bar
-        var rightBar = BuildCageVertBar(cageGroupRT, "BarRight", 0.88f, spCircle);
-
-        // 3 horizontal cross-bars (bottom → top)
-        float[] barYMin = { 0.22f, 0.52f, 0.82f };
-        float[] barYMax = { 0.30f, 0.60f, 0.90f };
-        var cageBars = new Image[3];
-        for (int i = 0; i < 3; i++)
-        {
-            var barImg = AddImage(cageGroupRT, "HBar_" + i, CageBarColor);
-            var brt2 = barImg.rectTransform;
-            brt2.anchorMin = new Vector2(0.00f, barYMin[i]);
-            brt2.anchorMax = new Vector2(1.00f, barYMax[i]);
-            brt2.offsetMin = brt2.offsetMax = Vector2.zero;
-            barImg.raycastTarget = false;
-            cageBars[i] = barImg;
-        }
-
-        // Cage top cap
-        var topCap = AddImage(cageGroupRT, "CageTop", CageBarColor);
-        var topCapRT = topCap.rectTransform;
-        topCapRT.anchorMin = new Vector2(0, 0.92f); topCapRT.anchorMax = new Vector2(1, 1f);
-        topCapRT.offsetMin = topCapRT.offsetMax = Vector2.zero;
-        topCap.raycastTarget = false;
-
-        // Chain / rope above cage top
         var chainGO = new GameObject("Chain", typeof(RectTransform));
         chainGO.transform.SetParent(cageGroupRT, false);
         var chainRT = chainGO.GetComponent<RectTransform>();
         chainRT.anchorMin = new Vector2(0.42f, 1.0f); chainRT.anchorMax = new Vector2(0.58f, 1.0f);
         chainRT.pivot = new Vector2(0.5f, 0f); chainRT.sizeDelta = new Vector2(8f, 60f);
         var chainImg = chainGO.AddComponent<Image>();
-        chainImg.color = CageBarColor; chainImg.raycastTarget = false;
+        chainImg.color = new Color(0.78f, 0.60f, 0.15f, 0.90f); chainImg.raycastTarget = false;
 
-        // ── Wire LureSimulation component ────────────────────────────
+        // ── Wire LureSimulation ──────────────────────────────────────
         var simComp = root.gameObject.AddComponent<LureSimulation>();
         simComp.panelRT = rrt;
         simComp.sharkRT = sharkRT;
         simComp.sharkImage = sharkImg;
         simComp.cageRT = cageGroupRT;
-        simComp.cageBars = cageBars;
-        simComp.cageBase = cageBaseImg;
-        simComp.cageShadow = shadowImg;
+        simComp.cageImage = cageImg;
+        simComp.cageSprite = spCage;
+        simComp.cagedamaged1 = spCaged1;
+        simComp.cagedamaged2 = spCaged2;
+        simComp.cagedamaged3 = spCaged3;
         simComp.diverRT = diverRT;
         simComp.diverImage = diverImg;
+        simComp.diverNormal = spDiverNormal;
+        simComp.diverPointing = spDiverPointing;
+        simComp.diverScared = spDiverScared;
         simComp.totalTime = 60f;
-
-        // Legacy fields kept for compile compatibility (unused in cage edition)
         simComp.rodLineRT = null;
         simComp.hookRT = null;
         simComp.debrisLayers = new RectTransform[0];
         simComp.debrisImages = new Image[0];
+        simComp.cageBars = new Image[0];
+        simComp.cageBase = null;
+        simComp.cageShadow = null;
 
         simComp.onImpact = () => { if (manager.sfxSource && manager.sfxImpact) manager.sfxSource.PlayOneShot(manager.sfxImpact, 0.85f); };
         simComp.onRodWinding = () => { if (manager.sfxSource && manager.sfxRodWinding) manager.sfxSource.PlayOneShot(manager.sfxRodWinding, 0.85f); };
 
+        int[] wrongClickCount = { 0 };
+        var heartImagesRef = manager.heartImages;
+        simComp.onWrongClick = () =>
+        {
+            if (heartImagesRef == null) return;
+            int lost = wrongClickCount[0];
+            if (lost < heartImagesRef.Length && heartImagesRef[lost] != null)
+                heartImagesRef[lost].color = new Color(0.30f, 0.30f, 0.30f, 0.45f);
+            wrongClickCount[0]++;
+        };
+
         manager.lureSimulation = simComp;
-    }
-
-    /// <summary>Builds a single vertical cage bar.</summary>
-    static Image BuildCageVertBar(RectTransform parent, string name, float xMin, Sprite sp)
-    {
-        var img = AddImage(parent, name, CageBarColor);
-        var rt = img.rectTransform;
-        rt.anchorMin = new Vector2(xMin, 0.08f);
-        rt.anchorMax = new Vector2(xMin + 0.07f, 1.00f);
-        rt.offsetMin = rt.offsetMax = Vector2.zero;
-        img.raycastTarget = false;
-        return img;
-    }
-
-    // =================================================================
-    // Magnifying glass
-    // =================================================================
-
-    static void BuildMagnifyingGlass(RectTransform parent, SpotDifferenceManager manager,
-        Sprite spMagGlass, Sprite spCircle)
-    {
-        var go = NewGO("MagnifyingGlass", parent);
-        var rt = go.GetComponent<RectTransform>();
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(120f, 120f);
-        rt.anchoredPosition = Vector2.zero;
-
-        var ringImg = go.AddComponent<Image>();
-        ringImg.sprite = spCircle; ringImg.color = new Color(0, 0, 0, 0);
-        ringImg.preserveAspect = true; ringImg.raycastTarget = false;
-        var outline = go.AddComponent<Outline>();
-        outline.effectColor = new Color(0.85f, 0.70f, 0.30f, 1.0f);
-        outline.effectDistance = new Vector2(5, -5);
-
-        var maskGo = NewGO("MagMask", rt);
-        var maskRT = maskGo.GetComponent<RectTransform>();
-        maskRT.anchorMin = Vector2.zero; maskRT.anchorMax = Vector2.one;
-        maskRT.offsetMin = new Vector2(5, 5); maskRT.offsetMax = new Vector2(-5, -5);
-        var maskImg = maskGo.AddComponent<Image>();
-        maskImg.sprite = spCircle; maskImg.color = Color.white; maskImg.raycastTarget = false;
-        maskGo.AddComponent<Mask>().showMaskGraphic = false;
-
-        var handleGo = NewGO("MagHandle", rt);
-        var handleRT = handleGo.GetComponent<RectTransform>();
-        handleRT.anchorMin = handleRT.anchorMax = new Vector2(1f, 0f);
-        handleRT.pivot = new Vector2(0f, 1f);
-        handleRT.sizeDelta = new Vector2(8f, 36f); handleRT.anchoredPosition = new Vector2(4f, -4f);
-        var handleImg = handleGo.AddComponent<Image>();
-        handleImg.color = Hex("#8B6914"); handleImg.raycastTarget = false;
-        handleRT.localRotation = Quaternion.Euler(0, 0, 38f);
-
-        var zoom = go.AddComponent<MagnifierZoom>();
-        zoom.mainCanvasRT = manager.mainCanvasRT;
-        zoom.magnifierRT = rt;
-        zoom.maskGo = maskGo;
-        zoom.zoomScale = 2.2f;
-
-        go.SetActive(false);
-        manager.magnifyingGlassRT = rt;
     }
 
     // =================================================================
@@ -889,7 +745,27 @@ public static class SpotDifferenceBuilder
     }
 
     // =================================================================
-    // Commentator
+    // Hidden commentator
+    // =================================================================
+
+    static Commentator BuildHiddenCommentator(RectTransform parent)
+    {
+        var root = NewGO("HiddenCommentator", parent);
+        var rrt = root.GetComponent<RectTransform>();
+        rrt.anchorMin = rrt.anchorMax = new Vector2(2f, -1f);
+        rrt.sizeDelta = new Vector2(1, 1);
+        var cg = root.AddComponent<CanvasGroup>();
+        cg.alpha = 0f; cg.blocksRaycasts = false; cg.interactable = false;
+
+        var portrait = root.AddComponent<Image>(); portrait.color = new Color(0, 0, 0, 0);
+        var comm = root.AddComponent<Commentator>();
+        comm.root = root;
+        comm.portrait = portrait;
+        return comm;
+    }
+
+    // =================================================================
+    // Commentator (full — kept for reference)
     // =================================================================
 
     static Commentator BuildCommentator(RectTransform parent)
@@ -937,17 +813,18 @@ public static class SpotDifferenceBuilder
     }
 
     // =================================================================
-    // AddMarkerWithCircle
+    // AddMarkerWithCircle — FIX: reduced offset from ±12 to ±4 so
+    // adjacent markers don't overlap and swallow each other's clicks.
     // =================================================================
 
     static void AddMarkerWithCircle(GameObject parent, SpotDifferenceManager manager,
         string flagName, string explanation)
     {
         var go = NewGO("Marker_" + Sanitize(flagName), parent.transform);
-        var rt = go.GetComponent<RectTransform>();
-        Stretch(rt);
-        rt.offsetMin = new Vector2(-12, -12);
-        rt.offsetMax = new Vector2(12, 12);
+        var rt = go.GetComponent<RectTransform>(); Stretch(rt);
+        // FIX: reduced from ±12 to ±4 to prevent found markers from
+        // swallowing clicks meant for adjacent unfound markers.
+        rt.offsetMin = new Vector2(-4, -4); rt.offsetMax = new Vector2(4, 4);
 
         var img = go.AddComponent<Image>(); img.color = new Color(1, 0, 0, 0); img.raycastTarget = true;
         var marker = go.AddComponent<DifferenceMarker>();
@@ -956,8 +833,7 @@ public static class SpotDifferenceBuilder
         marker.manager = manager;
 
         var circGo = NewGO("PenCircle", go.transform);
-        var circRT = circGo.GetComponent<RectTransform>();
-        Stretch(circRT);
+        var circRT = circGo.GetComponent<RectTransform>(); Stretch(circRT);
         circRT.offsetMin = new Vector2(-4, -4); circRT.offsetMax = new Vector2(4, 4);
         var circImg = circGo.AddComponent<Image>();
         circImg.sprite = TryGetCircleSprite();
@@ -980,17 +856,14 @@ public static class SpotDifferenceBuilder
         => AddMarkerWithCircle(parent.gameObject, manager, flagName, explanation);
 
     // =================================================================
-    // Build settings helpers
+    // Build settings + helpers
     // =================================================================
 
     static void AddSceneToBuildSettings(string path)
     {
         var scenes = EditorBuildSettings.scenes.ToList();
         if (!scenes.Any(s => s.path == path))
-        {
-            scenes.Add(new EditorBuildSettingsScene(path, true));
-            EditorBuildSettings.scenes = scenes.ToArray();
-        }
+        { scenes.Add(new EditorBuildSettingsScene(path, true)); EditorBuildSettings.scenes = scenes.ToArray(); }
     }
 
     static Sprite FindSprite(string name)
@@ -1016,14 +889,9 @@ public static class SpotDifferenceBuilder
     }
 
     static void LogFound(string n, Sprite s) =>
-        Debug.Log($"[SpotDiffBuilder] {n}: " + (s != null ? "found" : "not found"));
+        Debug.Log($"[SpotDiffBuilder] {n}: " + (s != null ? "✓ found" : "✗ not found"));
 
-    // =================================================================
-    // Body row helpers
-    // =================================================================
-
-    static GameObject BodyRow(Transform parent, string name, string text,
-        int fs, Color col, FontStyles style)
+    static GameObject BodyRow(Transform parent, string name, string text, int fs, Color col, FontStyles style)
     {
         var go = NewGO(name, parent); var t = go.AddComponent<TextMeshProUGUI>();
         t.text = text; t.fontSize = fs; t.color = col; t.fontStyle = style;
@@ -1037,10 +905,6 @@ public static class SpotDifferenceBuilder
         var go = NewGO("Spacer", parent);
         var le = go.AddComponent<LayoutElement>(); le.preferredHeight = h; le.flexibleWidth = 1;
     }
-
-    // =================================================================
-    // Low-level helpers
-    // =================================================================
 
     static Image AddImage(Transform p, string n, Color c)
     { var go = NewGO(n, p); var img = go.AddComponent<Image>(); img.color = c; return img; }

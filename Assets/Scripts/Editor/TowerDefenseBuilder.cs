@@ -11,6 +11,16 @@ using UnityEngine.UI;
 
 /// <summary>
 /// Builds the Tower Defense scene.
+/// CHANGES:
+///  - td_background used as full-screen background
+///  - Phisherman avatar + separate speargun removed; tower sprite is the shooter
+///  - Tower sprite flipped to face LEFT (toward fish), scaled 20% smaller
+///  - Spear spawn point comes from tower sprite centre-left
+///  - Blue water pool replaced with safe_net sprite at bottom of tower
+///  - Fish non-overlap: fixed Y lanes so labels never stack
+///  - Hanging fish flipped to face left (toward tower)
+///  - heart + hourglass sprites wired to HUD
+///  - 60-second survival timer; waves accelerate over time
 /// </summary>
 public static class TowerDefenseBuilder
 {
@@ -18,7 +28,7 @@ public static class TowerDefenseBuilder
     private const string ScenePath = "Assets/Scenes/TowerDefense.unity";
 
     // World-space layout
-    private const float TowerX = 5.2f;
+    private const float TowerX = 6.2f;  // moved right so fish have more travel room
     private const float TowerY = -0.3f;
     private const float SpawnX = -9.0f;
 
@@ -26,8 +36,6 @@ public static class TowerDefenseBuilder
     private static readonly Color BgDeep = Hex("#1F1530");
     private static readonly Color BgMid = Hex("#2E2050");
     private static readonly Color PathColor = Hex("#1A1230");
-    private static readonly Color WaterColor = new Color(0.18f, 0.55f, 0.82f, 0.55f);
-    private static readonly Color WaterDark = new Color(0.10f, 0.35f, 0.60f, 0.75f);
     private static readonly Color HudBg = new Color(0.08f, 0.07f, 0.15f, 0.88f);
     private static readonly Color ScoreGold = Hex("#FFD93D");
     private static readonly Color StreakOrange = Hex("#FF9F1C");
@@ -50,32 +58,34 @@ public static class TowerDefenseBuilder
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-        // ── White pixel (fallback for everything) ──
         Sprite white = EnsureWhitePixel();
 
-        // ── Auto-detect sprites ──
-        Sprite spTower = FindSprite("tower");
-        Sprite spPhisherman = FindSprite("phisherman");
-        Sprite spSpeargun = FindSprite("speargun");
-        Sprite spLog = FindSprite("log");
+        // ── Sprites ──
+        Sprite spBg = FindSprite("td_background");
+        Sprite spTower = FindSprite("td_tower");           // the tower sprite (has built-in net)
+        Sprite spLog = FindSprite("log_debris") ?? FindSprite("log");
+        Sprite spNetBottom = null;   // td_tower sprite already has a net built in — no separate net needed
+        Sprite spHangFish = FindSprite("td_hanging_fish");
+        Sprite spHeart = FindSprite("heart");
+        Sprite spHourglass = FindSprite("hourglass");
 
-        // Auto-detect the puffer spritesheet and slice it
-        Sprite[] pufferSprites = FindAllSprites("fish_puffer");
-        Sprite spNormal = (pufferSprites != null && pufferSprites.Length > 0) ? pufferSprites[0] : FindSprite("td_hanging_fish");
-        Sprite spHappy = (pufferSprites != null && pufferSprites.Length > 4) ? pufferSprites[4] : spNormal;
-        Sprite spPuffed = (pufferSprites != null && pufferSprites.Length > 7) ? pufferSprites[7] : spNormal;
+        // Fish sprites — use pool fish for normal/happy, puffer for puffed
+        Sprite[] fishPool = LoadFishPoolSprites();
+        Sprite spNormal = (fishPool.Length > 0 && fishPool[0] != null) ? fishPool[0] : FindSprite("fish_1_clownfish_normal");
+        Sprite spHappy = FindSprite("pufferfish_4_deflated") ?? spNormal;
+        Sprite spPuffed = FindSprite("pufferfish_1_default") ?? spNormal;
 
-        // ── Auto-detect audio ──
-        AudioClip clipBgm = FindAudio("adventure_music_v1");
-        AudioClip clipSpear = FindAudio("spear");
+        AudioClip clipBgm = FindAudio("adventure_music_v1") ?? FindAudio("frutiger_music_fresh_waters");
+        AudioClip clipSpear = FindAudio("spear") ?? FindAudio("water_splash");
 
-        LogFound("tower", spTower);
-        LogFound("phisherman", spPhisherman);
-        LogFound("speargun", spSpeargun);
-        LogFound("fish_puffer (normal)", spNormal);
-        LogFound("log", spLog);
+        LogFound("td_background", spBg);
+        LogFound("td_tower", spTower);
+        LogFound("td_hanging_fish", spHangFish);
+        LogFound("heart", spHeart);
+        LogFound("hourglass", spHourglass);
+        LogFound("fish pool [0]", spNormal);
+        Debug.Log($"[TDBuilder] fishPool: {fishPool.Count(s => s != null)}/20 loaded");
 
-        // ── Tag setup ──
         EnsureTag("Spear");
 
         // ── Camera ──
@@ -92,9 +102,17 @@ public static class TowerDefenseBuilder
         es.AddComponent<EventSystem>(); es.AddComponent<StandaloneInputModule>();
 
         // ── Background ──
-        SprRect("BgFar", white, BgDeep, Vector3.zero, new Vector3(24, 12, 1), null, -20);
-        SprRect("BgMid", white, BgMid, new Vector3(0, -1, 0.5f), new Vector3(24, 8, 1), null, -15);
-        SprRect("Path", white, PathColor, new Vector3(0, 0, 0.2f), new Vector3(24, 3.2f, 1), null, -5);
+        if (spBg != null)
+        {
+            SprRect("Background", spBg, Color.white, Vector3.zero,
+                new Vector3(18f, 10f, 1f), null, -20);
+        }
+        else
+        {
+            SprRect("BgFar", white, BgDeep, Vector3.zero, new Vector3(24, 12, 1), null, -20);
+            SprRect("BgMid", white, BgMid, new Vector3(0, -1, 0.5f), new Vector3(24, 8, 1), null, -15);
+            SprRect("Path", white, PathColor, new Vector3(0, 0, 0.2f), new Vector3(24, 3.2f, 1), null, -5);
+        }
 
         // ── Spawn point ──
         var spawnGo = new GameObject("SpawnPoint");
@@ -106,10 +124,10 @@ public static class TowerDefenseBuilder
         var shakeRoot = new GameObject("ShakeRoot");
         shakeRoot.transform.SetParent(towerRootGo.transform, false);
 
-        Transform crackContainer, towerFishCanvasRT, speargunPivot, spearSpawnPoint;
-        BuildTower(spTower, spPhisherman, spSpeargun, white,
+        Transform crackContainer, speargunPivot, spearSpawnPoint;
+        BuildTower(spTower, white,
                    shakeRoot.transform,
-                   out crackContainer, out towerFishCanvasRT,
+                   out crackContainer,
                    out speargunPivot, out spearSpawnPoint);
 
         // ── Canvas ──
@@ -132,9 +150,13 @@ public static class TowerDefenseBuilder
         mgr.fishPuffedSprite = spPuffed;
         mgr.logSprite = spLog;
         mgr.towerSprite = spTower;
-        mgr.phishermanSprite = spPhisherman;
-        mgr.speargunSprite = spSpeargun;
+        mgr.phishermanSprite = null;    // no separate phisherman — tower IS the shooter
+        mgr.speargunSprite = null;
         mgr.whiteSprite = white;
+        mgr.hangingFishSprite = spHangFish;
+        mgr.heartSprite = spHeart;
+        mgr.hourglassSprite = spHourglass;
+        mgr.fishPoolSprites = fishPool;
 
         mgr.bgmClip = clipBgm;
         mgr.spearClip = clipSpear;
@@ -143,9 +165,10 @@ public static class TowerDefenseBuilder
         mgr.towerRoot = towerRootGo.transform;
         mgr.towerShakeRoot = shakeRoot.transform;
         mgr.crackContainer = crackContainer;
-        mgr.towerWaterContainer = towerFishCanvasRT;
+        mgr.towerWaterContainer = null;  // td_tower has a built-in net — no separate fish container needed
         mgr.speargunPivot = speargunPivot;
         mgr.spearSpawnPoint = spearSpawnPoint;
+        mgr.surviveDuration = 60f;                // 1-minute survival
 
         // ── UI panels ──
         var hud = BuildHud(canvasRT, mgr);
@@ -169,129 +192,71 @@ public static class TowerDefenseBuilder
     }
 
     // =================================================================
-    // Tower + Phisherman + Speargun
+    // Tower — no phisherman/speargun, just the tower sprite + net base
+    // Spear fires from the tower's left-centre (toward the fish)
     // =================================================================
 
     static void BuildTower(
-        Sprite spTower, Sprite spPhisherman, Sprite spSpeargun, Sprite white,
+        Sprite spTower, Sprite white,
         Transform shakeRoot,
         out Transform crackContainer,
-        out Transform towerFishRT,
         out Transform speargunPivot,
         out Transform spearSpawnPoint)
     {
-        // ── Tower body ──
+        // td_tower sprite — uniform scale preserves aspect ratio.
+        // Flip X (negative) so the tower faces LEFT toward incoming fish.
+        // Height 3.6 world units. The speargun on td_tower is at roughly
+        // bottom-left of the sprite, which after X-flip becomes bottom-right
+        // visually (toward the fish). Offset pivot there.
+        float towerH = 3.6f;
+        float towerCentreY = 0.5f;
+
         if (spTower != null)
         {
-            SprRect("TowerBody", spTower, Color.white,
-                new Vector3(0, 0.3f, 0), new Vector3(2.8f, 5.5f, 1),
-                shakeRoot, sortingOrder: 2);
+            var tGo = new GameObject("TowerBody");
+            tGo.transform.SetParent(shakeRoot, false);
+            tGo.transform.localPosition = new Vector3(0, towerCentreY, 0);
+            var tSR = tGo.AddComponent<SpriteRenderer>();
+            tSR.sprite = spTower;
+            tSR.color = Color.white;
+            tSR.sortingOrder = 2;
+            // Uniform scale keeps aspect ratio; negative X flips left
+            tGo.transform.localScale = new Vector3(-towerH, towerH, 1f);
         }
         else
         {
-            // Fallback: rectangle tower
             SprRect("TowerBody", white, Hex("#2D2040"),
-                new Vector3(0, 0.3f, 0), new Vector3(2.8f, 5.5f, 1),
+                new Vector3(0, towerCentreY, 0), new Vector3(towerH * 0.6f, towerH, 1),
                 shakeRoot, sortingOrder: 2);
-            SprRect("TowerScreen", white, Hex("#0A2D52"),
-                new Vector3(0, 0.8f, 0), new Vector3(2.2f, 2.5f, 1),
-                shakeRoot, sortingOrder: 3);
         }
 
-        // ── Water section (bottom of tower) ──
-        var waterBg = SprRect("TowerWaterBg", white, WaterDark,
-            new Vector3(0, -2.0f, 0), new Vector3(2.6f, 1.2f, 1),
-            shakeRoot, sortingOrder: 3);
-
-        SprRect("TowerWaterFill", white, WaterColor,
-            new Vector3(0, -2.0f, -0.1f), new Vector3(2.6f, 1.2f, 1),
-            shakeRoot, sortingOrder: 4);
-
-        // WorldSpace Canvas inside water for swimming fish UI
-        var waterCanvasGo = new GameObject("WaterCanvas");
-        waterCanvasGo.transform.SetParent(shakeRoot, false);
-        waterCanvasGo.transform.localPosition = new Vector3(0, -2.0f, -0.2f);
-        const float k = 0.01f;
-        waterCanvasGo.transform.localScale = new Vector3(k, k, 1f);
-        var wc = waterCanvasGo.AddComponent<Canvas>();
-        wc.renderMode = RenderMode.WorldSpace;
-        wc.sortingOrder = 6;
-        var wcRT = waterCanvasGo.GetComponent<RectTransform>();
-        wcRT.sizeDelta = new Vector2(260, 120);
-
-        // Fish container inside canvas
-        var fishContGo = new GameObject("FishContainer", typeof(RectTransform));
-        fishContGo.transform.SetParent(waterCanvasGo.transform, false);
-        var fcRT = fishContGo.GetComponent<RectTransform>();
-        fcRT.anchorMin = Vector2.zero; fcRT.anchorMax = Vector2.one;
-        fcRT.offsetMin = fcRT.offsetMax = Vector2.zero;
-        towerFishRT = fcRT;
-
-        // ── Crack container (over tower body) ──
+        // ── Crack container ──
         var ccGo = new GameObject("CrackContainer");
         ccGo.transform.SetParent(shakeRoot, false);
-        ccGo.transform.localPosition = new Vector3(0, 0.3f, -0.3f);
+        ccGo.transform.localPosition = new Vector3(0, towerCentreY, -0.3f);
         crackContainer = ccGo.transform;
 
-        // ── Phisherman on top of tower ──
-        float towerTop = spTower != null ? 3.2f : 2.8f;
-        var phGo = new GameObject("Phisherman");
-        phGo.transform.SetParent(shakeRoot, false);
-        phGo.transform.localPosition = new Vector3(0f, towerTop, -0.5f);
-
-        if (spPhisherman != null)
-        {
-            SprRect("PhishermanSprite", spPhisherman, Color.white,
-                new Vector3(0, 0, 0), new Vector3(1.4f, 1.8f, 1),
-                phGo.transform, sortingOrder: 8);
-        }
-        else
-        {
-            // Placeholder body
-            SprRect("Body", white, Hex("#F5C89A"), Vector3.zero, new Vector3(0.5f, 0.7f, 1), phGo.transform, 8);
-            SprRect("Jacket", white, Hex("#2A4FA8"), new Vector3(0, -0.22f, 0), new Vector3(0.5f, 0.36f, 1), phGo.transform, 9);
-            SprRect("HatBrim", white, Hex("#8B5E1E"), new Vector3(0, 0.40f, 0), new Vector3(0.70f, 0.10f, 1), phGo.transform, 10);
-            SprRect("HatCrown", white, Hex("#8B5E1E"), new Vector3(0, 0.56f, 0), new Vector3(0.42f, 0.30f, 1), phGo.transform, 10);
-        }
-
-        // ── Speargun pivot (rotates to face mouse each frame) ──
-        // Pivot is at phisherman's hand position (left side, mid-height)
+        // ── Spear pivot — placed at the speargun position on td_tower.
+        // The speargun is at the bottom-left of the sprite; after X-flip it
+        // appears on the left side (facing fish). Offset: x = -towerH*0.42,
+        // y = towerCentreY - towerH*0.30 (roughly lower-left quarter).
         var pivotGo = new GameObject("SpeargunPivot");
-        pivotGo.transform.SetParent(phGo.transform, false);
-        pivotGo.transform.localPosition = new Vector3(-0.25f, 0.05f, -0.1f);
+        pivotGo.transform.SetParent(shakeRoot, false);
+        pivotGo.transform.localPosition = new Vector3(
+            -towerH * 0.42f,          // left edge — the gun side after flip
+            towerCentreY - towerH * 0.30f,  // lower portion of tower
+            -0.5f);
         speargunPivot = pivotGo.transform;
 
-        // Speargun sprite — extends in +X from pivot
-        // (at 180° rotation it points LEFT toward fish)
-        if (spSpeargun != null)
-        {
-            SprRect("SpeargunSprite", spSpeargun, Color.white,
-                new Vector3(0.30f, 0, 0), new Vector3(1.1f, 0.45f, 1),
-                pivotGo.transform, sortingOrder: 9);
-        }
-        else
-        {
-            // Fallback speargun rect
-            SprRect("SpeargunBarrel", white, Hex("#4A3020"),
-                new Vector3(0.32f, 0, 0), new Vector3(0.9f, 0.14f, 1),
-                pivotGo.transform, sortingOrder: 9);
-            SprRect("SpeargunHandle", white, Hex("#6B4528"),
-                new Vector3(0.05f, -0.10f, 0), new Vector3(0.18f, 0.30f, 1),
-                pivotGo.transform, sortingOrder: 9);
-            SprRect("SpeargunTip", white, Hex("#C0A060"),
-                new Vector3(0.80f, 0, 0), new Vector3(0.12f, 0.12f, 1),
-                pivotGo.transform, sortingOrder: 10);
-        }
-
-        // Spear spawn point — tip of the speargun (+X direction from pivot)
+        // Spear spawn point — tip of the gun, further left
         var sspGo = new GameObject("SpearSpawnPoint");
         sspGo.transform.SetParent(pivotGo.transform, false);
-        sspGo.transform.localPosition = new Vector3(0.85f, 0, 0);
+        sspGo.transform.localPosition = new Vector3(-0.4f, 0, 0);
         spearSpawnPoint = sspGo.transform;
     }
 
     // =================================================================
-    // HUD
+    // HUD — hearts left, score centre, wave right, timer top-right
     // =================================================================
 
     static GameObject BuildHud(RectTransform parent, TowerDefenseManager mgr)
@@ -320,7 +285,7 @@ public static class TowerDefenseBuilder
         srt.sizeDelta = new Vector2(360, 0);
 
         // Wave (right)
-        var waveTxt = UTxt(hud.rectTransform, "WaveText", "Wave 1 / 4",
+        var waveTxt = UTxt(hud.rectTransform, "WaveText", "Wave 1",
             30, WaveWhite, TextAlignmentOptions.MidlineRight, FontStyles.Bold);
         var wrt = waveTxt.rectTransform;
         wrt.anchorMin = new Vector2(1, 0); wrt.anchorMax = new Vector2(1, 1);
@@ -337,7 +302,9 @@ public static class TowerDefenseBuilder
         comboTxt.raycastTarget = false;
 
         mgr.heartsContainer = hh.transform;
-        mgr.scoreText = scoreTxt; mgr.waveText = waveTxt; mgr.comboText = comboTxt;
+        mgr.scoreText = scoreTxt;
+        mgr.waveText = waveTxt;
+        mgr.comboText = comboTxt;
         return hud.gameObject;
     }
 
@@ -367,8 +334,7 @@ public static class TowerDefenseBuilder
         brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one;
         brt.offsetMin = new Vector2(48, 155); brt.offsetMax = new Vector2(-48, -110);
 
-        var stepLbl = UTxt(crt, "StepLabel", "1 of 2", 18, MutedText,
-            TextAlignmentOptions.Center);
+        var stepLbl = UTxt(crt, "StepLabel", "1 of 2", 18, MutedText, TextAlignmentOptions.Center);
         var slrt = stepLbl.rectTransform;
         slrt.anchorMin = new Vector2(0, 0); slrt.anchorMax = new Vector2(1, 0);
         slrt.pivot = new Vector2(0.5f, 0);
@@ -535,61 +501,93 @@ public static class TowerDefenseBuilder
     }
 
     // =================================================================
-    // Sprite auto-detection
+    // Fish pool sprite loader (same pattern as EmailSwiperBuilder)
+    // =================================================================
+
+    static Sprite[] LoadFishPoolSprites()
+    {
+        var pool = new Sprite[20];
+        var allGuids = AssetDatabase.FindAssets("fish_ t:Sprite");
+        foreach (var g in allGuids)
+        {
+            var path = AssetDatabase.GUIDToAssetPath(g);
+            var fn = Path.GetFileNameWithoutExtension(path).ToLower();
+            for (int i = 1; i <= 20; i++)
+            {
+                string prefix = "fish_" + i + "_";
+                if (fn.StartsWith(prefix) && pool[i - 1] == null)
+                {
+                    pool[i - 1] = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+                    break;
+                }
+            }
+        }
+        return pool;
+    }
+
+    // =================================================================
+    // Sprite / audio helpers
     // =================================================================
 
     static Sprite FindSprite(string name)
     {
-        string[] guids = AssetDatabase.FindAssets(name + " t:Sprite");
-        foreach (string guid in guids)
+        foreach (var g in AssetDatabase.FindAssets(name + " t:Sprite"))
         {
-            string path = AssetDatabase.GUIDToAssetPath(guid);
-            if (System.IO.Path.GetFileNameWithoutExtension(path).ToLower() == name.ToLower())
-                return AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            var p = AssetDatabase.GUIDToAssetPath(g);
+            if (Path.GetFileNameWithoutExtension(p).ToLower() == name.ToLower())
+            { var s = AssetDatabase.LoadAssetAtPath<Sprite>(p); if (s != null) return s; }
         }
-
-        string[] texGuids = AssetDatabase.FindAssets(name + " t:Texture2D");
-        foreach (string guid in texGuids)
+        foreach (var g in AssetDatabase.FindAssets(name + " t:Texture2D"))
         {
-            string path = AssetDatabase.GUIDToAssetPath(guid);
-            if (System.IO.Path.GetFileNameWithoutExtension(path).ToLower().Contains(name.ToLower()))
-                return AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            var p = AssetDatabase.GUIDToAssetPath(g);
+            if (Path.GetFileNameWithoutExtension(p).ToLower().Contains(name.ToLower()))
+            { var s = AssetDatabase.LoadAssetAtPath<Sprite>(p); if (s != null) return s; }
         }
         return null;
     }
-
-    static Sprite[] FindAllSprites(string name)
-    {
-        string[] guids = AssetDatabase.FindAssets(name + " t:Texture2D");
-        if (guids.Length == 0) guids = AssetDatabase.FindAssets(name + " t:Sprite");
-
-        if (guids.Length > 0)
-        {
-            string path = AssetDatabase.GUIDToAssetPath(guids[0]);
-            var sprites = AssetDatabase.LoadAllAssetsAtPath(path).OfType<Sprite>().ToList();
-            sprites.Sort((a, b) => EditorUtility.NaturalCompare(a.name, b.name));
-            return sprites.ToArray();
-        }
-        return null;
-    }
-
-    static void LogFound(string name, Sprite s)
-        => Debug.Log($"[TDBuilder] {name}: " + (s != null ? "✓ found" : "✗ not found (using fallback)"));
-
-    // =================================================================
-    // Audio auto-detection
-    // =================================================================
 
     static AudioClip FindAudio(string name)
     {
-        string[] guids = AssetDatabase.FindAssets(name + " t:AudioClip");
-        foreach (string guid in guids)
+        foreach (var g in AssetDatabase.FindAssets(name + " t:AudioClip"))
         {
-            string path = AssetDatabase.GUIDToAssetPath(guid);
-            if (System.IO.Path.GetFileNameWithoutExtension(path).ToLower() == name.ToLower())
-                return AssetDatabase.LoadAssetAtPath<AudioClip>(path);
+            var p = AssetDatabase.GUIDToAssetPath(g);
+            if (Path.GetFileNameWithoutExtension(p).ToLower() == name.ToLower())
+                return AssetDatabase.LoadAssetAtPath<AudioClip>(p);
         }
         return null;
+    }
+
+    static void LogFound(string n, Sprite s)
+        => Debug.Log($"[TDBuilder] {n}: " + (s != null ? "✓" : "✗ not found"));
+
+    // =================================================================
+    // White pixel helper
+    // =================================================================
+
+    static Sprite EnsureWhitePixel()
+    {
+        const string dir = "Assets/Sprites";
+        const string path = "Assets/Sprites/td_white_pixel.png";
+        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+        if (!File.Exists(path))
+        {
+            var tex = new Texture2D(8, 8);
+            var px = new Color[64];
+            for (int i = 0; i < 64; i++) px[i] = Color.white;
+            tex.SetPixels(px); tex.Apply();
+            File.WriteAllBytes(path, tex.EncodeToPNG());
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+        }
+        var imp = AssetImporter.GetAtPath(path) as TextureImporter;
+        if (imp != null)
+        {
+            bool changed = false;
+            if (imp.textureType != TextureImporterType.Sprite) { imp.textureType = TextureImporterType.Sprite; changed = true; }
+            if (Mathf.Abs(imp.spritePixelsPerUnit - 8f) > 0.01f) { imp.spritePixelsPerUnit = 8; changed = true; }
+            if (imp.filterMode != FilterMode.Point) { imp.filterMode = FilterMode.Point; changed = true; }
+            if (changed) imp.SaveAndReimport();
+        }
+        return AssetDatabase.LoadAssetAtPath<Sprite>(path);
     }
 
     // =================================================================
@@ -607,35 +605,6 @@ public static class TowerDefenseBuilder
         tags.arraySize++;
         tags.GetArrayElementAtIndex(tags.arraySize - 1).stringValue = tag;
         so.ApplyModifiedProperties();
-    }
-
-    // =================================================================
-    // White pixel helper
-    // =================================================================
-
-    static Sprite EnsureWhitePixel()
-    {
-        const string dir = "Assets/Sprites";
-        const string path = "Assets/Sprites/td_white_pixel.png";
-        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-        if (!File.Exists(path))
-        {
-            var tex = new Texture2D(8, 8);
-            var px = new Color[64]; for (int i = 0; i < 64; i++) px[i] = Color.white;
-            tex.SetPixels(px); tex.Apply();
-            File.WriteAllBytes(path, tex.EncodeToPNG());
-            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
-        }
-        var imp = AssetImporter.GetAtPath(path) as TextureImporter;
-        if (imp != null)
-        {
-            bool changed = false;
-            if (imp.textureType != TextureImporterType.Sprite) { imp.textureType = TextureImporterType.Sprite; changed = true; }
-            if (Mathf.Abs(imp.spritePixelsPerUnit - 8f) > 0.01f) { imp.spritePixelsPerUnit = 8; changed = true; }
-            if (imp.filterMode != FilterMode.Point) { imp.filterMode = FilterMode.Point; changed = true; }
-            if (changed) imp.SaveAndReimport();
-        }
-        return AssetDatabase.LoadAssetAtPath<Sprite>(path);
     }
 
     // =================================================================

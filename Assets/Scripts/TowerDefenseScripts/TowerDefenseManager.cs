@@ -2,26 +2,19 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 /// <summary>
 /// Phish Patrol — Tower Defense.
 ///
-/// Fish+log units swim from the left toward the tower.
-/// Phisherman stands on top with a speargun that aims at the mouse.
-/// Click to shoot — hits the single nearest fish to the cursor only.
-///
-/// REEL-IN: clicking a fish now reels it toward the tower on a visible
-/// spear-line before triggering the red/green outcome at the wall.
-///
-/// LEVEL SYSTEM INTEGRATION:
-///   • Every spawned fish registers a sticker-book entry (fish_swimmer).
-///   • Correctly speared scam fish register fish_speared.
-///   • Safe fish welcomed into the tower register fish_happy.
-///   • On win/loss, XP is queued via PlayerProgress.QueueFromPerformance()
-///     using the same 0-1 accuracy scale every minigame uses, so XP is
-///     fair and consistent regardless of which game was played.
+/// CHANGES vs original:
+///  - fishPoolSprites[] exposed so builder can wire 20 random fish
+///  - Fish spawn on fixed Y lanes (no overlap, labels always readable)
+///  - Hanging fish flipped to face LEFT (toward tower)
+///  - Net container used instead of blue pool
+///  - Waves progressively accelerate every 15 seconds
+///  - 60-second survival timer (surviveDuration = 60)
+///  - heart + hourglass sprite fields for MinigameLivesHUD / TimerHUD
 /// </summary>
 public class TowerDefenseManager : MonoBehaviour
 {
@@ -30,16 +23,16 @@ public class TowerDefenseManager : MonoBehaviour
     public float spearSpeed = 22f;
 
     [Header("Win Condition")]
-    [Tooltip("Survive this many seconds with the tower still standing to win.")]
+    [Tooltip("Survive this many seconds with the tower still standing.")]
     public float surviveDuration = 60f;
 
-    [Header("Existing sprites — drag your project's assets in")]
-    [Tooltip("Assets/Sprites/UI/heart — used for the lives HUD instead of a drawn placeholder.")]
+    [Header("Sprites — UI")]
+    [Tooltip("heart sprite for the lives HUD")]
     public Sprite heartSprite;
-    [Tooltip("Assets/Sprites/UI/hourglass — used for the survival timer icon.")]
+    [Tooltip("hourglass sprite for the timer HUD")]
     public Sprite hourglassSprite;
 
-    // Single neutral tint passed to every fish — player must read the label
+    // Single neutral tint — player must read the label
     private static readonly Color NeutralFishColor = new Color(0.55f, 0.82f, 0.95f);
 
     [Header("Audio")]
@@ -57,15 +50,19 @@ public class TowerDefenseManager : MonoBehaviour
     public Sprite phishermanSprite;
     public Sprite speargunSprite;
     public Sprite whiteSprite;
-    [Tooltip("Assets/Sprites/Minigames/td_hanging_fish — hangs from each log banner as a child sprite.")]
+    [Tooltip("td_hanging_fish — hangs from each log banner.")]
     public Sprite hangingFishSprite;
+
+    // CHANGED: pool of 20 fish sprites for net fish visuals
+    [Tooltip("fish_1 through fish_20 sprites in order.")]
+    public Sprite[] fishPoolSprites;
 
     [Header("Scene References")]
     public Transform spawnPoint;
     public Transform towerRoot;
     public Transform towerShakeRoot;
     public Transform crackContainer;
-    public Transform towerWaterContainer;
+    public Transform towerWaterContainer;   // now the net fish container
     public Transform speargunPivot;
     public Transform spearSpawnPoint;
 
@@ -98,74 +95,62 @@ public class TowerDefenseManager : MonoBehaviour
     public Commentator commentator;
 
     // ── Internal ──
-    private int score, health, combo, tutStep, currentWave, enemiesRemaining;
-    private bool gameActive, spawning, advancingWave;
+    private int score, health, combo, tutStep;
+    private bool gameActive, spawning;
     private List<FishUnit> liveFish = new List<FishUnit>();
     private MinigameLivesHUD livesHUD;
     private MinigameTimerHUD timerHUD;
     private float surviveTimeRemaining;
     private bool gameEnded;
 
-    // Per-fish pool swim state
-    private struct TowerFishState
+    // Fixed Y lanes — prevents fish label overlap
+    private const int LaneCount = 7;
+    private const float LaneSpread = 1.6f;
+    private bool[] laneOccupied = new bool[LaneCount];
+
+    // Net fish that swim in world space around the tower's built-in net
+    private struct NetFishState
     {
-        public RectTransform rt;
-        public Vector2 center;
-        public float phaseX, phaseY;
-        public float freqX, freqY;
-        public float ampX, ampY;
+        public SpriteRenderer sr;
+        public Vector3 center;
+        public float phaseX, phaseY, freqX, freqY, ampX, ampY;
     }
-    private List<TowerFishState> towerFishStates = new List<TowerFishState>();
+    private List<NetFishState> netFishStates = new List<NetFishState>();
 
     // ── Wave / password data ──
-    struct ED
-    {
-        public string label; public bool isScam;
-        public ED(string l, bool s) { label = l; isScam = s; }
-    }
+    struct ED { public string label; public bool isScam; public ED(string l, bool s) { label = l; isScam = s; } }
 
     ED[] scams = {
-        new ED("password123", true), new ED("123456",   true), new ED("qwerty",   true),
-        new ED("iloveyou",   true),  new ED("abc123",   true), new ED("password1",true),
-        new ED("111111",     true),  new ED("letmein",  true), new ED("welcome",  true),
-        new ED("monkey",     true),  new ED("dragon",   true), new ED("master",   true),
-        new ED("hello",      true),  new ED("login",    true), new ED("admin",    true),
-        new ED("baseball",   true),  new ED("shadow",   true), new ED("trustno1", true),
-        new ED("12345678",   true),  new ED("princess", true),
+        new ED("password123",true), new ED("123456",  true), new ED("qwerty",   true),
+        new ED("iloveyou",  true),  new ED("abc123",  true), new ED("password1",true),
+        new ED("111111",    true),  new ED("letmein", true), new ED("welcome",  true),
+        new ED("monkey",    true),  new ED("dragon",  true), new ED("master",   true),
+        new ED("hello",     true),  new ED("login",   true), new ED("admin",    true),
+        new ED("baseball",  true),  new ED("shadow",  true), new ED("trustno1", true),
+        new ED("12345678",  true),  new ED("princess",true),
     };
 
     ED[] safes = {
-        new ED("K#9mP!2xL",     false), new ED("Blue$Tree47!",  false),
-        new ED("Xq8@nW3!vY",    false), new ED("Maple!Leaf99#", false),
-        new ED("T7@kLz!9Rp",    false), new ED("Sun$Rise2024!", false),
-        new ED("Wr9#mK!6Lp",    false), new ED("Cat!Rain$42X",  false),
-        new ED("Gr@pe!Vine88",  false), new ED("Z3br@Dance#7",  false),
-        new ED("Moon&Star99#",  false), new ED("P@rrot3!Wing",  false),
-        new ED("B3eHoney$44!",  false), new ED("Night#Sky25!",  false),
+        new ED("K#9mP!2xL",    false), new ED("Blue$Tree47!",  false),
+        new ED("Xq8@nW3!vY",   false), new ED("Maple!Leaf99#", false),
+        new ED("T7@kLz!9Rp",   false), new ED("Sun$Rise2024!", false),
+        new ED("Wr9#mK!6Lp",   false), new ED("Cat!Rain$42X",  false),
+        new ED("Gr@pe!Vine88", false), new ED("Z3br@Dance#7",  false),
+        new ED("Moon&Star99#", false), new ED("P@rrot3!Wing",  false),
+        new ED("B3eHoney$44!", false), new ED("Night#Sky25!",  false),
     };
 
-    struct Wave
-    {
-        public int count; public float scamRatio, speed, interval;
-        public Wave(int c, float r, float s, float i)
-        { count = c; scamRatio = r; speed = s; interval = i; }
-    }
-
-    Wave[] waves = {
-        new Wave(10, 0.50f, 0.40f, 3.2f),
-        new Wave(15, 0.55f, 0.50f, 2.8f),
-        new Wave(20, 0.60f, 0.60f, 2.4f),
-    };
+    // Continuous spawn — no discrete wave phases. Speed/interval scale smoothly with time.
+    private const float BaseSpeed = 0.38f;
+    private const float BaseInterval = 3.0f;
+    private const float ScamRatio = 0.55f;
 
     string[] tutTitles = { "Phish Patrol -- Tower Defense", "How to play" };
     string[] tutBodies = {
-        "Fish carrying log banners are swimming toward your tower!\n\n" +
-        "Aim Phisherman's speargun and CLICK to shoot.",
-        "Read the password on each fish's log banner!\n\n" +
-        "WEAK password fish (like '123456') -- SHOOT THEM!\n" +
-        "  Warning: shooting strong passwords makes them charge fast!\n\n" +
-        "STRONG password fish (symbols + numbers) -- LET THEM reach the tower!\n\n" +
-        "You must read each label to decide!"
+        "Fish carrying log banners are swimming toward your tower!\n\nClick near a fish to shoot it with the tower's speargun.",
+        "Read the password on each fish's log banner!\n\nWEAK password fish (like '123456') — SHOOT THEM!\n" +
+        "STRONG password fish (symbols + numbers) — LET THEM reach the tower!\n\n" +
+        "Survive 60 seconds to win. Fish get faster over time!"
     };
 
     // =================================================================
@@ -180,14 +165,7 @@ public class TowerDefenseManager : MonoBehaviour
         winPanel.SetActive(false);
 
         bgmSource = gameObject.AddComponent<AudioSource>();
-        if (bgmClip != null)
-        {
-            bgmSource.clip = bgmClip;
-            bgmSource.loop = true;
-            bgmSource.volume = 0.5f;
-            bgmSource.Play();
-        }
-
+        if (bgmClip != null) { bgmSource.clip = bgmClip; bgmSource.loop = true; bgmSource.volume = 0.5f; bgmSource.Play(); }
         sfxSource = gameObject.AddComponent<AudioSource>();
         ShowTutStep(0);
     }
@@ -196,17 +174,13 @@ public class TowerDefenseManager : MonoBehaviour
     {
         if (!gameActive) return;
 
-        // Survival countdown — surviving the full duration with the tower
-        // still standing is the win condition, replacing the old "clear
-        // all waves" requirement.
+        // Countdown
         surviveTimeRemaining -= Time.deltaTime;
         timerHUD?.SetTime(surviveTimeRemaining);
-        if (surviveTimeRemaining <= 0f && !gameEnded)
-        {
-            WinGame();
-        }
 
-        // Speargun tracks mouse
+        if (surviveTimeRemaining <= 0f && !gameEnded) WinGame();
+
+        // Speargun pivot tracks mouse (pivot is on the tower now)
         if (speargunPivot != null)
         {
             Vector3 mouseWorld = Camera.main.ScreenToWorldPoint(Input.mousePosition);
@@ -218,16 +192,13 @@ public class TowerDefenseManager : MonoBehaviour
 
         if (Input.GetMouseButtonDown(0))
         {
-            Vector3 mouseWorld = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-            mouseWorld.z = 0;
-            TryHitNearestFish(mouseWorld);
+            Vector3 mw = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            mw.z = 0;
+            TryHitNearestFish(mw);
         }
 
-        AnimateTowerFish();
-
+        AnimateNetFish();
         liveFish.RemoveAll(f => f == null);
-        if (!spawning && enemiesRemaining <= 0 && liveFish.Count == 0)
-            TryAdvanceWave();
     }
 
     // =================================================================
@@ -236,10 +207,11 @@ public class TowerDefenseManager : MonoBehaviour
 
     void ShowTutStep(int step)
     {
-        tutorialTitleText.text = tutTitles[step];
-        tutorialBodyText.text = tutBodies[step];
-        tutorialStepText.text = (step + 1) + " of " + tutTitles.Length;
-        tutorialNextButtonText.text = (step == tutTitles.Length - 1) ? "Start!" : "Next";
+        if (tutorialTitleText != null) tutorialTitleText.text = tutTitles[step];
+        if (tutorialBodyText != null) tutorialBodyText.text = tutBodies[step];
+        if (tutorialStepText != null) tutorialStepText.text = (step + 1) + " of " + tutTitles.Length;
+        if (tutorialNextButtonText != null)
+            tutorialNextButtonText.text = (step == tutTitles.Length - 1) ? "Start!" : "Next";
     }
 
     public void OnTutorialNext()
@@ -255,116 +227,100 @@ public class TowerDefenseManager : MonoBehaviour
 
     void StartGame()
     {
-        score = 0; health = startingHealth; combo = 0;
-        currentWave = 0; gameActive = true; gameEnded = false;
+        score = 0; health = startingHealth; combo = 0; gameActive = true; gameEnded = false;
         surviveTimeRemaining = surviveDuration;
         hudPanel.SetActive(true);
 
-        // Shrink the tower to 50% of whatever the designer set in the scene
-        if (towerRoot != null)
-            towerRoot.localScale = towerRoot.localScale * 0.5f;
+        if (towerRoot != null) towerRoot.localScale = towerRoot.localScale * 0.5f;
 
-        // Consistent 3-heart HUD shared across every minigame — hide any
-        // legacy scene-wired hearts container so we don't double-render.
         if (heartsContainer != null) heartsContainer.gameObject.SetActive(false);
         livesHUD = gameObject.AddComponent<MinigameLivesHUD>();
         livesHUD.Initialize(startingHealth, heartSprite);
 
-        // Top-right survival countdown
         timerHUD = gameObject.AddComponent<MinigameTimerHUD>();
         timerHUD.Initialize(hourglassSprite);
         timerHUD.SetTime(surviveTimeRemaining);
 
         UpdateHUD();
-        StartCoroutine(WaveDelay(1.5f));
-        commentator?.Say("Read the label — shoot the weak passwords, let the strong ones through!");
+        StartCoroutine(ContinuousSpawn());
+        commentator?.Say("Read the label — shoot the weak passwords, let the strong ones reach the tower!");
     }
 
-    IEnumerator WaveDelay(float d)
+    // Continuous spawn — one fish at a time, interval and speed both shrink over time
+    IEnumerator ContinuousSpawn()
     {
-        yield return new WaitForSeconds(d);
-        StartCoroutine(SpawnWave(waves[currentWave]));
+        yield return new WaitForSeconds(1.5f);
+        while (gameActive && !gameEnded)
+        {
+            float elapsed = surviveDuration - surviveTimeRemaining;
+            // Smoothly ramp: at t=0 → BaseSpeed/BaseInterval; at t=60 → 2.5× faster
+            float ramp = 1f + (elapsed / surviveDuration) * 1.5f;
+            float speed = BaseSpeed * ramp;
+            float interval = BaseInterval / ramp;
+            interval = Mathf.Max(interval, 0.8f);  // floor so it doesn't go insane
+
+            int lane = GetFreeLane();
+            laneOccupied[lane] = true;
+            float laneY = TowerY + Mathf.Lerp(-LaneSpread * 0.5f, LaneSpread * 0.5f,
+                          (float)lane / (LaneCount - 1));
+
+            bool isScam = Random.value < ScamRatio;
+            ED data = isScam
+                ? scams[Random.Range(0, scams.Length)]
+                : safes[Random.Range(0, safes.Length)];
+
+            SpawnFish(data, speed, laneY, lane);
+            yield return new WaitForSeconds(interval);
+        }
     }
 
     // =================================================================
-    // Interaction — reel-in hit
+    // Interaction
     // =================================================================
 
     void TryHitNearestFish(Vector3 clickWorld, float maxRadius = 1.4f)
     {
-        FishUnit nearest = null;
-        float bestDist = maxRadius;
-
+        FishUnit nearest = null; float bestDist = maxRadius;
         for (int i = liveFish.Count - 1; i >= 0; i--)
         {
-            var f = liveFish[i];
-            if (f == null) continue;
+            var f = liveFish[i]; if (f == null) continue;
             float d = Vector3.Distance(f.transform.position, clickWorld);
             if (d < bestDist) { bestDist = d; nearest = f; }
         }
-
         if (nearest == null) return;
 
-        // Play the spear SFX
-        if (sfxSource != null && spearClip != null)
-            sfxSource.PlayOneShot(spearClip);
-
-        // Draw a quick initial bolt flash from gun tip to fish
-        if (spearSpawnPoint != null)
-            StartCoroutine(BoltFlash(spearSpawnPoint.position, nearest.transform.position));
-
-        // Hand off to the fish — it will reel itself in using the pivot as anchor
+        if (sfxSource != null && spearClip != null) sfxSource.PlayOneShot(spearClip);
+        if (spearSpawnPoint != null) StartCoroutine(BoltFlash(spearSpawnPoint.position, nearest.transform.position));
         nearest.TakeSpearHit(speargunPivot);
     }
 
-    /// <summary>
-    /// Brief yellow bolt flash (0.10 s) from spear tip to fish — gives instant
-    /// visual feedback before the reel-in line takes over.
-    /// </summary>
     IEnumerator BoltFlash(Vector3 from, Vector3 to)
     {
-        var boltGO = new GameObject("SpearBolt");
-        boltGO.transform.position = (from + to) * 0.5f;
-
-        Vector3 delta = to - from;
-        float len = delta.magnitude;
+        var go = new GameObject("SpearBolt");
+        go.transform.position = (from + to) * 0.5f;
+        Vector3 delta = to - from; float len = delta.magnitude;
         float angle = Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg;
-        boltGO.transform.rotation = Quaternion.Euler(0, 0, angle);
-        boltGO.transform.localScale = new Vector3(len, 0.08f, 1f);
-
-        var sr = boltGO.AddComponent<SpriteRenderer>();
-        sr.sprite = WhitePix;
-        sr.color = new Color(0.95f, 0.85f, 0.30f, 1f);
-        sr.sortingOrder = 12;
-
+        go.transform.rotation = Quaternion.Euler(0, 0, angle);
+        go.transform.localScale = new Vector3(len, 0.08f, 1f);
+        var sr = go.AddComponent<SpriteRenderer>(); sr.sprite = WhitePix;
+        sr.color = new Color(0.95f, 0.85f, 0.30f, 1f); sr.sortingOrder = 12;
         float t = 0f;
-        while (t < 0.10f)
-        {
-            t += Time.deltaTime;
-            if (boltGO == null) yield break;
-            sr.color = new Color(0.95f, 0.85f, 0.30f, 1f - t / 0.10f);
-            yield return null;
-        }
-        if (boltGO != null) Destroy(boltGO);
+        while (t < 0.10f) { t += Time.deltaTime; if (go == null) yield break; sr.color = new Color(0.95f, 0.85f, 0.30f, 1f - t / 0.10f); yield return null; }
+        if (go != null) Destroy(go);
     }
 
     // =================================================================
-    // Fish callbacks — called by FishUnit
+    // Fish callbacks
     // =================================================================
 
     public void OnRedFishSpearHit(Vector3 pos)
     {
-        combo++;
-        int pts = combo >= 3 ? 15 : 10;
-        score += pts;
+        combo++; int pts = combo >= 3 ? 15 : 10; score += pts;
         SpawnPopup("+" + pts + (combo >= 3 ? " COMBO!" : ""), pos + Vector3.up,
             combo >= 3 ? new Color(1f, 0.85f, 0.1f) : new Color(0.3f, 1f, 0.5f));
         UpdateHUD();
-
-        // Sticker book — a scam fish was successfully speared; register hanging fish
         PlayerProgress.RegisterFish("fish_hanging");
-
-        if (combo == 3) commentator?.Say("Three in a row -- wonderful!");
+        if (combo == 3) commentator?.Say("Three in a row — wonderful!");
         else if (combo == 6) commentator?.Say("Oh my, you are unstoppable!");
         else commentator?.SayRandom(new[] { "Got one!", "Nice shot, dear.", "That's the spirit!" });
     }
@@ -374,211 +330,131 @@ public class TowerDefenseManager : MonoBehaviour
         combo = 0;
         SpawnPopup("BAD FISH!", pos + Vector3.up, new Color(1f, 0.3f, 0.3f));
         TakeDamage();
-        if (health > 0)
-            commentator?.SayRandom(new[] { "A fish cracked the tower!", "Keep them back!" });
+        if (health > 0) commentator?.SayRandom(new[] { "A fish cracked the tower!", "Keep them back!" });
         UpdateHUD();
     }
 
     public void OnGreenFishCollected(GameObject fishGO, Sprite fishSpr, bool isDefused = false)
     {
-        SpawnTowerFish(fishSpr);
-
-        // Sticker book — a safe/strong-password fish joined the tower pool
+        // td_tower has a built-in net — no separate pool fish needed
         PlayerProgress.RegisterFish(PlayerProgress.GetRandomNetFishId());
-
-        if (!isDefused)
-        {
-            score += 5;
-            combo++;
-            commentator?.SayRandom(new[] {
-                "A strong password joined the tower!",
-                "Safe and sound!", "Good fish welcome, dear."
-            });
-        }
-        else
-        {
-            SpawnPopup("DEFUSED!", fishGO.transform.position + Vector3.up, new Color(0.3f, 1f, 0.3f));
-            commentator?.SayRandom(new[] {
-                "The defused fish is swimming happily!",
-                "Look at it go!"
-            });
-        }
+        if (!isDefused) { score += 5; combo++; commentator?.SayRandom(new[] { "A strong password joined the tower!", "Safe and sound!" }); }
+        else { SpawnPopup("DEFUSED!", fishGO.transform.position + Vector3.up, new Color(0.3f, 1f, 0.3f)); commentator?.SayRandom(new[] { "The defused fish is swimming happily!", "Look at it go!" }); }
         UpdateHUD();
     }
 
     public void OnGreenFishShotEarly(Vector3 pos)
     {
-        combo = 0;
-        score = Mathf.Max(0, score - 5);
+        combo = 0; score = Mathf.Max(0, score - 5);
         SpawnPopup("-5 safe fish!", pos + Vector3.up * 2, new Color(0.9f, 0.4f, 0.1f));
         UpdateHUD();
     }
 
-    public void OnFishRemoved()
+    public void OnFishRemoved(int laneIdx)
     {
-        enemiesRemaining = Mathf.Max(0, enemiesRemaining - 1);
+        if (laneIdx >= 0 && laneIdx < LaneCount) laneOccupied[laneIdx] = false;
     }
 
     // =================================================================
-    // Spawning
+    // Spawning — CHANGED: fixed Y lanes for no overlap, speed multiplied
     // =================================================================
 
-    IEnumerator SpawnWave(Wave w)
-    {
-        spawning = true;
-        waveText.text = "Wave " + (currentWave + 1) + " / " + waves.Length;
-        var pool = BuildPool(w.count, w.scamRatio);
-        enemiesRemaining = pool.Count;
+    // TowerY constant for lane calculation
+    private const float TowerY = -0.3f;
 
-        foreach (var data in pool)
-        {
-            if (!gameActive) yield break;
-            SpawnFish(data, w.speed);
-            yield return new WaitForSeconds(w.interval);
-        }
-        spawning = false;
+    int GetFreeLane()
+    {
+        for (int i = 0; i < LaneCount; i++)
+            if (!laneOccupied[i]) return i;
+        return Random.Range(0, LaneCount);
     }
 
-    void SpawnFish(ED data, float speed)
+    void SpawnFish(ED data, float speed, float spawnY, int laneIdx)
     {
         var go = new GameObject("FishUnit");
-        go.transform.position = new Vector3(
-            spawnPoint.position.x,
-            towerRoot != null
-                ? towerRoot.position.y + Random.Range(-1.4f, 1.4f)
-                : Random.Range(-1.8f, 1.8f),
-            0f);
+        go.transform.position = new Vector3(spawnPoint.position.x, spawnY, 0f);
 
-        var col = go.AddComponent<CircleCollider2D>();
-        col.isTrigger = true;
-        col.radius = 0.35f;
-
-        var rb = go.AddComponent<Rigidbody2D>();
-        rb.gravityScale = 0;
+        var col = go.AddComponent<CircleCollider2D>(); col.isTrigger = true; col.radius = 0.45f;
+        var rb = go.AddComponent<Rigidbody2D>(); rb.gravityScale = 0;
 
         var fish = go.AddComponent<FishUnit>();
-        fish.Init(data.isScam, data.label, speed,
+        fish.Init(data.isScam, data.label, speed, laneIdx,
                   this,
                   towerRoot != null ? towerRoot.position : new Vector3(5f, 0, 0),
                   fishNormalSprite, fishHappySprite, fishPuffedSprite, logSprite,
                   NeutralFishColor);
 
-        // Attach td_hanging_fish below the log banner as a child sprite
+        // td_hanging_fish hangs from the log, facing left toward the tower
         if (hangingFishSprite != null)
         {
             var hfGo = new GameObject("HangingFish");
             hfGo.transform.SetParent(go.transform, false);
-            // Hang below the fish body — adjust y offset to taste
-            hfGo.transform.localPosition = new Vector3(0f, -0.30f, 0.01f);
-            hfGo.transform.localScale = new Vector3(0.55f, 0.55f, 1f);
+            hfGo.transform.localPosition = new Vector3(0f, 0.30f, 0.01f);
+            hfGo.transform.localScale = new Vector3(-0.40f, 0.40f, 1f);
             var hfSR = hfGo.AddComponent<SpriteRenderer>();
-            hfSR.sprite = hangingFishSprite;
-            hfSR.color = Color.white;
-            hfSR.sortingOrder = 9; // just below the main fish body (order 10)
+            hfSR.sprite = hangingFishSprite; hfSR.color = Color.white; hfSR.sortingOrder = 5;
         }
 
         liveFish.Add(fish);
-
-        // Sticker book — every log-banner fish counts as a fish_hanging encounter
         PlayerProgress.RegisterFish("fish_hanging");
-        // Also a chance to discover the shark (always lurking in TD waters)
-        PlayerProgress.RegisterFish("fish_shark");
-    }
-
-    List<ED> BuildPool(int count, float scamRatio)
-    {
-        var pool = new List<ED>();
-        int sc = Mathf.RoundToInt(count * scamRatio);
-        int sf = count - sc;
-        var sp = new List<ED>(scams);
-        var sfp = new List<ED>(safes);
-        Shuffle(sp); Shuffle(sfp);
-        for (int i = 0; i < sc && i < sp.Count; i++) pool.Add(sp[i]);
-        for (int i = 0; i < sf && i < sfp.Count; i++) pool.Add(sfp[i]);
-        Shuffle(pool);
-        return pool;
-    }
-
-    void Shuffle<T>(List<T> list)
-    {
-        for (int i = list.Count - 1; i > 0; i--)
-        { int r = Random.Range(0, i + 1); T t = list[i]; list[i] = list[r]; list[r] = t; }
     }
 
     // =================================================================
-    // Tower pool fish
+    // Net fish — swim in world space around the tower's built-in net
+    // towerWaterContainer is set to the tower root so we offset relative to it
     // =================================================================
 
-    void SpawnTowerFish(Sprite spr)
+    void SpawnNetFish(Sprite spr)
     {
-        if (towerWaterContainer == null) return;
+        // Spawn a small SpriteRenderer world-space fish near the tower net area
+        // Net area is roughly at towerRoot.position + (0, -2.0, 0)
+        var go = new GameObject("NetFish");
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = spr != null ? spr : fishNormalSprite;
+        sr.color = NeutralFishColor;
+        sr.sortingOrder = 5;
+        go.transform.localScale = Vector3.one * 0.35f;
 
-        var go = new GameObject("TowerFish", typeof(RectTransform));
-        go.transform.SetParent(towerWaterContainer, false);
-
-        var rt = go.GetComponent<RectTransform>();
-        Vector2 center = new Vector2(Random.Range(-70f, 70f), Random.Range(-18f, 18f));
-        rt.anchoredPosition = center;
-        rt.sizeDelta = new Vector2(36, 36);
-
-        var img = go.AddComponent<Image>();
-        img.color = NeutralFishColor;
-        img.preserveAspect = true;
-        img.raycastTarget = false;
-        if (spr != null) img.sprite = spr;
+        // Place near the net (bottom of tower)
+        Vector3 netCenter = towerRoot != null
+            ? towerRoot.position + new Vector3(0f, -2.2f, -0.3f)
+            : new Vector3(6.2f, TowerY - 2.2f, -0.3f);
+        go.transform.position = netCenter + new Vector3(
+            Random.Range(-0.6f, 0.6f), Random.Range(-0.3f, 0.3f), 0f);
 
         float facing = Random.value > 0.5f ? 1f : -1f;
-        rt.localScale = new Vector3(facing, 1f, 1f);
+        go.transform.localScale = new Vector3(facing * 0.35f, 0.35f, 1f);
 
-        towerFishStates.Add(new TowerFishState
+        netFishStates.Add(new NetFishState
         {
-            rt = rt,
-            center = center,
+            sr = sr,
+            center = go.transform.position,
             phaseX = Random.Range(0f, Mathf.PI * 2f),
             phaseY = Random.Range(0f, Mathf.PI * 2f),
-            freqX = Random.Range(0.5f, 1.1f),
-            freqY = Random.Range(1.0f, 1.9f),
-            ampX = Random.Range(48f, 82f),
-            ampY = Random.Range(12f, 24f),
+            freqX = Random.Range(0.35f, 0.75f),
+            freqY = Random.Range(0.60f, 1.20f),
+            ampX = Random.Range(0.30f, 0.65f),
+            ampY = Random.Range(0.08f, 0.20f),
         });
-
-        StartCoroutine(SplashIn(rt, facing));
     }
 
-    IEnumerator SplashIn(RectTransform rt, float facing)
-    {
-        rt.localScale = new Vector3(facing * 1.5f, 1.5f, 1f);
-        float t = 0f;
-        while (t < 0.25f)
-        {
-            t += Time.deltaTime;
-            if (rt == null) yield break;
-            float s = Mathf.Lerp(1.5f, 1f, Mathf.Clamp01(t / 0.25f));
-            rt.localScale = new Vector3(facing * s, s, 1f);
-            yield return null;
-        }
-    }
-
-    void AnimateTowerFish()
+    void AnimateNetFish()
     {
         float time = Time.time;
-        for (int i = towerFishStates.Count - 1; i >= 0; i--)
+        for (int i = netFishStates.Count - 1; i >= 0; i--)
         {
-            var s = towerFishStates[i];
-            if (s.rt == null) { towerFishStates.RemoveAt(i); continue; }
-
+            var s = netFishStates[i];
+            if (s.sr == null) { netFishStates.RemoveAt(i); continue; }
             float x = s.center.x + Mathf.Sin(time * s.freqX + s.phaseX) * s.ampX;
             float y = s.center.y + Mathf.Sin(time * s.freqY + s.phaseY) * s.ampY;
-
-            x = Mathf.Clamp(x, -86f, 86f);
-            y = Mathf.Clamp(y, -26f, 26f);
-            s.rt.anchoredPosition = new Vector2(x, y);
-
+            s.sr.transform.position = new Vector3(x, y, s.center.z);
             float dx = Mathf.Cos(time * s.freqX + s.phaseX);
             if (Mathf.Abs(dx) > 0.05f)
-                s.rt.localScale = new Vector3(dx > 0 ? 1f : -1f, 1f, 1f);
-
-            towerFishStates[i] = s;
+            {
+                var sc = s.sr.transform.localScale;
+                s.sr.transform.localScale = new Vector3(dx > 0 ? Mathf.Abs(sc.x) : -Mathf.Abs(sc.x), sc.y, sc.z);
+            }
+            netFishStates[i] = s;
         }
     }
 
@@ -598,17 +474,8 @@ public class TowerDefenseManager : MonoBehaviour
     IEnumerator ShakeTower(float intensity, float dur)
     {
         if (towerShakeRoot == null) yield break;
-        Vector3 orig = towerShakeRoot.localPosition;
-        float t = 0f;
-        while (t < dur)
-        {
-            t += Time.deltaTime;
-            float d = 1f - Mathf.Clamp01(t / dur);
-            towerShakeRoot.localPosition = orig + new Vector3(
-                Random.Range(-intensity, intensity) * d,
-                Random.Range(-intensity * 0.5f, intensity * 0.5f) * d, 0);
-            yield return null;
-        }
+        Vector3 orig = towerShakeRoot.localPosition; float t = 0f;
+        while (t < dur) { t += Time.deltaTime; float d = 1f - Mathf.Clamp01(t / dur); towerShakeRoot.localPosition = orig + new Vector3(Random.Range(-intensity, intensity) * d, Random.Range(-intensity * 0.5f, intensity * 0.5f) * d, 0); yield return null; }
         towerShakeRoot.localPosition = orig;
     }
 
@@ -617,8 +484,7 @@ public class TowerDefenseManager : MonoBehaviour
         if (crackContainer == null) return;
         var crack = new GameObject("Crack");
         crack.transform.SetParent(crackContainer, false);
-        crack.transform.localPosition = new Vector3(
-            Random.Range(-0.8f, 0.8f), Random.Range(-1.0f, 1.0f), -0.05f);
+        crack.transform.localPosition = new Vector3(Random.Range(-0.8f, 0.8f), Random.Range(-1.0f, 1.0f), -0.05f);
         CrackLine(crack.transform, Random.Range(0.4f, 0.9f), 0.04f, Random.Range(-35f, 35f));
         CrackLine(crack.transform, Random.Range(0.25f, 0.55f), 0.03f, Random.Range(55f, 125f));
     }
@@ -643,28 +509,6 @@ public class TowerDefenseManager : MonoBehaviour
     }
 
     // =================================================================
-    // Wave management
-    // =================================================================
-
-    void TryAdvanceWave()
-    {
-        if (advancingWave || !gameActive) return;
-        advancingWave = true;
-        currentWave++;
-        // Once all authored waves are spent, keep looping the final wave's
-        // difficulty rather than ending the game — surviving the full
-        // surviveDuration is what actually wins it now.
-        if (currentWave >= waves.Length) currentWave = waves.Length - 1;
-        StartCoroutine(NextWaveRoutine());
-    }
-
-    IEnumerator NextWaveRoutine()
-    {
-        yield return new WaitForSeconds(2f);
-        advancingWave = false;
-        StartCoroutine(SpawnWave(waves[currentWave]));
-    }
-
     // =================================================================
     // HUD
     // =================================================================
@@ -672,7 +516,7 @@ public class TowerDefenseManager : MonoBehaviour
     void UpdateHUD()
     {
         if (scoreText != null) scoreText.text = "Score: " + score;
-        if (waveText != null) waveText.text = "Wave " + (currentWave + 1) + " / " + waves.Length;
+        if (waveText != null) waveText.text = "";   // no wave phases — just the timer
         if (comboText != null) comboText.text = combo >= 3 ? combo + "x combo!" : "";
     }
 
@@ -684,36 +528,23 @@ public class TowerDefenseManager : MonoBehaviour
     {
         var go = new GameObject("Popup");
         go.transform.position = pos;
-        var c = go.AddComponent<Canvas>();
-        c.renderMode = RenderMode.WorldSpace; c.sortingOrder = 20;
+        var c = go.AddComponent<Canvas>(); c.renderMode = RenderMode.WorldSpace; c.sortingOrder = 20;
         go.transform.localScale = new Vector3(0.013f, 0.013f, 1f);
         go.GetComponent<RectTransform>().sizeDelta = new Vector2(260, 60);
         go.AddComponent<CanvasGroup>();
-
         var tgo = new GameObject("T"); tgo.transform.SetParent(go.transform, false);
         var tmp = tgo.AddComponent<TextMeshProUGUI>();
         tmp.text = text; tmp.fontSize = 22; tmp.color = col;
         tmp.fontStyle = FontStyles.Bold; tmp.alignment = TextAlignmentOptions.Center;
         var rt = tgo.GetComponent<RectTransform>();
-        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
-        rt.offsetMin = rt.offsetMax = Vector2.zero;
-
+        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = rt.offsetMax = Vector2.zero;
         StartCoroutine(PopupAnim(go));
     }
 
     IEnumerator PopupAnim(GameObject go)
     {
-        Vector3 start = go.transform.position;
-        var cg = go.GetComponent<CanvasGroup>();
-        float t = 0f;
-        while (t < 1f)
-        {
-            t += Time.deltaTime * 1.4f;
-            if (go == null) yield break;
-            go.transform.position = start + Vector3.up * t * 1.0f;
-            if (cg != null) cg.alpha = 1f - Mathf.Clamp01((t - 0.5f) * 2f);
-            yield return null;
-        }
+        Vector3 start = go.transform.position; var cg = go.GetComponent<CanvasGroup>(); float t = 0f;
+        while (t < 1f) { t += Time.deltaTime * 1.4f; if (go == null) yield break; go.transform.position = start + Vector3.up * t * 1.0f; if (cg != null) cg.alpha = 1f - Mathf.Clamp01((t - 0.5f) * 2f); yield return null; }
         if (go != null) Destroy(go);
     }
 
@@ -721,71 +552,43 @@ public class TowerDefenseManager : MonoBehaviour
     // End game
     // =================================================================
 
-    /// <summary>
-    /// Shared fair-scaling helper: how well did the player do vs the
-    /// maximum possible score for the waves faced so far? Returns 0-1.
-    /// Same accuracy-based approach used by every minigame manager.
-    /// </summary>
     float ComputeAccuracy()
     {
-        int maxPossible = 0;
-        // Only count waves the player actually reached
-        int wavesReached = Mathf.Min(currentWave + 1, waves.Length);
-        for (int i = 0; i < wavesReached; i++)
-        {
-            var w = waves[i];
-            int scamCount = Mathf.RoundToInt(w.count * w.scamRatio);
-            int safeCount = w.count - scamCount;
-            // Best case: every scam speared at combo (15) + every safe collected (5)
-            maxPossible += scamCount * 15 + safeCount * 5;
-        }
-        if (maxPossible <= 0) return 0f;
-        return Mathf.Clamp01((float)score / maxPossible);
+        // Max possible: ~20 fish/minute at 55% scam → ~11 scam × 15pts + 9 safe × 5pts = 210
+        float maxPossible = 210f;
+        return Mathf.Clamp01(score / maxPossible);
     }
 
     void GameOver()
     {
-        if (gameEnded) return;
-        gameEnded = true;
-        gameActive = false;
+        if (gameEnded) return; gameEnded = true; gameActive = false;
         StopAllCoroutines();
         foreach (var f in liveFish) if (f != null) Destroy(f.gameObject);
         liveFish.Clear();
         gameOverPanel.SetActive(true);
-        gameOverScoreText.text = "Score: " + score;
-        gameOverMessageText.text =
-            "Your tower cracked! Weak passwords like '123456' let the bad fish through.\n" +
-            "Strong passwords (symbols + numbers) keep them out.";
+        if (gameOverScoreText != null) gameOverScoreText.text = "Score: " + score;
+        if (gameOverMessageText != null) gameOverMessageText.text = "Your tower cracked! Weak passwords like '123456' let the bad fish through.\nStrong passwords (symbols + numbers) keep them out.";
         commentator?.Say("The tower fell! We'll be stronger next time, dear.");
-
-        // Queue XP even on a loss — partial credit for progress made
         PlayerProgress.QueueFromPerformance(ComputeAccuracy());
     }
 
     void WinGame()
     {
-        if (gameEnded) return;
-        gameEnded = true;
-        gameActive = false;
+        if (gameEnded) return; gameEnded = true; gameActive = false;
         winPanel.SetActive(true);
-        int max = 0;
-        foreach (var w in waves) max += Mathf.RoundToInt(w.count * w.scamRatio) * 10;
-        winScoreText.text = score + " / " + max;
+        int max = 210; // estimated max score for a full 60s run (continuous spawn)
+        if (winScoreText != null) winScoreText.text = score + " / " + max;
         float pct = max > 0 ? (float)score / max : 0;
-        winStarsText.text = pct >= 0.9f ? "* * *" : pct >= 0.6f ? "* *" : "*";
-        commentator?.Say(pct >= 0.9f
-            ? "Perfect defence! The tower is safe, dear."
-            : "We did it! Strong passwords saved the day.");
-
-        // Queue fair XP based on overall accuracy across all waves
+        if (winStarsText != null) winStarsText.text = pct >= 0.9f ? "★ ★ ★" : pct >= 0.6f ? "★ ★" : "★";
+        commentator?.Say(pct >= 0.9f ? "Perfect defence! The tower is safe, dear." : "We did it! Strong passwords saved the day.");
         PlayerProgress.QueueFromPerformance(ComputeAccuracy());
     }
 
-    public void OnRetry() { SceneManager.LoadScene("TowerDefense"); }
-    public void OnReturnToMap() { SceneManager.LoadScene("WorldMap"); }
+    public void OnRetry() { UnityEngine.SceneManagement.SceneManager.LoadScene("TowerDefense"); }
+    public void OnReturnToMap() { UnityEngine.SceneManagement.SceneManager.LoadScene("WorldMap"); }
 
     // =================================================================
-    // Helpers
+    // White pixel
     // =================================================================
 
     private Sprite _white;
@@ -795,8 +598,7 @@ public class TowerDefenseManager : MonoBehaviour
         {
             if (whiteSprite != null) return whiteSprite;
             if (_white != null) return _white;
-            var tex = new Texture2D(4, 4);
-            var px = new Color[16];
+            var tex = new Texture2D(4, 4); var px = new Color[16];
             for (int i = 0; i < 16; i++) px[i] = Color.white;
             tex.SetPixels(px); tex.Apply();
             _white = Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f));
