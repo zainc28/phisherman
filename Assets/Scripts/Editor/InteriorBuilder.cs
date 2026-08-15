@@ -18,9 +18,10 @@ using UnityEngine.UI;
 ///   Post-lose dialogue → Retry panel (retry / give up)
 ///
 /// WORLD 1 (existing, unchanged): ApartmentInterior, PizzaInterior, OfficeInterior
-/// WORLD 3 (new): AuntCarolInterior, UncleMarcusInterior, GrandpaLouInterior
-/// WORLD 4 (new): GrandmaIrisInterior, UncleFelixInterior, AuntDanaInterior
-/// WORLD 5 (new): GrandpaErnestInterior, AuntPriyaInterior, UncleDiegoInterior
+/// WORLD 2 (new): FlatInterior, PizzaW2Interior, OfficeW2Interior
+/// WORLD 3 (existing, unchanged): AuntCarolInterior, UncleMarcusInterior, GrandpaLouInterior
+/// WORLD 4 (existing, unchanged): GrandmaIrisInterior, UncleFelixInterior, AuntDanaInterior
+/// WORLD 5 (existing, unchanged): GrandpaErnestInterior, AuntPriyaInterior, UncleDiegoInterior
 ///
 /// Each world spreads across all three minigame types (EmailSwiper,
 /// TowerDefense, SpotDifference) and a different NPC sprite category
@@ -44,6 +45,7 @@ public static class InteriorBuilder
             npcSpriteName: "grandmas_1",
             npcName: "Grandma Rose",
             minigame: "EmailSwiper",
+            returnScene: "WorldMap",
             accent: Hex("#FF9F1C"),
             introLines: new[]
             {
@@ -79,6 +81,7 @@ public static class InteriorBuilder
             npcSpriteName: "uncle_1",
             npcName: "Uncle Tony",
             minigame: "EmailSwiper",
+            returnScene: "WorldMap",
             accent: Hex("#FF6B6B"),
             introLines: new[]
             {
@@ -114,6 +117,7 @@ public static class InteriorBuilder
             npcSpriteName: "aunt_2",
             npcName: "Mrs. Patel",
             minigame: "TowerDefense",
+            returnScene: "WorldMap",
             accent: Hex("#4ECDC4"),
             introLines: new[]
             {
@@ -143,6 +147,116 @@ public static class InteriorBuilder
         );
 
         // =====================================================================
+        // WORLD 2  —  Snow Town
+        // =====================================================================
+
+        // ── Mr. Kowalski's flat  (pension scam emails → EmailSwiper) ──
+        BuildInterior(
+            sceneName: "FlatInterior",
+            bgName: "home_1_interior",
+            npcSpriteName: "grandpas_1",
+            npcName: "Mr. Kowalski",
+            minigame: "EmailSwiper",
+            returnScene: "WorldMap2",
+            accent: Hex("#FF9F1C"),
+            introLines: new[]
+            {
+                ("NPC",    "Ah, come in, come in! I am glad someone young is here."),
+                ("Player", "What's the matter, Mr. Kowalski?"),
+                ("NPC",    "I keep getting emails about my pension — they say my payments will stop unless I verify my details!"),
+                ("Player", "That's a pension scam. They target retirees with exactly that kind of threat."),
+                ("NPC",    "But it looks so official! It even has my bank's logo on it."),
+                ("Player", "Scammers copy logos easily. The real giveaway is always in the sender address and the links."),
+                ("NPC",    "I have a whole folder of these. Could you go through them with me?"),
+                ("Player", "Of course. Let's sort every real one from every fake."),
+            },
+            winLines: new[]
+            {
+                ("NPC",    "You found all of them! I would have replied to at least three of those."),
+                ("Player", "That's exactly what they count on — familiarity making you lower your guard."),
+                ("NPC",    "From now on I will call my pension provider directly if anything looks suspicious."),
+                ("Player", "That one habit will protect you better than anything else."),
+                ("NPC",    "Thank you, my friend. I feel much better now."),
+            },
+            loseLines: new[]
+            {
+                ("NPC",    "Oh dear, a few of those slipped through..."),
+                ("Player", "Pension scams are polished — they spend a lot of effort making them look real."),
+                ("NPC",    "Could we try once more? I want to get this right."),
+            }
+        );
+
+        // ── Nonna Bea's pizza shop  (fake supplier invoice flood → TowerDefense) ──
+        BuildInterior(
+            sceneName: "PizzaW2Interior",
+            bgName: "pizza_interior",
+            npcSpriteName: "grandmas_2",
+            npcName: "Nonna Bea",
+            minigame: "TowerDefense",
+            returnScene: "WorldMap2",
+            accent: Hex("#FF6B6B"),
+            introLines: new[]
+            {
+                ("NPC",    "Oh! You came at the right time. My email is being swamped."),
+                ("Player", "What's coming in, Nonna Bea?"),
+                ("NPC",    "Fake invoices from suppliers I've never heard of — but they look just like the real ones!"),
+                ("Player", "Business invoice fraud. They flood you hoping one slips through before you notice."),
+                ("NPC",    "If my accountant pays even one of these we'll lose hundreds!"),
+                ("Player", "Then we need to hold them off. I'll help you block every fake before it reaches your accountant."),
+                ("NPC",    "Please — this shop is my life's work."),
+                ("Player", "Let's protect it together."),
+            },
+            winLines: new[]
+            {
+                ("NPC",    "Every single fake blocked! My accountant will be so relieved."),
+                ("Player", "Always verify any new payment request by phone before approving it."),
+                ("NPC",    "I will call every supplier directly from now on — no exceptions."),
+                ("Player", "That's the rule that keeps small businesses safe."),
+                ("NPC",    "You're a lifesaver. Have some pizza!"),
+            },
+            loseLines: new[]
+            {
+                ("NPC",    "Some got through! My poor accountant..."),
+                ("Player", "They time these in waves to overwhelm you. Let's go again — I'll explain the pattern."),
+                ("NPC",    "Yes, please. I can't let them win."),
+            }
+        );
+
+        // ── Mr. Frost's office  (compare real vs fake IT security email → SpotDifference) ──
+        BuildInterior(
+            sceneName: "OfficeW2Interior",
+            bgName: "office_interior",
+            npcSpriteName: "uncle_2",
+            npcName: "Mr. Frost",
+            minigame: "SpotDifference",
+            returnScene: "WorldMap2",
+            accent: Hex("#4ECDC4"),
+            introLines: new[]
+            {
+                ("NPC",    "Glad you stopped by. I've got two security alert emails from what looks like our IT department."),
+                ("Player", "Two that look the same? One of them is almost certainly a fake."),
+                ("NPC",    "That's what I thought. But they both have the company logo and everything."),
+                ("Player", "Logos are trivial to copy. The differences will be in the details — sender domain, link URLs, fine print."),
+                ("NPC",    "My staff nearly clicked the link in one of them already."),
+                ("Player", "Then let's go through both carefully and find every mismatch before anyone else does."),
+            },
+            winLines: new[]
+            {
+                ("NPC",    "You caught every difference — even the extra hyphen in the domain name!"),
+                ("Player", "That's usually the last thing people check, which is exactly why attackers hide it there."),
+                ("NPC",    "I'm going to add sender domain verification to our email policy today."),
+                ("Player", "That's one of the best things a small office can do."),
+                ("NPC",    "Thank you. I'll brief the whole team this afternoon."),
+            },
+            loseLines: new[]
+            {
+                ("NPC",    "We missed some — those differences were very subtle."),
+                ("Player", "Corporate phishing emails are the most polished kind. Let's look again."),
+                ("NPC",    "Please — I need to be sure before I show my team."),
+            }
+        );
+
+        // =====================================================================
         // WORLD 3  —  Urban Mobile Quarter
         // =====================================================================
 
@@ -153,6 +267,7 @@ public static class InteriorBuilder
             npcSpriteName: "aunt_1",
             npcName: "Aunt Carol",
             minigame: "EmailSwiper",
+            returnScene: "WorldMap3",
             accent: Hex("#2BB3A3"),
             introLines: new[]
             {
@@ -185,6 +300,7 @@ public static class InteriorBuilder
             npcSpriteName: "uncle_2",
             npcName: "Uncle Marcus",
             minigame: "TowerDefense",
+            returnScene: "WorldMap3",
             accent: Hex("#FF9F1C"),
             introLines: new[]
             {
@@ -217,6 +333,7 @@ public static class InteriorBuilder
             npcSpriteName: "grandpas_1",
             npcName: "Grandpa Lou",
             minigame: "SpotDifference",
+            returnScene: "WorldMap3",
             accent: Hex("#FFD93D"),
             introLines: new[]
             {
@@ -253,6 +370,7 @@ public static class InteriorBuilder
             npcSpriteName: "grandmas_2",
             npcName: "Grandma Iris",
             minigame: "TowerDefense",
+            returnScene: "WorldMap4",
             accent: Hex("#2ECC71"),
             introLines: new[]
             {
@@ -285,6 +403,7 @@ public static class InteriorBuilder
             npcSpriteName: "uncle_3",
             npcName: "Uncle Felix",
             minigame: "SpotDifference",
+            returnScene: "WorldMap4",
             accent: Hex("#A29BFE"),
             introLines: new[]
             {
@@ -317,6 +436,7 @@ public static class InteriorBuilder
             npcSpriteName: "aunt_2",
             npcName: "Aunt Dana",
             minigame: "EmailSwiper",
+            returnScene: "WorldMap4",
             accent: Hex("#FF6B6B"),
             introLines: new[]
             {
@@ -353,6 +473,7 @@ public static class InteriorBuilder
             npcSpriteName: "grandpas_3",
             npcName: "Grandpa Ernest",
             minigame: "EmailSwiper",
+            returnScene: "WorldMap5",
             accent: Hex("#3498DB"),
             introLines: new[]
             {
@@ -385,6 +506,7 @@ public static class InteriorBuilder
             npcSpriteName: "aunt_3",
             npcName: "Aunt Priya",
             minigame: "SpotDifference",
+            returnScene: "WorldMap5",
             accent: Hex("#1ABC9C"),
             introLines: new[]
             {
@@ -417,6 +539,7 @@ public static class InteriorBuilder
             npcSpriteName: "uncle_4",
             npcName: "Uncle Diego",
             minigame: "TowerDefense",
+            returnScene: "WorldMap5",
             accent: Hex("#E74C3C"),
             introLines: new[]
             {
@@ -444,7 +567,7 @@ public static class InteriorBuilder
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log("[InteriorBuilder] Built 12 interior scenes (World 1: 3, World 3: 3, World 4: 3, World 5: 3).");
+        Debug.Log("[InteriorBuilder] Built 15 interior scenes (World 1: 3, World 2: 3, World 3: 3, World 4: 3, World 5: 3).");
     }
 
     // =========================================================================
@@ -452,7 +575,7 @@ public static class InteriorBuilder
     // =========================================================================
     static void BuildInterior(
         string sceneName, string bgName, string npcSpriteName,
-        string npcName, string minigame, Color accent,
+        string npcName, string minigame, string returnScene, Color accent,
         (string speaker, string text)[] introLines,
         (string speaker, string text)[] winLines,
         (string speaker, string text)[] loseLines)
@@ -549,7 +672,7 @@ public static class InteriorBuilder
         mgr.npcName = npcName;
         mgr.npcSprite = npcSpr;
         mgr.minigameScene = minigame;
-        mgr.returnScene = "WorldMap";
+        mgr.returnScene = returnScene;
 
         mgr.dialoguePanel = dp.gameObject;
         mgr.speakerNameText = speakerTxt;

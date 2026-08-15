@@ -214,12 +214,14 @@ public class FishUnit : MonoBehaviour
         }
         else
         {
-            state = State.Enraged; currentSpeed = 0f;
+            // CHANGED: charge toward the tower instead of exploding on the spot —
+            // hitRegistered reset so CheckReachedTower can fire again once it arrives,
+            // OnReachedTower already handles Enraged -> Exploding.
+            state = State.Enraged; currentSpeed = baseSpeed * 2.2f; hitRegistered = false;
             if (fishPuffedSprite != null) fishSR.sprite = fishPuffedSprite;
             StartCoroutine(PuffUpAnim());
             manager.OnGreenFishShotEarly(transform.position);
             manager.commentator?.SayRandom(new[] { "Oh no, you made a safe one angry!", "Don't shoot the strong passwords!", "Watch out — it's charging!" });
-            StartCoroutine(PufferfishExplode());
         }
     }
 

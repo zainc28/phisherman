@@ -74,6 +74,15 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/UncleDiegoInterior.unity
     guid: c4a11bd716519984d8af2d8ed1b050ce
+  - enabled: 1
+    path: Assets/Scenes/FlatInterior.unity
+    guid: 564ac2eadad86de40be9b264adf6f990
+  - enabled: 1
+    path: Assets/Scenes/PizzaW2Interior.unity
+    guid: 785a72bb014c3a3499a2cf01fa2169a5
+  - enabled: 1
+    path: Assets/Scenes/OfficeW2Interior.unity
+    guid: 4c4c682eca770b54b89abb6ffaf880a6
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
   m_UseUCBPForAssetBundles: 0

@@ -433,6 +433,11 @@ public static class World2Builder
 
         Transform playerT = playerGo.transform;
 
+        // Door CTAs — floating name labels above each building
+        AddDoorCTA("Door_W2_LeftHouse", playerT, -4.0f, 0.4f, "FlatInterior", "EmailSwiper", "Mr. Kowalski", Hex("#FF9F1C"));
+        AddDoorCTA("Door_W2_CentreHouse", playerT, 0.2f, 1.2f, "PizzaW2Interior", "TowerDefense", "Nonna Bea", Hex("#FF6B6B"));
+        AddDoorCTA("Door_W2_RightHouse", playerT, 4.3f, 0.2f, "OfficeW2Interior", "SpotDifference", "Mr. Frost", Hex("#4ECDC4"));
+
         // Canvas
         var canvasGo = new GameObject("Canvas"); var canvas = canvasGo.AddComponent<Canvas>(); canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         var scaler = canvasGo.AddComponent<CanvasScaler>(); scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize; scaler.referenceResolution = new Vector2(1920, 1080); scaler.matchWidthOrHeight = 0.5f;
@@ -449,6 +454,13 @@ public static class World2Builder
 
         var rpt = GameObject.Find("Path_Locked")?.GetComponent<MapPathTrigger>();
         if (rpt != null) rpt.lockedPopup = lockedPopup;
+
+        // Wire each door's completed-lock popup now that lockedPopup exists
+        foreach (var doorName in new[] { "Door_W2_LeftHouse", "Door_W2_CentreHouse", "Door_W2_RightHouse" })
+        {
+            var doorCta = GameObject.Find(doorName + "_CTA")?.GetComponent<MapDoorCTA>();
+            if (doorCta != null) doorCta.completedLockPopup = lockedPopup;
+        }
 
         // Back-to-World1 hint
         var hintGo = new GameObject("BackHint", typeof(RectTransform)); hintGo.transform.SetParent(canvasRT, false);
@@ -497,6 +509,56 @@ public static class World2Builder
         var tRT = tGo.GetComponent<RectTransform>(); tRT.anchorMin = Vector2.zero; tRT.anchorMax = Vector2.one; tRT.offsetMin = tRT.offsetMax = Vector2.zero;
 
         pt.prompt = promptGo; promptGo.SetActive(false);
+    }
+
+    static void AddDoorCTA(string name, Transform player, float cx, float cy,
+        string interiorScene, string minigameScene, string label, Color col, GameObject lockedPopup = null)
+    {
+        var doorGo = new GameObject(name); doorGo.transform.position = new Vector3(cx, cy, 0f);
+        var dt = doorGo.AddComponent<MapDoorTrigger>(); dt.player = player;
+        dt.targetScene = interiorScene; dt.triggerRadius = 0.55f; dt.promptProximity = 999f; dt.prompt = null;
+
+        var ctaRoot = new GameObject(name + "_CTA"); ctaRoot.transform.position = new Vector3(cx, cy + 0.75f, -0.5f);
+
+        var cGo = new GameObject("C"); cGo.transform.SetParent(ctaRoot.transform, false);
+        cGo.transform.localScale = new Vector3(0.012f, 0.012f, 1f);
+        var wc = cGo.AddComponent<Canvas>(); wc.renderMode = RenderMode.WorldSpace; wc.sortingOrder = 35;
+        cGo.GetComponent<RectTransform>().sizeDelta = new Vector2(300, 70);
+
+        var borderGo = new GameObject("Border", typeof(RectTransform)); borderGo.transform.SetParent(cGo.transform, false);
+        var borderImg = borderGo.AddComponent<Image>(); borderImg.color = col; borderImg.raycastTarget = false;
+        var brt = borderGo.GetComponent<RectTransform>();
+        brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one; brt.offsetMin = new Vector2(-4, -4); brt.offsetMax = new Vector2(4, 4);
+
+        var fillGo = new GameObject("Fill", typeof(RectTransform)); fillGo.transform.SetParent(cGo.transform, false);
+        var fillImg = fillGo.AddComponent<Image>(); fillImg.color = new Color(0.06f, 0.08f, 0.14f, 0.92f); fillImg.raycastTarget = false;
+        var frt = fillGo.GetComponent<RectTransform>(); frt.anchorMin = Vector2.zero; frt.anchorMax = Vector2.one; frt.offsetMin = frt.offsetMax = Vector2.zero;
+
+        var tGo = new GameObject("Label", typeof(RectTransform)); tGo.transform.SetParent(cGo.transform, false);
+        var tmp = tGo.AddComponent<TextMeshProUGUI>();
+        tmp.text = label; tmp.fontSize = 38; tmp.color = col; tmp.fontStyle = FontStyles.Bold;
+        tmp.alignment = TextAlignmentOptions.Center; tmp.raycastTarget = false;
+        var tRT = tGo.GetComponent<RectTransform>(); tRT.anchorMin = Vector2.zero; tRT.anchorMax = Vector2.one; tRT.offsetMin = new Vector2(8, 4); tRT.offsetMax = new Vector2(-8, -4);
+
+        var cta = ctaRoot.AddComponent<MapDoorCTA>();
+        cta.targetScene = interiorScene;
+        cta.playerTransform = player;
+        cta.doorPosition = doorGo.transform;
+        cta.label = tmp;
+        cta.completionKey = "completed_" + interiorScene;
+        cta.activeColor = col;
+        cta.completedColor = new Color(col.r * 0.35f, col.g * 0.35f, col.b * 0.35f, 0.40f);
+        cta.bobAmount = 0.16f;
+        cta.bobSpeed = 2.8f;
+        cta.clickRadius = 1.4f;
+        cta.completedLockPopup = lockedPopup;
+        cta.completedLockMessage = "This door is locked — please explore another building!";
+
+        var borderCTA = ctaRoot.AddComponent<CTABorderFader>();
+        borderCTA.borderImage = borderImg;
+        borderCTA.completionKey = "completed_" + interiorScene;
+        borderCTA.activeColor = col;
+        borderCTA.completedColor = new Color(col.r * 0.35f, col.g * 0.35f, col.b * 0.35f, 0.40f);
     }
 
     static (GameObject panel, Button adv, TMP_Text name, TMP_Text body, TMP_Text hint,

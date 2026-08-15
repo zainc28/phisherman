@@ -237,14 +237,16 @@ public static class TowerDefenseBuilder
         crackContainer = ccGo.transform;
 
         // ── Spear pivot — placed at the speargun position on td_tower.
-        // The speargun is at the bottom-left of the sprite; after X-flip it
-        // appears on the left side (facing fish). Offset: x = -towerH*0.42,
-        // y = towerCentreY - towerH*0.30 (roughly lower-left quarter).
+        // CHANGED: re-estimated from the actual in-game screenshot (the harpoon
+        // basket sits low on the sub, close to horizontal centre rather than
+        // far left). If it's still off after rebuilding, nudge these two
+        // multipliers — x closer to 0 moves the pivot toward the sub's centre,
+        // a more negative y moves it further down the sub.
         var pivotGo = new GameObject("SpeargunPivot");
         pivotGo.transform.SetParent(shakeRoot, false);
         pivotGo.transform.localPosition = new Vector3(
-            -towerH * 0.42f,          // left edge — the gun side after flip
-            towerCentreY - towerH * 0.30f,  // lower portion of tower
+            -towerH * 0.07f,                // near horizontal centre of the sub
+            towerCentreY - towerH * 0.43f,  // low on the sub, near the harpoon basket
             -0.5f);
         speargunPivot = pivotGo.transform;
 

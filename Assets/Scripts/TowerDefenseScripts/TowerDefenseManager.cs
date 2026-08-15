@@ -336,7 +336,8 @@ public class TowerDefenseManager : MonoBehaviour
 
     public void OnGreenFishCollected(GameObject fishGO, Sprite fishSpr, bool isDefused = false)
     {
-        // td_tower has a built-in net — no separate pool fish needed
+        // CHANGED: spawn a net fish so the caught fish actually swims around in the tower's net
+        SpawnNetFish(fishSpr);
         PlayerProgress.RegisterFish(PlayerProgress.GetRandomNetFishId());
         if (!isDefused) { score += 5; combo++; commentator?.SayRandom(new[] { "A strong password joined the tower!", "Safe and sound!" }); }
         else { SpawnPopup("DEFUSED!", fishGO.transform.position + Vector3.up, new Color(0.3f, 1f, 0.3f)); commentator?.SayRandom(new[] { "The defused fish is swimming happily!", "Look at it go!" }); }
@@ -384,13 +385,13 @@ public class TowerDefenseManager : MonoBehaviour
                   fishNormalSprite, fishHappySprite, fishPuffedSprite, logSprite,
                   NeutralFishColor);
 
-        // td_hanging_fish hangs from the log, facing left toward the tower
+        // td_hanging_fish hangs from the log, facing right — CHANGED from facing left
         if (hangingFishSprite != null)
         {
             var hfGo = new GameObject("HangingFish");
             hfGo.transform.SetParent(go.transform, false);
             hfGo.transform.localPosition = new Vector3(0f, 0.30f, 0.01f);
-            hfGo.transform.localScale = new Vector3(-0.40f, 0.40f, 1f);
+            hfGo.transform.localScale = new Vector3(0.40f, 0.40f, 1f);
             var hfSR = hfGo.AddComponent<SpriteRenderer>();
             hfSR.sprite = hangingFishSprite; hfSR.color = Color.white; hfSR.sortingOrder = 5;
         }
