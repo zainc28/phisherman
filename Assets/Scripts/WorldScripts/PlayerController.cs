@@ -1,16 +1,25 @@
 using UnityEngine;
+
 public class PlayerController : MonoBehaviour
 {
     public float moveSpeed = 5f;
     private Vector3 targetPosition;
     private bool isMoving = false;
+
+    // If a MapNavAgent is on this object, it owns all movement — this script does nothing.
+    private MapNavAgent _nav;
+
     void Start()
     {
         targetPosition = transform.position;
+        _nav = GetComponent<MapNavAgent>();
     }
+
     void Update()
     {
-        // Detect mouse click
+        // Yield to MapNavAgent when present (WorldMap scenes)
+        if (_nav != null) return;
+
         if (Input.GetMouseButtonDown(0))
         {
             Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
@@ -18,7 +27,7 @@ public class PlayerController : MonoBehaviour
             targetPosition = mousePos;
             isMoving = true;
         }
-        // Move toward target
+
         if (isMoving)
         {
             transform.position = Vector3.MoveTowards(
@@ -26,7 +35,7 @@ public class PlayerController : MonoBehaviour
                 targetPosition,
                 moveSpeed * Time.deltaTime
             );
-            // Stop when close enough
+
             if (Vector3.Distance(transform.position, targetPosition) < 0.05f)
             {
                 transform.position = targetPosition;
