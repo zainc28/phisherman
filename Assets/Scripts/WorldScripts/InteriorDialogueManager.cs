@@ -19,7 +19,7 @@ using UnityEngine.UI;
 // ============================================================
 
 // ============================================================
-//  Commentator  (unchanged — merged here for single-file ease)
+//  Commentator  (unchanged)
 // ============================================================
 public class Commentator : MonoBehaviour
 {
@@ -195,36 +195,26 @@ public class InteriorDialogueManager : MonoBehaviour
     // ── Lifecycle ─────────────────────────────────────────────
     void Start()
     {
-        // Hide all panels initially
         if (choicePanel != null) choicePanel.SetActive(false);
         if (retryPanel != null) retryPanel.SetActive(false);
 
-        // Wire commentator to NPC
         if (commentator != null)
             commentator.SetSpeaker(npcName, npcSprite, null,
                 string.IsNullOrEmpty(npcName) ? "?" : npcName[0].ToString().ToUpper());
 
-        // Check if we're returning from a minigame
         string result = PlayerPrefs.GetString("interior_result", "");
         PlayerPrefs.DeleteKey("interior_result");
 
         if (result == "win")
-        {
             EnterPhase(Phase.PostWin);
-        }
         else if (result == "lose")
-        {
             EnterPhase(Phase.PostLose);
-        }
         else
-        {
             EnterPhase(Phase.Intro);
-        }
     }
 
     void Update()
     {
-        // Phisherman talking animation
         if (_playerTalking && phishermanTalkFrames != null && phishermanTalkFrames.Length > 0)
         {
             _talkTimer += Time.deltaTime;
@@ -247,7 +237,6 @@ public class InteriorDialogueManager : MonoBehaviour
         if (choicePanel != null) choicePanel.SetActive(false);
         if (retryPanel != null) retryPanel.SetActive(false);
 
-        // Hide the advance button if we are about to show choices
         if (advanceButton != null) advanceButton.gameObject.SetActive(p != Phase.Choice && p != Phase.PostLose);
 
         switch (p)
@@ -273,7 +262,7 @@ public class InteriorDialogueManager : MonoBehaviour
         }
     }
 
-    // ── Line advancement (called by tap / button) ─────────────
+    // ── Line advancement ──────────────────────────────────────
     public void AdvanceLine()
     {
         if (_waitingForInput) return;
@@ -319,18 +308,15 @@ public class InteriorDialogueManager : MonoBehaviour
         switch (_phase)
         {
             case Phase.Intro:
-                // After intro, show the "Ready to help?" choice
                 EnterPhase(Phase.Choice);
                 break;
 
             case Phase.PostWin:
-                // Mark complete and return to world
                 MarkComplete();
                 GoBackToWorld();
                 break;
 
             case Phase.PostLose:
-                // After lose dialogue, show retry panel
                 ShowRetryPanel();
                 break;
 
@@ -339,7 +325,7 @@ public class InteriorDialogueManager : MonoBehaviour
         }
     }
 
-    // ── Choice panel (pre-minigame) ───────────────────────────
+    // ── Choice panel ──────────────────────────────────────────
     void ShowChoicePanel()
     {
         if (speakerNameText != null) speakerNameText.text = npcName;
@@ -348,10 +334,29 @@ public class InteriorDialogueManager : MonoBehaviour
         if (choicePanel != null) choicePanel.SetActive(true);
     }
 
+    // ── CHANGED: set world theme before loading minigame ──────
+    //
+    //  GetWorldNumber() derives the world number from returnScene.
+    //  returnScene for World 1 is "WorldMap", World 2 is "WorldMap2",
+    //  etc. — this is already set by InteriorBuilder so no extra wiring
+    //  is needed in the Inspector.
+    // ─────────────────────────────────────────────────────────
+    int GetWorldNumber()
+    {
+        if (returnScene.Contains("5")) return 5;
+        if (returnScene.Contains("4")) return 4;
+        if (returnScene.Contains("3")) return 3;
+        if (returnScene.Contains("2")) return 2;
+        return 1;
+    }
+
     public void OnPlay()
     {
         if (choicePanel != null) choicePanel.SetActive(false);
-        // Tell the interior which scene we came from so we can return
+
+        // Set world theme so the minigame knows which content to load
+        MinigameTheme.Set(GetWorldNumber());
+
         PlayerPrefs.SetString("interior_source", SceneManager.GetActiveScene().name);
         PlayerPrefs.Save();
         if (!string.IsNullOrEmpty(minigameScene))
@@ -363,7 +368,7 @@ public class InteriorDialogueManager : MonoBehaviour
         SceneManager.LoadScene(returnScene);
     }
 
-    // ── Retry panel (post-lose) ────────────────────────────────
+    // ── Retry panel ───────────────────────────────────────────
     void ShowRetryPanel()
     {
         if (speakerNameText != null) speakerNameText.text = npcName;
@@ -375,6 +380,10 @@ public class InteriorDialogueManager : MonoBehaviour
     public void OnRetry()
     {
         if (retryPanel != null) retryPanel.SetActive(false);
+
+        // Set theme again on retry — same world, same content
+        MinigameTheme.Set(GetWorldNumber());
+
         PlayerPrefs.SetString("interior_source", SceneManager.GetActiveScene().name);
         PlayerPrefs.Save();
         if (!string.IsNullOrEmpty(minigameScene))
@@ -390,11 +399,6 @@ public class InteriorDialogueManager : MonoBehaviour
     // ── Completion + exit ─────────────────────────────────────
     void MarkComplete()
     {
-        // IMPORTANT: keyed on the INTERIOR scene name (e.g. "ApartmentInterior"),
-        // not the minigame scene name. Multiple houses can share the same
-        // minigame (EmailSwiper, TowerDefense, SpotDifference) — keying on the
-        // minigame name would mark every house using that minigame "complete"
-        // the moment any one of them was beaten.
         string interiorScene = SceneManager.GetActiveScene().name;
         PlayerPrefs.SetInt("completed_" + interiorScene, 1);
         PlayerPrefs.Save();

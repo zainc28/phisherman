@@ -83,6 +83,18 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/OfficeW2Interior.unity
     guid: 4c4c682eca770b54b89abb6ffaf880a6
+  - enabled: 1
+    path: Assets/Scenes/SpotDifference_W2.unity
+    guid: 016272bf8d6887f41a385f5473acab91
+  - enabled: 1
+    path: Assets/Scenes/SpotDifference_W3.unity
+    guid: 8fc3d9af4ed25f34d9f8bdd1fc08b3c4
+  - enabled: 1
+    path: Assets/Scenes/SpotDifference_W4.unity
+    guid: 2cedc7926469dd244b4daa38abb5f4a7
+  - enabled: 1
+    path: Assets/Scenes/SpotDifference_W5.unity
+    guid: 5b450316499d431499a696c94bac6beb
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
   m_UseUCBPForAssetBundles: 0

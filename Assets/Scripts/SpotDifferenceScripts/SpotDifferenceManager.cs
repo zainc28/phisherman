@@ -14,11 +14,6 @@ using UnityEngine.UI;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DifferenceMarker
-// FIX: switched from IPointerClickHandler to IPointerDownHandler. Inside a
-// ScrollRect, any tiny mouse movement during a click gets treated as the
-// start of a drag, which cancels OnPointerClick entirely — that's why some
-// flags registered and others (the "6th" one) intermittently didn't.
-// OnPointerDown fires immediately on press and isn't affected by this.
 // ─────────────────────────────────────────────────────────────────────────────
 
 [RequireComponent(typeof(Image))]
@@ -27,7 +22,6 @@ public class DifferenceMarker : MonoBehaviour, IPointerDownHandler
     [Tooltip("Short label shown in the found popup")]
     public string flagName;
 
-    [Tooltip("Full explanation for result screen")]
     [TextArea(3, 6)]
     public string explanation;
 
@@ -38,8 +32,6 @@ public class DifferenceMarker : MonoBehaviour, IPointerDownHandler
 
     private Image _hitZone;
 
-    // FIX: track the frame a marker was clicked so PanelClickReceiver
-    // can reliably ignore the same pointer event.
     public static int LastMarkerClickFrame { get; private set; } = -1;
 
     private static readonly Color HiddenColor = new Color(1f, 0f, 0f, 0f);
@@ -54,10 +46,7 @@ public class DifferenceMarker : MonoBehaviour, IPointerDownHandler
 
     public void OnPointerDown(PointerEventData eventData)
     {
-        // Always stamp the frame — even for already-found markers — so
-        // PanelClickReceiver knows a marker absorbed this click.
         LastMarkerClickFrame = Time.frameCount;
-
         if (found) return;
         found = true;
         _hitZone.color = FoundWaterColor;
@@ -69,10 +58,6 @@ public class DifferenceMarker : MonoBehaviour, IPointerDownHandler
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PanelClickReceiver
-// FIX: switched to IPointerDownHandler for the same reason as DifferenceMarker
-// above — OnPointerClick was being silently swallowed by drag-threshold
-// detection inside the ScrollRect, which is why wrong clicks on the spoof
-// page frequently failed to register.
 // ─────────────────────────────────────────────────────────────────────────────
 
 public class PanelClickReceiver : MonoBehaviour, IPointerDownHandler
@@ -81,9 +66,7 @@ public class PanelClickReceiver : MonoBehaviour, IPointerDownHandler
 
     public void OnPointerDown(PointerEventData eventData)
     {
-        // If any DifferenceMarker handled a click this frame, skip.
         if (DifferenceMarker.LastMarkerClickFrame == Time.frameCount) return;
-
         manager?.OnWrongClick();
     }
 }
@@ -111,7 +94,6 @@ public class SpotDifferenceManager : MonoBehaviour
 
     [Header("Hearts")]
     public Image[] heartImages;
-    [Tooltip("Assets/Sprites/UI/heart — used for the lives HUD instead of a drawn placeholder.")]
     public Sprite heartSprite;
 
     [Header("Magnifying Glass")]
@@ -155,6 +137,7 @@ public class SpotDifferenceManager : MonoBehaviour
     [Header("Commentator")]
     public Commentator commentator;
 
+    // ── Internal ──
     private int _score, _found, _total, _streak, _lives;
     private bool _gameOver, _magActive;
     private float _timeRemaining;
@@ -164,26 +147,28 @@ public class SpotDifferenceManager : MonoBehaviour
     private MinigameLivesHUD livesHUD;
 
     private bool _xpQueuedForClear;
-
-    // FIX: frame-level guard — second safety net so a correct find and
-    // a wrong-click penalty can never both fire on the same pointer event.
     private int _lastFoundFrame = -1;
+
+    // ── World theme ──
+    private int _worldTheme = 1;
 
     private static readonly string[] ProgressiveHints =
     {
-        "Look at every part of that email carefully, dear.",
+        "Look at every part of that page carefully, dear.",
         "Pay attention to the exact words they chose.",
-        "Check who it's actually from — look at the address.",
-        "There's still something in how they're speaking to you.",
-        "One more — look at what they're asking you to click."
+        "Check the URL — look at every character.",
+        "There's still something off in how they're asking for information.",
+        "One more — look at what they're asking you to enter."
     };
 
     // =================================================================
-    // Lifecycle
+    //  Lifecycle
     // =================================================================
 
     void Start()
     {
+        _worldTheme = MinigameTheme.Get();
+
         if (markers == null || markers.Count == 0)
             markers = new List<DifferenceMarker>(
                 FindObjectsByType<DifferenceMarker>(FindObjectsSortMode.None));
@@ -205,20 +190,19 @@ public class SpotDifferenceManager : MonoBehaviour
         if (magnifyingGlassRT != null) magnifyingGlassRT.gameObject.SetActive(false);
         UpdateMagButton();
 
-        // FIX: these two were left unassigned by the scene builder (the
-        // magnifier feature isn't wired up). After a scene save/reload an
-        // unassigned Unity object reference becomes a "missing object"
-        // placeholder rather than a true C# null, and `?.` does NOT catch
-        // that — it throws UnassignedReferenceException. That exception
-        // was aborting the rest of Start(), which meant
-        // lureSimulation.StartSim(...) below never ran at all — which is
-        // why the shark/phisherman never moved off-center and never
-        // animated. Explicit null checks avoid the exception entirely.
         if (phishermanWithMagGlass != null) phishermanWithMagGlass.SetActive(false);
         if (phishermanNoMagGlass != null) phishermanNoMagGlass.SetActive(true);
 
         lureSimulation?.StartSim(maxLives, _total);
-        commentator?.Say($"Find all {_total} red flags, dear — look closely at every detail!");
+
+        commentator?.Say(_worldTheme switch
+        {
+            2 => $"Find all {_total} red flags on that fake login page — look at every detail!",
+            3 => $"Find all {_total} red flags in that scam text message — something feels off!",
+            4 => $"Find all {_total} red flags on that fake social media page — don't be fooled!",
+            5 => $"The final case! Find all {_total} red flags using everything you've learned!",
+            _ => $"Find all {_total} red flags, dear — look closely at every detail!"
+        });
 
         var sources = GetComponents<AudioSource>();
         sfxSource = sources.Length > 0 ? sources[0] : gameObject.AddComponent<AudioSource>();
@@ -239,7 +223,7 @@ public class SpotDifferenceManager : MonoBehaviour
     }
 
     // =================================================================
-    // Timer
+    //  Timer
     // =================================================================
 
     void UpdateTimerUI()
@@ -261,15 +245,13 @@ public class SpotDifferenceManager : MonoBehaviour
     }
 
     // =================================================================
-    // Magnifier toggle
+    //  Magnifier
     // =================================================================
 
     public void ToggleMagnifier()
     {
         _magActive = !_magActive;
         if (magnifyingGlassRT != null) magnifyingGlassRT.gameObject.SetActive(_magActive);
-        // FIX: same UnassignedReferenceException issue as in Start() — use
-        // explicit null checks instead of `?.` for these two fields.
         if (phishermanWithMagGlass != null) phishermanWithMagGlass.SetActive(_magActive);
         if (phishermanNoMagGlass != null) phishermanNoMagGlass.SetActive(!_magActive);
         UpdateMagButton();
@@ -293,13 +275,12 @@ public class SpotDifferenceManager : MonoBehaviour
     }
 
     // =================================================================
-    // Correct find
+    //  Correct find
     // =================================================================
 
     public void OnDifferenceFound(DifferenceMarker marker)
     {
         if (_gameOver) return;
-
         _lastFoundFrame = Time.frameCount;
 
         _found++; _streak++;
@@ -317,8 +298,8 @@ public class SpotDifferenceManager : MonoBehaviour
         PlaySFX(sfxRodWinding);
         int findIdx = markers.IndexOf(marker);
         lureSimulation?.OnCorrectFind(findIdx);
-
         PlaySFX(sfxSplash);
+
         var rt = marker.GetComponent<RectTransform>();
         if (rt != null) StartCoroutine(WaterDrips(rt));
 
@@ -341,14 +322,12 @@ public class SpotDifferenceManager : MonoBehaviour
     }
 
     // =================================================================
-    // Wrong click
+    //  Wrong click
     // =================================================================
 
     public void OnWrongClick()
     {
         if (_gameOver) return;
-
-        // Second safety net: skip if a difference was found this frame.
         if (Time.frameCount == _lastFoundFrame) return;
 
         _lives = Mathf.Max(0, _lives - 1);
@@ -362,8 +341,8 @@ public class SpotDifferenceManager : MonoBehaviour
         ShowFeedback($"-{wrongPenalty}   Not a red flag  (−1 life)",
             new Color(0.78f, 0.20f, 0.20f));
         commentator?.SayRandom(new[] {
-            "Careful, dear — that's not one of them.",
-            "Hmm, that part looks normal. Keep searching.",
+            "Careful, dear — that part looks normal.",
+            "Hmm, that's not one of them. Keep searching.",
             "Not quite — look more carefully."
         });
 
@@ -376,7 +355,7 @@ public class SpotDifferenceManager : MonoBehaviour
     }
 
     // =================================================================
-    // Audio helper
+    //  Audio helper
     // =================================================================
 
     void PlaySFX(AudioClip clip)
@@ -385,7 +364,7 @@ public class SpotDifferenceManager : MonoBehaviour
     }
 
     // =================================================================
-    // Evidence log
+    //  Evidence log
     // =================================================================
 
     void UpdateEvidenceLog()
@@ -399,7 +378,7 @@ public class SpotDifferenceManager : MonoBehaviour
     }
 
     // =================================================================
-    // Water drips
+    //  Water drips
     // =================================================================
 
     IEnumerator WaterDrips(RectTransform markerRT)
@@ -428,7 +407,6 @@ public class SpotDifferenceManager : MonoBehaviour
         var rt = go.GetComponent<RectTransform>();
         rt.sizeDelta = new Vector2(9, 18); rt.pivot = new Vector2(0.5f, 1f);
         rt.anchoredPosition = local; rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-
         var img = go.AddComponent<Image>();
         if (circleSprite != null) img.sprite = circleSprite;
         img.color = new Color(0.10f, 0.42f, 0.92f, 0.90f);
@@ -447,7 +425,7 @@ public class SpotDifferenceManager : MonoBehaviour
     }
 
     // =================================================================
-    // End game
+    //  End game — CHANGED: writes interior_result
     // =================================================================
 
     void EndGame(bool win)
@@ -460,11 +438,16 @@ public class SpotDifferenceManager : MonoBehaviour
         PlayerProgress.QueueFromPerformance(accuracy);
         _xpQueuedForClear = true;
 
+        // Write win/lose so InteriorDialogueManager enters the right phase
+        bool isWin = win || _found >= _total;
+        PlayerPrefs.SetString("interior_result", isWin ? "win" : "lose");
+        PlayerPrefs.Save();
+
         Invoke(nameof(ShowResult), 0.8f);
     }
 
     // =================================================================
-    // HUD helpers
+    //  HUD helpers
     // =================================================================
 
     void UpdateHud()
@@ -476,7 +459,8 @@ public class SpotDifferenceManager : MonoBehaviour
     void ShowFeedback(string text, Color color)
     {
         if (feedbackText == null) return;
-        feedbackText.text = text; feedbackText.color = color;
+        feedbackText.text = text;
+        feedbackText.color = color;
         CancelInvoke(nameof(HideFeedback));
         Invoke(nameof(HideFeedback), 1.4f);
     }
@@ -484,7 +468,7 @@ public class SpotDifferenceManager : MonoBehaviour
     void HideFeedback() { if (feedbackText != null) feedbackText.text = string.Empty; }
 
     // =================================================================
-    // Result
+    //  Result — theme-aware title
     // =================================================================
 
     void ShowResult()
@@ -499,11 +483,24 @@ public class SpotDifferenceManager : MonoBehaviour
         }
 
         resultPanel.SetActive(true);
+
         if (resultTitle != null)
+        {
+            string winTitle = _worldTheme switch
+            {
+                2 => $"Login page cracked — all {_total} red flags identified!",
+                3 => $"Smish caught — all {_total} red flags identified!",
+                4 => $"Fake account busted — all {_total} red flags identified!",
+                5 => $"Final case closed — all {_total} red flags identified!",
+                _ => $"Case closed — all {_total} red flags identified!"
+            };
             resultTitle.text = _found >= _total
-                ? $"Case closed — all {_total} red flags identified!"
+                ? winTitle
                 : $"Investigation incomplete — {_found} of {_total} flags found.";
+        }
+
         if (resultScore != null) resultScore.text = $"Final score: {_score}";
+
         if (resultBreakdown != null)
         {
             var sb = new StringBuilder();
@@ -522,9 +519,15 @@ public class SpotDifferenceManager : MonoBehaviour
     }
 
     // =================================================================
-    // Buttons
+    //  Buttons — CHANGED: BackToWorldMap reads interior_source
     // =================================================================
 
     public void PlayAgain() { SceneManager.LoadScene(SceneManager.GetActiveScene().name); }
-    public void BackToWorldMap() { SceneManager.LoadScene("WorldMap"); }
+
+    public void BackToWorldMap()
+    {
+        string src = PlayerPrefs.GetString("interior_source", "WorldMap");
+        if (string.IsNullOrEmpty(src)) src = "WorldMap";
+        SceneManager.LoadScene(src);
+    }
 }

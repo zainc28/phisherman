@@ -228,7 +228,7 @@ public static class InteriorBuilder
             bgName: "office_interior",
             npcSpriteName: "uncle_2",
             npcName: "Mr. Frost",
-            minigame: "SpotDifference",
+            minigame: "SpotDifference_W2",
             returnScene: "WorldMap2",
             accent: Hex("#4ECDC4"),
             introLines: new[]

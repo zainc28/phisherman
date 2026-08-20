@@ -10,10 +10,7 @@ public class EmailSwiperManager : MonoBehaviour
     // ===== Tuning =====
     [Header("Game Settings")]
     public int maxCracks = 3;
-    [Tooltip("Get this many correct and the minigame is won immediately — no need to sort every email.")]
     public int targetCorrectToWin = 5;
-
-    [Tooltip("Assets/Sprites/UI/heart — used for the lives HUD instead of a drawn placeholder.")]
     public Sprite heartSprite;
     public float gameDurationSeconds = 90f;
     public int correctPoints = 100;
@@ -25,8 +22,7 @@ public class EmailSwiperManager : MonoBehaviour
     public Sprite fishPufferSprite;
     public Sprite crackSprite;
     public Sprite circleSprite;
-    [Tooltip("Drag fish_1_clownfish_normal through fish_20_black here in order (20 sprites). Used for random net fish visuals.")]
-    public Sprite[] fishPoolSprites; // fish_1 through fish_20
+    public Sprite[] fishPoolSprites;
 
     // ===== Audio =====
     [Header("Audio")]
@@ -72,9 +68,7 @@ public class EmailSwiperManager : MonoBehaviour
     public TMP_Text cardAvatarLetter;
     public CanvasGroup cardCanvasGroup;
 
-    // ===== Card Border (CHANGED — wired by builder for runtime theme swaps) =====
     [Header("Card Border")]
-    [Tooltip("The card's RectTransform. Border stripe children are recoloured each card.")]
     public RectTransform cardBorderRT;
 
     // ===== Boat & Nets =====
@@ -84,11 +78,10 @@ public class EmailSwiperManager : MonoBehaviour
     public RectTransform leftNetRT;
     public RectTransform rightNetRT;
     public RectTransform[] boatCrackSlots;
-
     public RectTransform leftNetFishContainer;
     public RectTransform rightNetFishContainer;
 
-    // ===== Fish animation (arc from card to net) =====
+    // ===== Fish animation =====
     [Header("Fish Anim")]
     public RectTransform fishAnimRT;
     public Image fishAnimImage;
@@ -123,8 +116,7 @@ public class EmailSwiperManager : MonoBehaviour
     private bool boatSinking;
     private int correctCount;
     private bool wonEarly;
-    private System.Collections.Generic.Dictionary<string, Sprite> _fishSprites
-        = new System.Collections.Generic.Dictionary<string, Sprite>();
+    private Dictionary<string, Sprite> _fishSprites = new Dictionary<string, Sprite>();
 
     private struct PoolFishState
     {
@@ -134,49 +126,70 @@ public class EmailSwiperManager : MonoBehaviour
     }
     private List<PoolFishState> poolFishStates = new List<PoolFishState>();
 
-    // ── CHANGED: 10 fish-themed border palettes for runtime swapping ──
+    public enum CardLayout { Email, Website, SMS, Social }
+
     private struct BorderTheme { public Color a, b, accent; }
     private static readonly BorderTheme[] borderThemes =
     {
-        new BorderTheme{a=new Color(1.00f,0.42f,0.10f), b=Color.white,                     accent=new Color(0.10f,0.10f,0.10f)}, // 0  Clownfish       orange/white/black
-        new BorderTheme{a=new Color(0.10f,0.43f,1.00f), b=new Color(1.00f,0.88f,0.20f),    accent=Color.white},                  // 1  Blue Tang       blue/yellow/white
-        new BorderTheme{a=new Color(0.15f,0.30f,0.70f), b=new Color(0.55f,0.78f,1.00f),    accent=new Color(0.90f,0.90f,1.00f)}, // 2  Blue Flowy      deep/light blue
-        new BorderTheme{a=new Color(0.96f,0.88f,0.65f), b=new Color(0.48f,0.36f,0.22f),    accent=new Color(0.30f,0.22f,0.12f)}, // 3  Spotted         cream/brown
-        new BorderTheme{a=new Color(0.22f,0.62f,0.28f), b=new Color(0.50f,0.82f,0.38f),    accent=new Color(0.12f,0.35f,0.15f)}, // 4  Green           jungle/lime
-        new BorderTheme{a=new Color(0.52f,0.58f,0.65f), b=new Color(0.78f,0.82f,0.88f),    accent=new Color(0.35f,0.40f,0.50f)}, // 5  Tuna            steel/silver
-        new BorderTheme{a=new Color(0.18f,0.50f,0.90f), b=new Color(1.00f,0.85f,0.18f),    accent=Color.white},                  // 6  Blue-Yellow     blue/gold
-        new BorderTheme{a=new Color(0.80f,0.25f,0.15f), b=new Color(0.95f,0.75f,0.55f),    accent=new Color(0.50f,0.15f,0.08f)}, // 7  Spiky/Lionfish  red/tan
-        new BorderTheme{a=new Color(0.70f,0.72f,0.74f), b=new Color(0.85f,0.28f,0.25f),    accent=new Color(0.40f,0.42f,0.45f)}, // 8  Piranha         silver/red
-        new BorderTheme{a=new Color(0.90f,0.38f,0.42f), b=new Color(0.28f,0.78f,0.82f),    accent=new Color(0.18f,0.18f,0.40f)}, // 9  Rainbow         coral/aqua
+        new BorderTheme{a=new Color(1.00f,0.42f,0.10f), b=Color.white,                     accent=new Color(0.10f,0.10f,0.10f)},
+        new BorderTheme{a=new Color(0.10f,0.43f,1.00f), b=new Color(1.00f,0.88f,0.20f),    accent=Color.white},
+        new BorderTheme{a=new Color(0.15f,0.30f,0.70f), b=new Color(0.55f,0.78f,1.00f),    accent=new Color(0.90f,0.90f,1.00f)},
+        new BorderTheme{a=new Color(0.96f,0.88f,0.65f), b=new Color(0.48f,0.36f,0.22f),    accent=new Color(0.30f,0.22f,0.12f)},
+        new BorderTheme{a=new Color(0.22f,0.62f,0.28f), b=new Color(0.50f,0.82f,0.38f),    accent=new Color(0.12f,0.35f,0.15f)},
+        new BorderTheme{a=new Color(0.52f,0.58f,0.65f), b=new Color(0.78f,0.82f,0.88f),    accent=new Color(0.35f,0.40f,0.50f)},
+        new BorderTheme{a=new Color(0.18f,0.50f,0.90f), b=new Color(1.00f,0.85f,0.18f),    accent=Color.white},
+        new BorderTheme{a=new Color(0.80f,0.25f,0.15f), b=new Color(0.95f,0.75f,0.55f),    accent=new Color(0.50f,0.15f,0.08f)},
+        new BorderTheme{a=new Color(0.70f,0.72f,0.74f), b=new Color(0.85f,0.28f,0.25f),    accent=new Color(0.40f,0.42f,0.45f)},
+        new BorderTheme{a=new Color(0.90f,0.38f,0.42f), b=new Color(0.28f,0.78f,0.82f),    accent=new Color(0.18f,0.18f,0.40f)},
     };
 
     [System.Serializable]
     public struct Email
     {
-        public string senderName, senderEmail, subject, preview, body, timestamp, explanation;
+        public string senderName;
+        public string senderEmail;
+        public string subject;
+        public string preview;
+        public string body;
+        public string timestamp;
+        public string explanation;
         public Color avatarColor;
         public bool isScam;
+        public CardLayout layout;
     }
+
     private Email[] emails;
+    private int _worldTheme = 1;
 
-    // =================================================================
-    // Lifecycle
-    // =================================================================
+    static readonly Color SMSBubbleIn = new Color(0.90f, 0.90f, 0.90f);
+    static readonly Color SMSBubbleOut = new Color(0.20f, 0.55f, 0.95f);
+    static readonly Color SMSBg = new Color(0.96f, 0.96f, 0.98f);
+    static readonly Color SocialBg = new Color(0.24f, 0.40f, 0.70f);
+    static readonly Color SocialCard = new Color(0.98f, 0.98f, 1.00f);
 
+    // ===================================================================
+    //  Lifecycle
+    // ===================================================================
     void Start()
     {
+        _worldTheme = MinigameTheme.Get();
+
         _fishSprites.Clear();
         var catalog = PlayerProgress.FishCatalog;
         if (fishPoolSprites != null)
-        {
             for (int i = 0; i < Mathf.Min(fishPoolSprites.Length, 20); i++)
-            {
                 if (i < catalog.Length && fishPoolSprites[i] != null)
                     _fishSprites[catalog[i].id] = fishPoolSprites[i];
-            }
+
+        switch (_worldTheme)
+        {
+            case 2: InitializeWebsiteContent(); break;
+            case 3: InitializeSMSContent(); break;
+            case 4: InitializeSocialContent(); break;
+            case 5: InitializeCombinedContent(); break;
+            default: InitializeEmails(); break;
         }
 
-        InitializeEmails();
         score = 0; streak = 0; cracks = 0;
         correctCount = 0; wonEarly = false;
         fishCaughtLeft = 0; fishCaughtRight = 0;
@@ -202,10 +215,7 @@ public class EmailSwiperManager : MonoBehaviour
         heartImages.Clear();
         if (heartsContainer != null)
             foreach (Transform t in heartsContainer)
-            {
-                var img = t.GetComponent<Image>();
-                if (img != null) heartImages.Add(img);
-            }
+            { var img = t.GetComponent<Image>(); if (img != null) heartImages.Add(img); }
         UpdateHearts();
 
         var sources = GetComponents<AudioSource>();
@@ -215,52 +225,30 @@ public class EmailSwiperManager : MonoBehaviour
         _musicSource.playOnAwake = false; _musicSource.loop = true;
     }
 
-    // =================================================================
-    // Audio helpers
-    // =================================================================
+    // ===================================================================
+    //  Audio
+    // ===================================================================
+    void PlayBgMusic() { if (_musicSource == null || bgMusic == null) return; _musicSource.clip = bgMusic; _musicSource.volume = musicVolume; _musicSource.loop = true; _musicSource.Play(); }
+    void StopBgMusic() { if (_musicSource != null && _musicSource.isPlaying) _musicSource.Stop(); }
+    void PlaySFX(AudioClip clip) { if (_sfxSource == null || clip == null) return; _sfxSource.PlayOneShot(clip, sfxVolume); }
 
-    void PlayBgMusic()
-    {
-        if (_musicSource == null || bgMusic == null) return;
-        _musicSource.clip = bgMusic;
-        _musicSource.volume = musicVolume;
-        _musicSource.loop = true;
-        _musicSource.Play();
-    }
-
-    void StopBgMusic()
-    {
-        if (_musicSource != null && _musicSource.isPlaying) _musicSource.Stop();
-    }
-
-    void PlaySFX(AudioClip clip)
-    {
-        if (_sfxSource == null || clip == null) return;
-        _sfxSource.PlayOneShot(clip, sfxVolume);
-    }
-
-    // =================================================================
-    // Update
-    // =================================================================
-
+    // ===================================================================
+    //  Update
+    // ===================================================================
     void Update()
     {
         if (!gameRunning) return;
         timeRemaining -= Time.deltaTime;
         UpdateTimerUI();
         if (!warnedLowTime && timeRemaining < 15f && timeRemaining > 0f)
-        {
-            warnedLowTime = true;
-            commentator?.Say("Quick now, time's running out!");
-        }
+        { warnedLowTime = true; commentator?.Say("Quick now, time's running out!"); }
         if (timeRemaining <= 0f) { timeRemaining = 0f; EndGame(); }
         AnimatePoolFish();
     }
 
-    // =================================================================
-    // Tutorial → Game
-    // =================================================================
-
+    // ===================================================================
+    //  Tutorial start
+    // ===================================================================
     public void OnTutorialStart()
     {
         tutorialPanel.SetActive(false);
@@ -270,91 +258,142 @@ public class EmailSwiperManager : MonoBehaviour
         LoadCard(0);
         gameRunning = true;
         PlayBgMusic();
-        commentator?.Say("Sort each email into the nets — scam to the left, safe to the right!");
+
+        string openLine = _worldTheme switch
+        {
+            2 => "Sort each post — scam to the left, safe to the right! Watch those URLs!",
+            3 => "Sort each text message — scam to the left, safe to the right! Trust your gut!",
+            4 => "Sort each notification — scam to the left, safe to the right! Fake accounts everywhere!",
+            5 => "You've seen it all — emails, websites, texts, social media. Sort every one!",
+            _ => "Sort each email into the nets — scam to the left, safe to the right!"
+        };
+        commentator?.Say(openLine);
     }
 
-    // =================================================================
-    // Card loading
-    // =================================================================
-
+    // ===================================================================
+    //  Card loading
+    // ===================================================================
     void LoadCard(int idx)
     {
         if (idx >= emails.Length) { EndGame(); return; }
         currentIndex = idx;
         var e = emails[idx];
-
-        cardSender.text = e.senderName;
-        if (cardSender.fontSize < 28) cardSender.fontSize = 28;
-        cardEmail.text = e.senderEmail;
-        if (cardEmail.fontSize < 22) cardEmail.fontSize = 22;
-        cardSubject.text = e.subject;
-        if (cardSubject.fontSize < 26) cardSubject.fontSize = 26;
-        cardBody.text = e.body;
-        if (cardBody.fontSize < 22) cardBody.fontSize = 22;
-        cardAvatar.color = e.avatarColor;
-        cardAvatarLetter.text = string.IsNullOrEmpty(e.senderName)
-            ? "?" : e.senderName[0].ToString().ToUpper();
-
+        ApplyCardLayout(e);
+        ApplyRandomBorderTheme();
         if (cardCanvasGroup != null) cardCanvasGroup.alpha = 1f;
         swipeCard.ResetPosition();
         swipeCard.Unlock();
         UpdateProgress();
-        ApplyRandomBorderTheme();  // ── CHANGED: random fish border each card ──
         StartCoroutine(CardSlideIn());
     }
 
-    // =================================================================
-    // CHANGED: Runtime border theme swap
-    // Finds the builder-created BorderTop/Bottom/Left/Right GOs under
-    // cardBorderRT and recolours their stripe children to a random
-    // fish palette every time a new card loads.
-    // =================================================================
+    void ApplyCardLayout(Email e)
+    {
+        switch (e.layout)
+        {
+            case CardLayout.SMS: ApplySMSLayout(e); break;
+            case CardLayout.Social: ApplySocialLayout(e); break;
+            case CardLayout.Website: ApplyWebsiteLayout(e); break;
+            default: ApplyEmailLayout(e); break;
+        }
+    }
+
+    void ApplyEmailLayout(Email e)
+    {
+        if (cardSender != null) { cardSender.text = e.senderName; cardSender.fontSize = 22; cardSender.color = new Color(0.10f, 0.10f, 0.20f); }
+        if (cardEmail != null) { cardEmail.text = e.senderEmail; cardEmail.fontSize = 16; cardEmail.color = new Color(0.40f, 0.40f, 0.50f); cardEmail.gameObject.SetActive(true); }
+        if (cardSubject != null) { cardSubject.text = e.subject; cardSubject.fontSize = 24; cardSubject.color = new Color(0.10f, 0.10f, 0.20f); cardSubject.fontStyle = FontStyles.Bold; cardSubject.gameObject.SetActive(true); }
+        if (cardBody != null) { cardBody.text = e.body; cardBody.fontSize = 19; cardBody.color = new Color(0.10f, 0.10f, 0.20f); cardBody.alignment = TextAlignmentOptions.TopLeft; }
+        if (cardAvatar != null) { cardAvatar.color = e.avatarColor; cardAvatar.gameObject.SetActive(true); }
+        if (cardAvatarLetter != null) cardAvatarLetter.text = string.IsNullOrEmpty(e.senderName) ? "?" : e.senderName[0].ToString().ToUpper();
+        SetCardBg(Color.white);
+    }
+
+    void ApplyWebsiteLayout(Email e)
+    {
+        if (cardSender != null) { cardSender.text = e.senderName; cardSender.fontSize = 20; cardSender.color = new Color(0.10f, 0.10f, 0.20f); }
+        if (cardEmail != null) { cardEmail.text = e.senderEmail; cardEmail.fontSize = 14; cardEmail.color = new Color(0.20f, 0.45f, 0.80f); cardEmail.gameObject.SetActive(true); }
+        if (cardSubject != null) { cardSubject.text = e.subject; cardSubject.fontSize = 22; cardSubject.color = new Color(0.10f, 0.10f, 0.20f); cardSubject.fontStyle = FontStyles.Bold; cardSubject.gameObject.SetActive(true); }
+        if (cardBody != null) { cardBody.text = e.body; cardBody.fontSize = 18; cardBody.color = new Color(0.10f, 0.10f, 0.20f); cardBody.alignment = TextAlignmentOptions.TopLeft; }
+        if (cardAvatar != null) { cardAvatar.color = e.avatarColor; cardAvatar.gameObject.SetActive(true); }
+        if (cardAvatarLetter != null) cardAvatarLetter.text = string.IsNullOrEmpty(e.senderName) ? "?" : e.senderName[0].ToString().ToUpper();
+        SetCardBg(new Color(0.97f, 0.97f, 1.00f));
+    }
+
+    void ApplySMSLayout(Email e)
+    {
+        if (cardSender != null) { cardSender.text = e.senderName; cardSender.fontSize = 20; cardSender.color = new Color(0.10f, 0.10f, 0.10f); cardSender.fontStyle = FontStyles.Bold; }
+        if (cardEmail != null) { cardEmail.gameObject.SetActive(false); }
+        if (cardSubject != null) { cardSubject.gameObject.SetActive(false); }
+        if (cardAvatar != null) { cardAvatar.color = e.avatarColor; cardAvatar.gameObject.SetActive(true); }
+        if (cardAvatarLetter != null) cardAvatarLetter.text = "💬";
+        if (cardBody != null)
+        {
+            var lines = e.body.Split('\n');
+            var formatted = new System.Text.StringBuilder();
+            foreach (var line in lines)
+            {
+                if (line.StartsWith("THEM: "))
+                    formatted.AppendLine($"<color=#222222><b>{e.senderName}</b></color>\n  {line.Substring(6)}\n");
+                else if (line.StartsWith("YOU: "))
+                    formatted.AppendLine($"<align=right><color=#1a6fff>You</color>\n  {line.Substring(5)}</align>\n");
+                else if (!string.IsNullOrWhiteSpace(line))
+                    formatted.AppendLine($"<color=#888888><size=80%>{line}</size></color>");
+            }
+            cardBody.text = formatted.ToString();
+            cardBody.fontSize = 17;
+            cardBody.alignment = TextAlignmentOptions.TopLeft;
+            cardBody.color = Color.black;
+        }
+        SetCardBg(SMSBg);
+    }
+
+    void ApplySocialLayout(Email e)
+    {
+        if (cardSender != null) { cardSender.text = e.senderName; cardSender.fontSize = 20; cardSender.color = Color.white; }
+        if (cardEmail != null) { cardEmail.text = e.senderEmail; cardEmail.fontSize = 14; cardEmail.color = new Color(0.85f, 0.90f, 1.00f); cardEmail.gameObject.SetActive(true); }
+        if (cardSubject != null) { cardSubject.text = e.subject; cardSubject.fontSize = 22; cardSubject.color = new Color(0.10f, 0.10f, 0.20f); cardSubject.fontStyle = FontStyles.Bold; cardSubject.gameObject.SetActive(true); }
+        if (cardBody != null) { cardBody.text = e.body; cardBody.fontSize = 18; cardBody.color = new Color(0.15f, 0.15f, 0.25f); cardBody.alignment = TextAlignmentOptions.TopLeft; }
+        if (cardAvatar != null) { cardAvatar.color = e.avatarColor; cardAvatar.gameObject.SetActive(true); }
+        if (cardAvatarLetter != null) cardAvatarLetter.text = string.IsNullOrEmpty(e.senderName) ? "?" : e.senderName[0].ToString().ToUpper();
+        SetCardBg(SocialCard);
+    }
+
+    void SetCardBg(Color col)
+    {
+        if (swipeCard == null || swipeCard.cardRoot == null) return;
+        var bgImg = swipeCard.cardRoot.Find("CardBg")?.GetComponent<Image>();
+        if (bgImg != null) bgImg.color = col;
+    }
 
     void ApplyRandomBorderTheme()
     {
         if (cardBorderRT == null) return;
         var theme = borderThemes[Random.Range(0, borderThemes.Length)];
-
         foreach (Transform child in cardBorderRT)
         {
             string n = child.gameObject.name;
-            if (n != "BorderTop" && n != "BorderBottom" &&
-                n != "BorderLeft" && n != "BorderRight") continue;
-
+            if (n != "BorderTop" && n != "BorderBottom" && n != "BorderLeft" && n != "BorderRight") continue;
             var parentImg = child.GetComponent<Image>();
             if (parentImg != null) parentImg.color = theme.a;
-
             foreach (Transform stripe in child)
             {
-                var img = stripe.GetComponent<Image>();
-                if (img == null) continue;
-
-                if (stripe.gameObject.name == "Acc")
-                {
-                    img.color = theme.accent;
-                }
+                var img = stripe.GetComponent<Image>(); if (img == null) continue;
+                if (stripe.gameObject.name == "Acc") img.color = theme.accent;
                 else if (stripe.gameObject.name.StartsWith("S"))
-                {
-                    int si;
-                    if (int.TryParse(stripe.gameObject.name.Substring(1), out si))
-                        img.color = (si % 2 == 0) ? theme.a : theme.b;
-                }
+                { int si; if (int.TryParse(stripe.gameObject.name.Substring(1), out si)) img.color = (si % 2 == 0) ? theme.a : theme.b; }
             }
         }
     }
 
-    // =================================================================
-
     IEnumerator CardSlideIn()
     {
         PlaySFX(sfxCardFlip);
-        var rt = swipeCard.cardRoot;
-        if (rt == null) yield break;
+        var rt = swipeCard.cardRoot; if (rt == null) yield break;
         Vector2 target = rt.anchoredPosition;
         rt.anchoredPosition = target + new Vector2(0, -160f);
         if (cardCanvasGroup != null) cardCanvasGroup.alpha = 0f;
         rt.localScale = Vector3.one * 0.90f;
-
         float t = 0f;
         while (t < 0.28f)
         {
@@ -370,34 +409,18 @@ public class EmailSwiperManager : MonoBehaviour
         rt.localScale = Vector3.one;
     }
 
-    // =================================================================
-    // Swipe commit
-    // =================================================================
-
+    // ===================================================================
+    //  Swipe commit
+    // ===================================================================
     void OnSwipeCommit(int dir)
     {
         bool playerSaidScam = (dir == -1);
         var email = emails[currentIndex];
         bool correct = (playerSaidScam == email.isScam);
-
-        answered[currentIndex] = true;
-        correctAnswers[currentIndex] = correct;
-
+        answered[currentIndex] = true; correctAnswers[currentIndex] = correct;
         if (correct)
-        {
-            int gain = correctPoints + Mathf.Max(0, streak) * streakBonus;
-            score += gain; streak++;
-            correctCount++;
-            if (correctCount >= targetCorrectToWin) wonEarly = true;
-            ReactToCorrect();
-        }
-        else
-        {
-            streak = 0; cracks++;
-            UpdateHearts();
-            ReactToWrong();
-        }
-
+        { int gain = correctPoints + Mathf.Max(0, streak) * streakBonus; score += gain; streak++; correctCount++; if (correctCount >= targetCorrectToWin) wonEarly = true; ReactToCorrect(); }
+        else { streak = 0; cracks++; UpdateHearts(); ReactToWrong(); }
         UpdateAllUI();
         StartCoroutine(SwipeSequence(dir, correct, email));
     }
@@ -405,84 +428,35 @@ public class EmailSwiperManager : MonoBehaviour
     public void OnClickScam() { if (gameRunning && swipeCard != null) swipeCard.SimulateSwipe(-1); }
     public void OnClickSafe() { if (gameRunning && swipeCard != null) swipeCard.SimulateSwipe(+1); }
 
-    // =================================================================
-    // Swipe sequence
-    // =================================================================
-
     IEnumerator SwipeSequence(int dir, bool correct, Email email)
     {
         yield return StartCoroutine(CardMorphToFish(dir, correct));
-
         RectTransform targetNet = (dir == -1) ? leftNetRT : rightNetRT;
         yield return StartCoroutine(FishArcToNet(fishAnimRT.anchoredPosition, targetNet, correct));
-
-        if (correct)
-        {
-            PlaySFX(sfxCorrect);
-            SpawnNetFish(dir);
-            int gain = correctPoints + Mathf.Max(0, streak - 1) * streakBonus;
-            StartCoroutine(ShowScorePopup(gain, targetNet));
-            StartCoroutine(NetBounce(targetNet));
-        }
-        else
-        {
-            PlaySFX(sfxWrong);
-            PlayerProgress.RegisterFish("fish_puffer");
-            yield return StartCoroutine(PufferRocksBoat());
-        }
-
+        if (correct) { PlaySFX(sfxCorrect); SpawnNetFish(dir); int gain = correctPoints + Mathf.Max(0, streak - 1) * streakBonus; StartCoroutine(ShowScorePopup(gain, targetNet)); StartCoroutine(NetBounce(targetNet)); }
+        else { PlaySFX(sfxWrong); PlayerProgress.RegisterFish("fish_puffer"); yield return StartCoroutine(PufferRocksBoat()); }
         yield return StartCoroutine(ShowFeedback(correct, email.explanation));
-
-        if (wonEarly || cracks >= maxCracks || currentIndex + 1 >= emails.Length)
-            EndGame();
-        else
-            LoadCard(currentIndex + 1);
+        if (wonEarly || cracks >= maxCracks || currentIndex + 1 >= emails.Length) EndGame();
+        else LoadCard(currentIndex + 1);
     }
-
-    // =================================================================
-    // Card morph to fish
-    // =================================================================
 
     IEnumerator CardMorphToFish(int dir, bool correct)
     {
         if (fishAnimRT == null) yield break;
-
-        Vector2 cardPos = swipeCard.cardRoot != null
-            ? swipeCard.cardRoot.anchoredPosition : Vector2.zero;
-
-        fishAnimRT.anchoredPosition = cardPos;
-        fishAnimRT.localScale = Vector3.zero;
-        fishAnimRT.localRotation = Quaternion.identity;
-
+        Vector2 cardPos = swipeCard.cardRoot != null ? swipeCard.cardRoot.anchoredPosition : Vector2.zero;
+        fishAnimRT.anchoredPosition = cardPos; fishAnimRT.localScale = Vector3.zero; fishAnimRT.localRotation = Quaternion.identity;
         if (fishAnimImage != null)
         {
-            if (correct)
-            {
-                // CHANGED: pick a random fish sprite from the pool
-                Sprite randomFish = null;
-                if (fishPoolSprites != null && fishPoolSprites.Length > 0)
-                    randomFish = fishPoolSprites[Random.Range(0, Mathf.Min(fishPoolSprites.Length, 20))];
-                fishAnimImage.sprite = randomFish != null ? randomFish : fishNormalSprite;
-                fishAnimImage.color = Color.white;
-            }
-            else
-            {
-                fishAnimImage.sprite = fishPufferSprite;
-                fishAnimImage.color = Color.white;  // CHANGED: always white, no red tint
-            }
+            if (correct) { Sprite r = null; if (fishPoolSprites != null && fishPoolSprites.Length > 0) r = fishPoolSprites[Random.Range(0, Mathf.Min(fishPoolSprites.Length, 20))]; fishAnimImage.sprite = r != null ? r : fishNormalSprite; fishAnimImage.color = Color.white; }
+            else { fishAnimImage.sprite = fishPufferSprite; fishAnimImage.color = Color.white; }
         }
-
         fishAnimRT.gameObject.SetActive(true);
-        Vector2 flyEnd = cardPos + new Vector2(dir * 200f, 40f);
-        float dur = 0.28f, t = 0f;
+        Vector2 flyEnd = cardPos + new Vector2(dir * 200f, 40f); float dur = 0.28f, t = 0f;
         CanvasGroup cardCG = swipeCard.cardRoot?.GetComponent<CanvasGroup>();
-
         while (t < dur)
         {
-            t += Time.deltaTime;
-            float p = Mathf.Clamp01(t / dur), ease = p * p;
-            if (swipeCard.cardRoot != null)
-                swipeCard.cardRoot.localScale = Vector3.one * Mathf.Lerp(1f, 0.05f, ease);
+            t += Time.deltaTime; float p = Mathf.Clamp01(t / dur), ease = p * p;
+            if (swipeCard.cardRoot != null) swipeCard.cardRoot.localScale = Vector3.one * Mathf.Lerp(1f, 0.05f, ease);
             if (cardCG != null) cardCG.alpha = 1f - p;
             fishAnimRT.localScale = Vector3.one * Mathf.Clamp01(p / 0.5f);
             fishAnimRT.anchoredPosition = Vector2.Lerp(cardPos, flyEnd, ease);
@@ -494,297 +468,107 @@ public class EmailSwiperManager : MonoBehaviour
     IEnumerator FishArcToNet(Vector2 start, RectTransform netRT, bool correct)
     {
         if (fishAnimRT == null) yield break;
-
-        Vector2 end = netRT != null
-            ? netRT.anchoredPosition + new Vector2(0f, -40f)
-            : new Vector2(0f, 350f);
-
+        Vector2 end = netRT != null ? netRT.anchoredPosition + new Vector2(0f, -40f) : new Vector2(0f, 350f);
         Vector2 mid = new Vector2((start.x + end.x) * 0.5f, end.y + 120f);
-
         float dur = 0.50f, t = 0f;
         while (t < dur)
         {
-            t += Time.deltaTime;
-            float p = Mathf.Clamp01(t / dur);
-            float ease = 1f - Mathf.Pow(1f - p, 2f);
-            Vector2 a = Vector2.Lerp(start, mid, ease);
-            Vector2 b = Vector2.Lerp(mid, end, ease);
+            t += Time.deltaTime; float p = Mathf.Clamp01(t / dur), ease = 1f - Mathf.Pow(1f - p, 2f);
+            Vector2 a = Vector2.Lerp(start, mid, ease), b = Vector2.Lerp(mid, end, ease);
             fishAnimRT.anchoredPosition = Vector2.Lerp(a, b, ease);
             fishAnimRT.localScale = Vector3.one * (0.6f + 0.4f * Mathf.Sin(p * Mathf.PI));
-            fishAnimRT.localRotation = Quaternion.Euler(0, 0, -360f * ease);
-            yield return null;
+            fishAnimRT.localRotation = Quaternion.Euler(0, 0, -360f * ease); yield return null;
         }
-        fishAnimRT.gameObject.SetActive(false);
-        fishAnimRT.localRotation = Quaternion.identity;
+        fishAnimRT.gameObject.SetActive(false); fishAnimRT.localRotation = Quaternion.identity;
     }
-
-    // =================================================================
-    // Net fish pool
-    // =================================================================
 
     void SpawnNetFish(int dir)
     {
         RectTransform container = (dir == -1) ? leftNetFishContainer : rightNetFishContainer;
         if (container == null) return;
-
-        if (dir == -1) fishCaughtLeft++;
-        else fishCaughtRight++;
-
-        string netFishId = PlayerProgress.GetRandomNetFishId();
-        PlayerProgress.RegisterFish(netFishId);
-
-        var go = new GameObject("NetFish", typeof(RectTransform));
-        go.transform.SetParent(container, false);
+        if (dir == -1) fishCaughtLeft++; else fishCaughtRight++;
+        string netFishId = PlayerProgress.GetRandomNetFishId(); PlayerProgress.RegisterFish(netFishId);
+        var go = new GameObject("NetFish", typeof(RectTransform)); go.transform.SetParent(container, false);
         var rt = go.GetComponent<RectTransform>();
-        float bw = 65f;
-        float bh = 18f;
-        Vector2 center = new Vector2(Random.Range(-bw * 0.5f, bw * 0.5f), Random.Range(-bh * 0.3f, bh * 0.3f));
-        rt.anchoredPosition = center;
-        rt.sizeDelta = new Vector2(58, 58);  // CHANGED: bigger fish in nets
-
-        var img = go.AddComponent<Image>();
-        img.color = Color.white;
-        img.preserveAspect = true;
-        img.raycastTarget = false;
-
-        // CHANGED: pick directly from fishPoolSprites for a random fish_1..fish_20
-        // This fixes the bug where all net fish showed as pufferfish because
-        // the builder was setting fishNormalSprite = pufferfish_4_deflated.
+        Vector2 center = new Vector2(Random.Range(-32f, 32f), Random.Range(-9f, 9f));
+        rt.anchoredPosition = center; rt.sizeDelta = new Vector2(58, 58);
+        var img = go.AddComponent<Image>(); img.color = Color.white; img.preserveAspect = true; img.raycastTarget = false;
         Sprite fishSpr = null;
         if (fishPoolSprites != null && fishPoolSprites.Length > 0)
-        {
-            // Skip null entries in the array
-            int attempts = 0;
-            while (fishSpr == null && attempts < 20)
-            {
-                fishSpr = fishPoolSprites[Random.Range(0, Mathf.Min(fishPoolSprites.Length, 20))];
-                attempts++;
-            }
-        }
-        if (fishSpr != null) img.sprite = fishSpr;
-        else if (fishNormalSprite != null) img.sprite = fishNormalSprite;
-        else if (circleSprite != null) img.sprite = circleSprite;
-
-        float facing = Random.value > 0.5f ? 1f : -1f;
-        rt.localScale = new Vector3(facing, 1f, 1f);
-
-        // CHANGED: bumped amplitudes and slowed frequencies for more visible swimming
-        poolFishStates.Add(new PoolFishState
-        {
-            rt = rt,
-            center = center,
-            phaseX = Random.Range(0f, Mathf.PI * 2f),
-            phaseY = Random.Range(0f, Mathf.PI * 2f),
-            freqX = Random.Range(0.35f, 0.85f),     // was 0.5–1.1
-            freqY = Random.Range(0.80f, 1.50f),      // was 1.0–1.8
-            ampX = Random.Range(38f, 80f),            // was 30–65
-            ampY = Random.Range(10f, 24f),            // was 6–18
-        });
-
+        { int att = 0; while (fishSpr == null && att < 20) { fishSpr = fishPoolSprites[Random.Range(0, Mathf.Min(fishPoolSprites.Length, 20))]; att++; } }
+        if (fishSpr != null) img.sprite = fishSpr; else if (fishNormalSprite != null) img.sprite = fishNormalSprite;
+        float facing = Random.value > 0.5f ? 1f : -1f; rt.localScale = new Vector3(facing, 1f, 1f);
+        poolFishStates.Add(new PoolFishState { rt = rt, center = center, phaseX = Random.Range(0f, Mathf.PI * 2f), phaseY = Random.Range(0f, Mathf.PI * 2f), freqX = Random.Range(0.35f, 0.85f), freqY = Random.Range(0.80f, 1.50f), ampX = Random.Range(38f, 80f), ampY = Random.Range(10f, 24f) });
         StartCoroutine(SplashIn(rt, facing));
     }
-
-    IEnumerator SplashIn(RectTransform rt, float facing)
-    {
-        rt.localScale = new Vector3(facing * 1.5f, 1.5f, 1f);
-        float t = 0f;
-        while (t < 0.25f)
-        {
-            t += Time.deltaTime;
-            if (rt == null) yield break;
-            float s = Mathf.Lerp(1.5f, 1f, Mathf.Clamp01(t / 0.25f));
-            rt.localScale = new Vector3(facing * s, s, 1f);
-            yield return null;
-        }
-    }
-
+    IEnumerator SplashIn(RectTransform rt, float facing) { rt.localScale = new Vector3(facing * 1.5f, 1.5f, 1f); float t = 0f; while (t < 0.25f) { t += Time.deltaTime; if (rt == null) yield break; float s = Mathf.Lerp(1.5f, 1f, Mathf.Clamp01(t / 0.25f)); rt.localScale = new Vector3(facing * s, s, 1f); yield return null; } }
     void AnimatePoolFish()
     {
         float time = Time.time;
         for (int i = poolFishStates.Count - 1; i >= 0; i--)
         {
-            var s = poolFishStates[i];
-            if (s.rt == null) { poolFishStates.RemoveAt(i); continue; }
-
+            var s = poolFishStates[i]; if (s.rt == null) { poolFishStates.RemoveAt(i); continue; }
             float x = s.center.x + Mathf.Sin(time * s.freqX + s.phaseX) * s.ampX;
             float y = s.center.y + Mathf.Sin(time * s.freqY + s.phaseY) * s.ampY;
             s.rt.anchoredPosition = new Vector2(x, y);
-
             float dx = Mathf.Cos(time * s.freqX + s.phaseX);
-            if (Mathf.Abs(dx) > 0.05f)
-                s.rt.localScale = new Vector3(dx > 0 ? 1f : -1f, 1f, 1f);
-
+            if (Mathf.Abs(dx) > 0.05f) s.rt.localScale = new Vector3(dx > 0 ? 1f : -1f, 1f, 1f);
             poolFishStates[i] = s;
         }
     }
-
-    // =================================================================
-    // Net bounce
-    // =================================================================
-
-    IEnumerator NetBounce(RectTransform netRT)
-    {
-        if (netRT == null) yield break;
-        Vector3 orig = netRT.localScale;
-        float t = 0f;
-        while (t < 0.25f)
-        {
-            t += Time.deltaTime;
-            float p = Mathf.Clamp01(t / 0.25f);
-            netRT.localScale = Vector3.one * (1f + 0.10f * Mathf.Sin(p * Mathf.PI));
-            yield return null;
-        }
-        netRT.localScale = orig;
-    }
-
-    // =================================================================
-    // Puffer rocks / damages the boat
-    // =================================================================
-
+    IEnumerator NetBounce(RectTransform netRT) { if (netRT == null) yield break; Vector3 orig = netRT.localScale; float t = 0f; while (t < 0.25f) { t += Time.deltaTime; netRT.localScale = Vector3.one * (1f + 0.10f * Mathf.Sin(Mathf.Clamp01(t / 0.25f) * Mathf.PI)); yield return null; } netRT.localScale = orig; }
     IEnumerator PufferRocksBoat()
     {
         int crackIdx = Mathf.Clamp(cracks - 1, 0, (boatCrackSlots?.Length ?? 1) - 1);
-        if (boatCrackSlots != null && crackIdx < boatCrackSlots.Length && boatCrackSlots[crackIdx] != null)
-        {
-            boatCrackSlots[crackIdx].gameObject.SetActive(true);
-            StartCoroutine(PunchScale(boatCrackSlots[crackIdx], 0.3f, 1.6f));
-        }
+        if (boatCrackSlots != null && crackIdx < boatCrackSlots.Length && boatCrackSlots[crackIdx] != null) { boatCrackSlots[crackIdx].gameObject.SetActive(true); StartCoroutine(PunchScale(boatCrackSlots[crackIdx], 0.3f, 1.6f)); }
         yield return StartCoroutine(RockBoat(0.55f, cracks));
         if (cracks >= maxCracks) StartCoroutine(SinkBoat());
     }
-
     IEnumerator RockBoat(float dur, int severity)
     {
         if (boatRoot == null) yield break;
-        Vector2 origPos = boatRoot.anchoredPosition;
-        float origRot = boatRoot.localEulerAngles.z;
-        if (origRot > 180f) origRot -= 360f;
-
-        float tiltMax = Mathf.Lerp(4f, 18f, (float)(severity - 1) / (maxCracks - 1));
-        float t = 0f;
-        while (t < dur)
-        {
-            t += Time.deltaTime;
-            float d = 1f - Mathf.Clamp01(t / dur);
-            float tilt = Mathf.Sin(t * 22f) * tiltMax * d;
-            float shakeX = Random.Range(-6f, 6f) * d;
-            float shakeY = Random.Range(-3f, 3f) * d;
-            boatRoot.localEulerAngles = new Vector3(0, 0, origRot + tilt);
-            boatRoot.anchoredPosition = origPos + new Vector2(shakeX, shakeY);
-            yield return null;
-        }
-
-        float finalTilt = cracks >= maxCracks ? -12f : Mathf.Lerp(0f, -8f, (float)cracks / maxCracks);
-        boatRoot.localEulerAngles = new Vector3(0, 0, origRot + finalTilt);
-        boatRoot.anchoredPosition = origPos;
+        Vector2 origPos = boatRoot.anchoredPosition; float origRot = boatRoot.localEulerAngles.z; if (origRot > 180f) origRot -= 360f;
+        float tiltMax = Mathf.Lerp(4f, 18f, (float)(severity - 1) / (maxCracks - 1)); float t = 0f;
+        while (t < dur) { t += Time.deltaTime; float d = 1f - Mathf.Clamp01(t / dur); boatRoot.localEulerAngles = new Vector3(0, 0, origRot + Mathf.Sin(t * 22f) * tiltMax * d); boatRoot.anchoredPosition = origPos + new Vector2(Random.Range(-6f, 6f) * d, Random.Range(-3f, 3f) * d); yield return null; }
+        boatRoot.localEulerAngles = new Vector3(0, 0, origRot + (cracks >= maxCracks ? -12f : Mathf.Lerp(0f, -8f, (float)cracks / maxCracks))); boatRoot.anchoredPosition = origPos;
     }
-
     IEnumerator SinkBoat()
     {
-        if (boatSinking || boatRoot == null) yield break;
-        boatSinking = true;
-        yield return new WaitForSeconds(0.5f);
-
-        Vector2 startPos = boatRoot.anchoredPosition;
-        Vector2 endPos = startPos + new Vector2(40f, -300f);
-        float startRot = boatRoot.localEulerAngles.z;
-        if (startRot > 180f) startRot -= 360f;
-
+        if (boatSinking || boatRoot == null) yield break; boatSinking = true; yield return new WaitForSeconds(0.5f);
+        Vector2 startPos = boatRoot.anchoredPosition, endPos = startPos + new Vector2(40f, -300f);
+        float startRot = boatRoot.localEulerAngles.z; if (startRot > 180f) startRot -= 360f;
         float t = 0f, dur = 2.2f;
-        while (t < dur)
-        {
-            t += Time.deltaTime;
-            float p = Mathf.Clamp01(t / dur);
-            float ease = p * p;
-            boatRoot.anchoredPosition = Vector2.Lerp(startPos, endPos, ease);
-            boatRoot.localEulerAngles = new Vector3(0, 0, Mathf.Lerp(startRot, startRot - 45f, ease));
-            yield return null;
-        }
+        while (t < dur) { t += Time.deltaTime; float ease = Mathf.Clamp01(t / dur); ease = ease * ease; boatRoot.anchoredPosition = Vector2.Lerp(startPos, endPos, ease); boatRoot.localEulerAngles = new Vector3(0, 0, Mathf.Lerp(startRot, startRot - 45f, ease)); yield return null; }
     }
-
-    IEnumerator PunchScale(RectTransform rt, float dur, float peak)
-    {
-        float t = 0f;
-        while (t < dur)
-        {
-            t += Time.deltaTime;
-            float p = Mathf.Clamp01(t / dur);
-            rt.localScale = Vector3.one * (1f + (peak - 1f) * Mathf.Sin(p * Mathf.PI));
-            yield return null;
-        }
-        rt.localScale = Vector3.one;
-    }
-
-    // =================================================================
-    // Score popup
-    // =================================================================
-
+    IEnumerator PunchScale(RectTransform rt, float dur, float peak) { float t = 0f; while (t < dur) { t += Time.deltaTime; rt.localScale = Vector3.one * (1f + (peak - 1f) * Mathf.Sin(Mathf.Clamp01(t / dur) * Mathf.PI)); yield return null; } rt.localScale = Vector3.one; }
     IEnumerator ShowScorePopup(int points, RectTransform nearRT)
     {
         if (scorePopupRT == null) yield break;
-        Vector2 anchor = nearRT != null
-            ? nearRT.anchoredPosition + new Vector2(0f, 50f)
-            : new Vector2(0f, 300f);
-        scorePopupRT.anchoredPosition = anchor;
-        if (scorePopupText != null) scorePopupText.text = "+" + points;
-        scorePopupCG.alpha = 1f;
-        Vector2 start = anchor;
-        float t = 0f;
-        while (t < 0.8f)
-        {
-            t += Time.deltaTime;
-            float p = Mathf.Clamp01(t / 0.8f);
-            scorePopupRT.anchoredPosition = start + new Vector2(0f, 50f * p);
-            scorePopupCG.alpha = 1f - p * p;
-            yield return null;
-        }
+        Vector2 anchor = nearRT != null ? nearRT.anchoredPosition + new Vector2(0f, 50f) : new Vector2(0f, 300f);
+        scorePopupRT.anchoredPosition = anchor; if (scorePopupText != null) scorePopupText.text = "+" + points; scorePopupCG.alpha = 1f;
+        Vector2 start = anchor; float t = 0f;
+        while (t < 0.8f) { t += Time.deltaTime; float p = Mathf.Clamp01(t / 0.8f); scorePopupRT.anchoredPosition = start + new Vector2(0f, 50f * p); scorePopupCG.alpha = 1f - p * p; yield return null; }
         scorePopupCG.alpha = 0f;
     }
 
-    // =================================================================
-    // HUD
-    // =================================================================
-
-    void UpdateAllUI()
-    {
-        UpdateScoreUI(); UpdateStreakUI(); UpdateProgress(); UpdateHearts();
-    }
-
-    void UpdateHearts()
-    {
-        int livesLeft = maxCracks - cracks;
-        for (int i = 0; i < heartImages.Count; i++)
-        {
-            if (heartImages[i] == null) continue;
-            heartImages[i].color = i < livesLeft ? Color.white : new Color(0.35f, 0.35f, 0.40f, 0.55f);
-        }
-    }
-
-    // CHANGED: null guards to fix NullReferenceException
+    // ===================================================================
+    //  HUD
+    // ===================================================================
+    void UpdateAllUI() { UpdateScoreUI(); UpdateStreakUI(); UpdateProgress(); UpdateHearts(); }
+    void UpdateHearts() { int livesLeft = maxCracks - cracks; for (int i = 0; i < heartImages.Count; i++) { if (heartImages[i] == null) continue; heartImages[i].color = i < livesLeft ? Color.white : new Color(0.35f, 0.35f, 0.40f, 0.55f); } }
     void UpdateTimerUI()
     {
-        int sec = Mathf.CeilToInt(timeRemaining);
-        bool low = timeRemaining < 15f;
-        if (timerText != null)
-        {
-            timerText.text = $"{sec / 60}:{sec % 60:D2}";
-            timerText.color = low ? new Color(0.91f, 0.30f, 0.24f) : Color.white;
-        }
-        if (timerFill != null)
-        {
-            timerFill.fillAmount = Mathf.Clamp01(timeRemaining / gameDurationSeconds);
-            timerFill.color = low ? new Color(0.91f, 0.30f, 0.24f) : new Color(0.31f, 0.80f, 0.77f);
-        }
+        int sec = Mathf.CeilToInt(timeRemaining); bool low = timeRemaining < 15f;
+        if (timerText != null) { timerText.text = $"{sec / 60}:{sec % 60:D2}"; timerText.color = low ? new Color(0.91f, 0.30f, 0.24f) : Color.white; }
+        if (timerFill != null) { timerFill.fillAmount = Mathf.Clamp01(timeRemaining / gameDurationSeconds); timerFill.color = low ? new Color(0.91f, 0.30f, 0.24f) : new Color(0.31f, 0.80f, 0.77f); }
     }
-
     void UpdateScoreUI() { if (scoreText != null) scoreText.text = $"Score: {score}"; }
     void UpdateStreakUI() { if (streakText != null) streakText.text = streak >= 3 ? $"{streak} in a row!" : ""; }
     void UpdateProgress() { if (progressText != null) progressText.text = $"{correctCount} / {targetCorrectToWin} correct"; }
 
-    // =================================================================
-    // Commentator
-    // =================================================================
-
+    // ===================================================================
+    //  Commentator
+    // ===================================================================
     void ReactToCorrect()
     {
         if (commentator == null) return;
@@ -792,7 +576,6 @@ public class EmailSwiperManager : MonoBehaviour
         else if (streak == 6) commentator.Say("Goodness, what a sharp eye!");
         else commentator.SayRandom(new[] { "Good catch, dear!", "Very nice!", "You're so smart.", "That's the way!" });
     }
-
     void ReactToWrong()
     {
         if (commentator == null) return;
@@ -802,52 +585,40 @@ public class EmailSwiperManager : MonoBehaviour
         else commentator.SayRandom(new[] { "Oh no, that pufferfish hit the hull!", "Ouch! The boat's rocking…", "Don't worry, scammers are clever." });
     }
 
-    // =================================================================
-    // Feedback
-    // =================================================================
-
+    // ===================================================================
+    //  Feedback
+    // ===================================================================
     IEnumerator ShowFeedback(bool correct, string explanation)
     {
-        feedbackPanel.SetActive(true);
-        var cg = feedbackPanel.GetComponent<CanvasGroup>();
-        if (cg != null) cg.alpha = 1f;
-        feedbackBg.color = correct
-            ? new Color(0.18f, 0.74f, 0.41f, 0.97f)
-            : new Color(0.91f, 0.30f, 0.24f, 0.97f);
-        feedbackTitle.text = correct ? "Correct!" : "Not quite…";
-        feedbackBody.text = explanation;
+        feedbackPanel.SetActive(true); var cg = feedbackPanel.GetComponent<CanvasGroup>(); if (cg != null) cg.alpha = 1f;
+        feedbackBg.color = correct ? new Color(0.18f, 0.74f, 0.41f, 0.97f) : new Color(0.91f, 0.30f, 0.24f, 0.97f);
+        feedbackTitle.text = correct ? "Correct!" : "Not quite…"; feedbackBody.text = explanation;
         feedbackPanel.transform.localScale = Vector3.one * 0.85f;
-
-        float t = 0f;
-        while (t < 0.2f)
-        {
-            t += Time.deltaTime;
-            float p = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / 0.2f), 3f);
-            feedbackPanel.transform.localScale = Vector3.one * Mathf.Lerp(0.85f, 1f, p);
-            yield return null;
-        }
-
+        float t = 0f; while (t < 0.2f) { t += Time.deltaTime; feedbackPanel.transform.localScale = Vector3.one * Mathf.Lerp(0.85f, 1f, 1f - Mathf.Pow(1f - Mathf.Clamp01(t / 0.2f), 3f)); yield return null; }
         yield return new WaitForSeconds(2.0f);
-
-        if (cg != null)
-        {
-            float fo = 0f;
-            while (fo < 0.2f) { fo += Time.deltaTime; cg.alpha = 1f - fo / 0.2f; yield return null; }
-            cg.alpha = 1f;
-        }
-        feedbackPanel.SetActive(false);
-        feedbackPanel.transform.localScale = Vector3.one;
+        if (cg != null) { float fo = 0f; while (fo < 0.2f) { fo += Time.deltaTime; cg.alpha = 1f - fo / 0.2f; yield return null; } cg.alpha = 1f; }
+        feedbackPanel.SetActive(false); feedbackPanel.transform.localScale = Vector3.one;
     }
 
-    // =================================================================
-    // End game
-    // =================================================================
-
+    // ===================================================================
+    //  End game — CHANGED: writes interior_result
+    // ===================================================================
     void EndGame()
     {
         gameRunning = false;
         swipeCard.Lock();
         StopBgMusic();
+
+        // Determine win/loss for InteriorDialogueManager
+        bool sank = cracks >= maxCracks;
+        int correct = 0;
+        for (int i = 0; i < correctAnswers.Length; i++) if (answered[i] && correctAnswers[i]) correct++;
+        float pct = emails.Length > 0 ? (float)correct / emails.Length : 0f;
+        bool isWin = wonEarly || (!sank && pct >= 0.7f);
+
+        PlayerPrefs.SetString("interior_result", isWin ? "win" : "lose");
+        PlayerPrefs.Save();
+
         ShowResult();
     }
 
@@ -856,63 +627,111 @@ public class EmailSwiperManager : MonoBehaviour
         resultPanel.SetActive(true);
         int totalPossible = emails.Length * correctPoints;
         if (resultScore != null) resultScore.text = $"{score} / {totalPossible}";
-        int correct = 0;
-        for (int i = 0; i < correctAnswers.Length; i++)
-            if (answered[i] && correctAnswers[i]) correct++;
-
+        int correct = 0; for (int i = 0; i < correctAnswers.Length; i++) if (answered[i] && correctAnswers[i]) correct++;
         float pct = wonEarly ? 1f : (emails.Length > 0 ? (float)correct / emails.Length : 0);
         PlayerProgress.QueueFromPerformance(pct);
         if (cracks == 0) PlayerProgress.RegisterFish("fish_guardian");
-
         string stars, msg, quip;
-        if (wonEarly)
-        { stars = "★ ★ ★"; msg = $"You sorted {targetCorrectToWin} correctly — mission complete!"; quip = "Excellent work! You've got a real eye for this now."; }
-        else if (cracks >= maxCracks)
-        { stars = "★"; msg = "The boat sank! Those pufferfish got you.\nRead carefully and try again."; quip = "Oh dear… the boat couldn't take any more."; }
-        else if (timeRemaining <= 0 && pct < 0.7f)
-        { stars = "★"; msg = "Time's up — you'll be quicker next time."; quip = "Time got away from us, dear."; }
-        else if (pct >= 0.95f)
-        { stars = "★ ★ ★"; msg = "Phish-master! The nets are full of happy fish."; quip = "Oh thank you, dear! You're wonderful."; }
-        else if (pct >= 0.7f)
-        { stars = "★ ★"; msg = "Solid work! Review the ones that got you."; quip = "That was a big help — thank you, dear!"; }
-        else
-        { stars = "★"; msg = "Scammers are tricky. Try again and read carefully."; quip = "It's a good start. We'll get them next time."; }
-
+        if (wonEarly) { stars = "★ ★ ★"; msg = $"You sorted {targetCorrectToWin} correctly — mission complete!"; quip = "Excellent work! You've got a real eye for this now."; }
+        else if (cracks >= maxCracks) { stars = "★"; msg = "The boat sank! Those pufferfish got you.\nRead carefully and try again."; quip = "Oh dear… the boat couldn't take any more."; }
+        else if (timeRemaining <= 0 && pct < 0.7f) { stars = "★"; msg = "Time's up — you'll be quicker next time."; quip = "Time got away from us, dear."; }
+        else if (pct >= 0.95f) { stars = "★ ★ ★"; msg = "Phish-master! The nets are full of happy fish."; quip = "Oh thank you, dear! You're wonderful."; }
+        else if (pct >= 0.7f) { stars = "★ ★"; msg = "Solid work! Review the ones that got you."; quip = "That was a big help — thank you, dear!"; }
+        else { stars = "★"; msg = "Scammers are tricky. Try again and read carefully."; quip = "It's a good start. We'll get them next time."; }
         if (resultStars != null) resultStars.text = stars;
         if (resultMessage != null) resultMessage.text = msg;
         commentator?.Say(quip);
     }
 
     public void OnPlayAgain() { SceneManager.LoadScene(SceneManager.GetActiveScene().name); }
-    public void OnReturnToMap() { SceneManager.LoadScene("WorldMap"); }
 
-    // =================================================================
-    // Helpers
-    // =================================================================
+    // CHANGED: reads interior_source instead of hardcoding "WorldMap"
+    public void OnReturnToMap()
+    {
+        string src = PlayerPrefs.GetString("interior_source", "WorldMap");
+        if (string.IsNullOrEmpty(src)) src = "WorldMap";
+        SceneManager.LoadScene(src);
+    }
 
-    public static Image MakeImage(Transform parent, string name, Color color)
-    { var go = new GameObject(name, typeof(RectTransform)); go.transform.SetParent(parent, false); var img = go.AddComponent<Image>(); img.color = color; return img; }
+    public static Image MakeImage(Transform parent, string name, Color color) { var go = new GameObject(name, typeof(RectTransform)); go.transform.SetParent(parent, false); var img = go.AddComponent<Image>(); img.color = color; return img; }
+    public static TMP_Text MakeText(Transform parent, string name, string content, int size, Color color, TextAlignmentOptions align, FontStyles style = FontStyles.Normal) { var go = new GameObject(name, typeof(RectTransform)); go.transform.SetParent(parent, false); var t = go.AddComponent<TextMeshProUGUI>(); t.text = content; t.fontSize = size; t.color = color; t.alignment = align; t.fontStyle = style; t.raycastTarget = false; return t; }
 
-    public static TMP_Text MakeText(Transform parent, string name, string content, int size, Color color,
-        TextAlignmentOptions align, FontStyles style = FontStyles.Normal)
-    { var go = new GameObject(name, typeof(RectTransform)); go.transform.SetParent(parent, false); var t = go.AddComponent<TextMeshProUGUI>(); t.text = content; t.fontSize = size; t.color = color; t.alignment = align; t.fontStyle = style; t.raycastTarget = false; return t; }
-
-    // =================================================================
-    // Email data
-    // =================================================================
-
+    // ===================================================================
+    //  Content — all unchanged from original
+    // ===================================================================
     void InitializeEmails()
     {
         emails = new Email[]
         {
-            new Email { senderName="PayPal Support",    senderEmail="support@paypa1.com",               subject="URGENT: Your account has been suspended", preview="Dear Customer, your PayPal account has been suspended", body="Dear Customer,\n\nYour PayPal account has been suspended due to suspicious activity. Click below immediately to verify your information or your account will be permanently deleted within 24 hours.\n\n— PayPal Support", timestamp="10:09 AM", avatarColor=new Color(0.07f,0.45f,0.71f), isScam=true,  explanation="SCAM — The sender domain is 'paypa1.com' (number 1, not L). Real PayPal emails come from paypal.com. The 24-hour deletion threat is a classic urgency trick." },
-            new Email { senderName="Spotify",           senderEmail="newsletter@spotify.com",           subject="Your June playlist is ready",               preview="Your monthly Spotify stats are in",                    body="Hi there,\n\nYour monthly Spotify stats are in. Check out your top songs from this month in the app.\n\n— The Spotify Team",                                                                                                              timestamp="9:42 AM",  avatarColor=new Color(0.12f,0.84f,0.38f), isScam=false, explanation="SAFE — Real domain (spotify.com), calm tone, no threats, no request for personal info." },
-            new Email { senderName="Canada Revenue Agency", senderEmail="noreply@canada-revenue-agency-refund.com", subject="You have a $847 tax refund waiting", preview="Provide your SIN and banking details",             body="NOTICE FROM THE CRA:\n\nA refund of $847.00 is ready. To claim it, provide your SIN and banking details within 24 hours or the refund will be cancelled.\n\n— Canada Revenue Agency",                                                        timestamp="8:27 AM",  avatarColor=new Color(0.78f,0.13f,0.13f), isScam=true,  explanation="SCAM — The CRA never emails asking for your SIN. Real messages come from cra-arc.gc.ca only. The 24-hour deadline is another red flag." },
-            new Email { senderName="Amazon",            senderEmail="orders@amazon.com",                subject="Your order has shipped",                    preview="Order #112-4857293 has shipped",                       body="Hello,\n\nYour order #112-4857293 has shipped. Estimated delivery June 12. Track it in the Amazon app.\n\n— Amazon",                                                                                                                         timestamp="Yesterday",avatarColor=new Color(1f,0.6f,0f),   isScam=false, explanation="SAFE — Real domain (amazon.com), specific order number, no request for personal info." },
-            new Email { senderName="Microsoft Security",senderEmail="security@micros0ft-account.net",  subject="Unusual sign-in detected",                  preview="Click below immediately to secure your account",       body="Dear User,\n\nWe detected a sign-in from an unrecognized location. Click below immediately to secure your account.\n\n— Microsoft Security Team",                                                                                                timestamp="Yesterday",avatarColor=new Color(0.05f,0.45f,0.79f), isScam=true, explanation="SCAM — Domain is 'micros0ft-account.net' (zero, not O). 'Dear User' is generic — Microsoft uses your name." },
-            new Email { senderName="Uber",              senderEmail="no-reply@uber.com",               subject="Your Tuesday night trip receipt",            preview="Your trip: $14.72",                                    body="Thanks for riding with Uber.\n\nYour trip came to $14.72. Payment charged to Visa ending in 4821.\n\n— Uber",                                                                                                                                  timestamp="May 4",    avatarColor=new Color(0.1f,0.1f,0.1f), isScam=false,  explanation="SAFE — Real domain, specific details, only last 4 card digits shown, no suspicious links." },
-            new Email { senderName="Netflix Billing",   senderEmail="billing@netfl1x-payments.com",   subject="Payment failed — update card now",           preview="Update billing within 48 hours",                       body="Hello,\n\nYour Netflix payment could not be processed. Update your billing details within 48 hours or your account will be terminated.\n\n— Netflix Billing",                                                                                    timestamp="May 3",    avatarColor=new Color(0.90f,0.05f,0.10f), isScam=true, explanation="SCAM — Domain is 'netfl1x-payments.com' (number 1 not L). Real billing comes from netflix.com." },
-            new Email { senderName="Google Calendar",   senderEmail="calendar-noreply@google.com",    subject="Reminder: Coffee with Sarah at 2pm",         preview="Event reminder for today",                             body="This is a reminder for your event:\n\nCoffee with Sarah\nToday at 2:00 PM\nThe Wired Monk Cafe\n\n— Google Calendar",                                                                                                                           timestamp="May 3",    avatarColor=new Color(0.26f,0.52f,0.96f), isScam=false, explanation="SAFE — Real Google domain, specific event, no suspicious links or requests." },
+            new Email { senderName="PayPal Support",    senderEmail="support@paypa1.com",             subject="URGENT: Your account has been suspended", body="Dear Customer,\n\nYour PayPal account has been suspended due to suspicious activity. Click below immediately to verify your information or your account will be permanently deleted within 24 hours.\n\n— PayPal Support", timestamp="10:09 AM", avatarColor=new Color(0.07f,0.45f,0.71f), isScam=true,  layout=CardLayout.Email, explanation="SCAM — The sender domain is 'paypa1.com' (number 1, not L). Real PayPal emails come from paypal.com. The 24-hour deletion threat is a classic urgency trick." },
+            new Email { senderName="Spotify",           senderEmail="newsletter@spotify.com",         subject="Your June playlist is ready",              body="Hi there,\n\nYour monthly Spotify stats are in. Check out your top songs from this month in the app.\n\n— The Spotify Team", timestamp="9:42 AM", avatarColor=new Color(0.12f,0.84f,0.38f), isScam=false, layout=CardLayout.Email, explanation="SAFE — Real domain (spotify.com), calm tone, no threats, no request for personal info." },
+            new Email { senderName="Canada Revenue Agency", senderEmail="noreply@canada-revenue-agency-refund.com", subject="You have a $847 tax refund waiting", body="NOTICE FROM THE CRA:\n\nA refund of $847.00 is ready. To claim it, provide your SIN and banking details within 24 hours or the refund will be cancelled.\n\n— Canada Revenue Agency", timestamp="8:27 AM", avatarColor=new Color(0.78f,0.13f,0.13f), isScam=true, layout=CardLayout.Email, explanation="SCAM — The CRA never emails asking for your SIN. Real messages come from cra-arc.gc.ca only. The 24-hour deadline is another red flag." },
+            new Email { senderName="Amazon",            senderEmail="orders@amazon.com",              subject="Your order has shipped",                   body="Hello,\n\nYour order #112-4857293 has shipped. Estimated delivery June 12. Track it in the Amazon app.\n\n— Amazon", timestamp="Yesterday", avatarColor=new Color(1f,0.6f,0f), isScam=false, layout=CardLayout.Email, explanation="SAFE — Real domain (amazon.com), specific order number, no request for personal info." },
+            new Email { senderName="Microsoft Security",senderEmail="security@micros0ft-account.net", subject="Unusual sign-in detected",                 body="Dear User,\n\nWe detected a sign-in from an unrecognized location. Click below immediately to secure your account.\n\n— Microsoft Security Team", timestamp="Yesterday", avatarColor=new Color(0.05f,0.45f,0.79f), isScam=true, layout=CardLayout.Email, explanation="SCAM — Domain is 'micros0ft-account.net' (zero, not O). 'Dear User' is generic — Microsoft uses your name." },
+            new Email { senderName="Uber",              senderEmail="no-reply@uber.com",              subject="Your Tuesday night trip receipt",           body="Thanks for riding with Uber.\n\nYour trip came to $14.72. Payment charged to Visa ending in 4821.\n\n— Uber", timestamp="May 4", avatarColor=new Color(0.1f,0.1f,0.1f), isScam=false, layout=CardLayout.Email, explanation="SAFE — Real domain, specific details, only last 4 card digits shown, no suspicious links." },
+            new Email { senderName="Netflix Billing",   senderEmail="billing@netfl1x-payments.com",  subject="Payment failed — update card now",          body="Hello,\n\nYour Netflix payment could not be processed. Update your billing details within 48 hours or your account will be terminated.\n\n— Netflix Billing", timestamp="May 3", avatarColor=new Color(0.90f,0.05f,0.10f), isScam=true, layout=CardLayout.Email, explanation="SCAM — Domain is 'netfl1x-payments.com' (number 1 not L). Real billing comes from netflix.com." },
+            new Email { senderName="Google Calendar",   senderEmail="calendar-noreply@google.com",   subject="Reminder: Coffee with Sarah at 2pm",        body="This is a reminder for your event:\n\nCoffee with Sarah\nToday at 2:00 PM\nThe Wired Monk Cafe\n\n— Google Calendar", timestamp="May 3", avatarColor=new Color(0.26f,0.52f,0.96f), isScam=false, layout=CardLayout.Email, explanation="SAFE — Real Google domain, specific event, no suspicious links or requests." },
         };
+    }
+
+    void InitializeWebsiteContent()
+    {
+        emails = new Email[]
+        {
+            new Email { senderName="Community Forums", senderEmail="community-forums-rewards.net/claim", subject="🎉 You've been selected — claim your $500 gift card!", body="Hi Member,\n\nCongratulations! You were randomly selected from our forum members to receive a $500 gift card.\n\nClick the link below to claim your prize — offer expires in 2 hours!\n\n► CLAIM NOW: community-forums-rewards.net/claim?id=4829\n\nDo not share this link. It is unique to you.", timestamp="11:02 AM", avatarColor=new Color(0.85f,0.55f,0.10f), isScam=true,  layout=CardLayout.Website, explanation="SCAM — The URL 'community-forums-rewards.net' is not a real forum. Legitimate prizes are never announced through random posts with 2-hour deadlines." },
+            new Email { senderName="Reddit",           senderEmail="noreply@reddit.com",               subject="Someone replied to your comment in r/personalfinance", body="Hi u/JohnDoe,\n\nSomeone replied to your comment in r/personalfinance:\n\n\"Great point about the emergency fund — I completely agree!\"\n\nView the thread: reddit.com/r/personalfinance/comments/abc123\n\n— The Reddit Team", timestamp="10:15 AM", avatarColor=new Color(1.00f,0.27f,0.00f), isScam=false, layout=CardLayout.Website, explanation="SAFE — Real domain (reddit.com), refers to your username and a specific thread, no request for personal information or money." },
+            new Email { senderName="Forum Admin",      senderEmail="admin@forumhub-security.tk/verify", subject="⚠️ Your account will be DELETED in 24 hours", body="NOTICE: Your forum account has been flagged for suspicious activity.\n\nTo prevent deletion, you must verify your identity immediately by providing:\n• Full name\n• Date of birth\n• Current password\n• Recovery email\n\nFailure to respond within 24 hours will result in permanent account deletion.\n\nVerify here: forumhub-security.tk/verify", timestamp="9:30 AM", avatarColor=new Color(0.78f,0.10f,0.10f), isScam=true, layout=CardLayout.Website, explanation="SCAM — The domain ends in '.tk', a free throwaway domain used by scammers. No legitimate forum ever asks for your password via a post or message." },
+            new Email { senderName="Stack Overflow",   senderEmail="notifications@stackoverflow.com",  subject="Your question received 3 new answers",      body="Hi John,\n\nYour question 'How do I centre a div in CSS?' received 3 new answers.\n\nThe top-voted answer suggests using flexbox with justify-content: center.\n\nView answers: stackoverflow.com/questions/12345678\n\n— Stack Overflow", timestamp="Yesterday", avatarColor=new Color(0.96f,0.48f,0.00f), isScam=false, layout=CardLayout.Website, explanation="SAFE — Real Stack Overflow domain, refers to your specific question, links go to stackoverflow.com, no personal information requested." },
+            new Email { senderName="TechHelp Community", senderEmail="support@techhelp-fix.com/remote", subject="Re: Your computer is infected — remote fix available", body="We noticed your device is showing signs of malware infection based on your recent forum posts.\n\nOur certified technicians can fix this remotely in 15 minutes.\n\nCall us now: 1-800-555-0199\nOr click: techhelp-fix.com/remote-access\n\nDo NOT ignore this — your banking data may already be at risk.", timestamp="2 days ago", avatarColor=new Color(0.25f,0.55f,0.85f), isScam=true, layout=CardLayout.Website, explanation="SCAM — No website can detect malware from your forum posts. Unsolicited remote access offers are almost always scams designed to steal data or charge for fake repairs." },
+            new Email { senderName="GitHub",           senderEmail="notifications@github.com",         subject="Pull request merged: fix login timeout bug",  body="Hi johndoe,\n\nYour pull request #142 'fix login timeout bug' was merged into main by @teamlead.\n\nView the changes: github.com/myorg/myrepo/pull/142\n\n— GitHub", timestamp="3 days ago", avatarColor=new Color(0.10f,0.10f,0.10f), isScam=false, layout=CardLayout.Website, explanation="SAFE — Real GitHub domain, refers to a specific PR number and repository, links to github.com, no personal information or payment requested." },
+            new Email { senderName="Survey Rewards Hub", senderEmail="rewards@survey-hub-canada.net/survey", subject="Complete a 2-minute survey — earn $75 instantly", body="Hello valued member,\n\nYou have been selected to complete a short 2-minute survey about your online shopping habits.\n\nAs a thank-you, you will receive $75 deposited directly to your PayPal account upon completion.\n\nStart survey: survey-hub-canada.net/survey?ref=98234\n\nThis offer is only available for the next 30 minutes.", timestamp="4 days ago", avatarColor=new Color(0.20f,0.70f,0.30f), isScam=true, layout=CardLayout.Website, explanation="SCAM — No company pays $75 for a 2-minute survey. The 30-minute deadline is fake urgency. These sites collect your PayPal login to steal your account." },
+            new Email { senderName="Discord",          senderEmail="noreply@discord.com",              subject="You have 4 unread messages in Gaming Pals",  body="Hi John,\n\nYou have 4 unread messages in the Gaming Pals server.\n\nOpen Discord to catch up: discord.com/channels/123456789\n\n— The Discord Team", timestamp="5 days ago", avatarColor=new Color(0.35f,0.40f,0.86f), isScam=false, layout=CardLayout.Website, explanation="SAFE — Real Discord domain, refers to a specific server you're in, links go to discord.com, no personal data or payment requested." },
+        };
+    }
+
+    void InitializeSMSContent()
+    {
+        emails = new Email[]
+        {
+            new Email { senderName="+1-888-555-0147", senderEmail="Unknown number", subject="URGENT: Suspicious activity on your account", body="THEM: URGENT: Suspicious activity detected on your RBC account. Your card has been TEMPORARILY LOCKED.\nTHEM: To restore access click here immediately: rbc-secure-verify.net/unlock\nYOU: Oh no, is this real?\nTHEM: Yes this is RBC Security. You must verify within 15 mins or card stays locked.\nYOU: Okay clicking the link now...", timestamp="10:03 AM", avatarColor=new Color(0.78f,0.10f,0.10f), isScam=true, layout=CardLayout.SMS, explanation="SCAM — Real banks never send links via text to unlock your card. 'rbc-secure-verify.net' is not RBC's domain. The fake 15-minute deadline creates panic so you don't think before clicking." },
+            new Email { senderName="Canada Post", senderEmail="Short code 272727", subject="Your parcel is out for delivery", body="THEM: Canada Post: Your parcel (tracking #1234567890) is out for delivery today. Expected by 5 PM. Track: canadapost.ca/track\nYOU: Great, thanks!\nTHEM: No reply needed. Reply STOP to opt out.", timestamp="9:15 AM", avatarColor=new Color(0.88f,0.08f,0.18f), isScam=false, layout=CardLayout.SMS, explanation="SAFE — Canada Post texts from a registered short code, not a random number. The link goes to canadapost.ca (the real domain), and there's no request for personal info or payment." },
+            new Email { senderName="CRA Tax Dept", senderEmail="+1-647-555-0193", subject="Tax refund of $648 ready to deposit", body="THEM: CRA: You have an unclaimed tax refund of $648.00. To receive your deposit pls confirm bank details here: cra-etransfer-canada.com\nYOU: How do I confirm?\nTHEM: Just enter your banking info on the site and we process within 24hrs. Act fast refunds expire!\nYOU: Seems off... the URL doesn't look right\nTHEM: This is official CRA system. All URLs are secure. Please proceed.", timestamp="Yesterday", avatarColor=new Color(0.20f,0.40f,0.70f), isScam=true, layout=CardLayout.SMS, explanation="SCAM — The CRA never contacts you by text to offer refunds. 'cra-etransfer-canada.com' is not the CRA's domain (canada.ca). The scammer also pressures you when you hesitate — a major red flag." },
+            new Email { senderName="Google", senderEmail="Short code 22000", subject="Your Google verification code", body="THEM: G-748392 is your Google verification code. Do not share this code with anyone.\nYOU: (entering code to log in)\nTHEM: This code expires in 10 minutes.", timestamp="Tuesday", avatarColor=new Color(0.26f,0.52f,0.96f), isScam=false, layout=CardLayout.SMS, explanation="SAFE — This is a legitimate 2FA code from Google. It was sent because you requested it while logging in. Crucially it says 'Do not share this code' — a real provider never asks you to read it back to them." },
+            new Email { senderName="+1-905-555-0182", senderEmail="Unknown number", subject="You've won a $1,000 Walmart gift card!", body="THEM: Congrats! Ur number was selected as our weekly WINNER for a $1000 Walmart giftcard!! Claim b4 it expires: walmart-winner-ca.net/claim\nYOU: I don't remember entering a contest\nTHEM: U were auto-entered when u shopped at Walmart last month. Hurry link expires in 1 hour!!\nYOU: What information do I need to provide?\nTHEM: Just ur name address and credit card for $1.99 shipping fee to send the card", timestamp="Monday", avatarColor=new Color(0.00f,0.45f,0.20f), isScam=true, layout=CardLayout.SMS, explanation="SCAM — Multiple red flags: unknown number, poor spelling ('ur', 'b4'), fake domain, you 'don't remember entering', and a '$1.99 shipping fee' is how scammers steal your credit card number." },
+            new Email { senderName="Sunnybrook Clinic", senderEmail="Short code 89898", subject="Appointment reminder for tomorrow", body="THEM: Sunnybrook Clinic: Reminder — you have an appointment with Dr. Patel tomorrow Aug 18 at 2:30 PM. Reply YES to confirm or call 416-555-0100 to reschedule.\nYOU: YES\nTHEM: Confirmed! See you tomorrow. Please arrive 10 mins early.", timestamp="Sunday", avatarColor=new Color(0.10f,0.60f,0.80f), isScam=false, layout=CardLayout.SMS, explanation="SAFE — A legitimate appointment reminder from a registered short code. It includes specific details (doctor name, date, time), provides a real phone number, and only asks you to reply YES or call — no links, no personal data." },
+            new Email { senderName="+1-416-555-0174", senderEmail="Unknown number", subject="Your Netflix acount has been suspended", body="THEM: Netlfix: Your acount has been supended due to a billing issue. Update your payment informaton here or loose access: netflix-billing-update.net\nYOU: This looks weird, there are typos\nTHEM: Sorry for the typos our system is updating. Please still verify ur account is important.\nYOU: Netflix wouldn't text me from a random number would they?\nTHEM: We use multiple numbers for security reasons. Please click link now.", timestamp="Last week", avatarColor=new Color(0.90f,0.05f,0.10f), isScam=true, layout=CardLayout.SMS, explanation="SCAM — 'Netlfix', 'acount', 'supended', 'informaton', 'loose' — multiple spelling mistakes are a key smishing red flag. Real companies proofread their messages. The domain 'netflix-billing-update.net' is also fake." },
+            new Email { senderName="TD Bank", senderEmail="Short code 39733", subject="Transaction alert on your account", body="THEM: TD: A purchase of $47.82 at Tim Hortons was made on your TD Visa ending 4821 on Aug 17. Not you? Call 1-800-983-8472 or visit td.com/security\nYOU: That was me, all good!\nTHEM: Great. No further action needed.", timestamp="Today", avatarColor=new Color(0.00f,0.35f,0.65f), isScam=false, layout=CardLayout.SMS, explanation="SAFE — A legitimate bank transaction alert from a registered short code. It shows the real purchase amount, merchant, and last 4 digits of your card. It gives you a real phone number and domain (td.com) — no link to click." },
+        };
+    }
+
+    void InitializeSocialContent()
+    {
+        emails = new Email[]
+        {
+            new Email { senderName="@instagram.support.team", senderEmail="via Instagram DM", subject="⚠️ Your account is scheduled for deletion", body="Your Instagram account has been reported for violating our community guidelines.\n\nYour account will be permanently deleted within 24 hours unless you verify your identity through our official appeal form.\n\n► Appeal here: instagram-appeals-center.com/verify\n\nThis is your only chance to save your account.\n\n— Instagram Trust & Safety", timestamp="2 hours ago", avatarColor=new Color(0.75f,0.25f,0.75f), isScam=true, layout=CardLayout.Social, explanation="SCAM — Instagram never sends deletion warnings via DM. '@instagram.support.team' is a fake account — real Instagram support handles are @instagram or @creators. The domain 'instagram-appeals-center.com' is not owned by Meta." },
+            new Email { senderName="YouTube", senderEmail="via youtube.com", subject="MrBeast uploaded a new video", body="MrBeast just posted:\n\n\"I Spent 7 Days In A Cave!\"\n\nWatch now on YouTube: youtube.com/watch?v=abc123\n\n— The YouTube Team\n\nManage your notification settings in YouTube Studio.", timestamp="3 hours ago", avatarColor=new Color(1.00f,0.00f,0.00f), isScam=false, layout=CardLayout.Social, explanation="SAFE — A real YouTube channel subscription notification. It links to youtube.com, references a real creator you subscribed to, and includes a way to manage settings. No personal info or payment requested." },
+            new Email { senderName="Facebook Rewards Program", senderEmail="@FacebookRewards2024", subject="🎁 You've been chosen for our loyalty reward!", body="Congratulations! Your Facebook account was selected as one of 500 loyalty reward winners this month.\n\nYour prize: $750 gift card\n\nTo claim, you must:\n1. Like and share this post\n2. Send us a DM with your full name and phone number\n3. Pay a $4.99 processing fee\n\nOffer expires in 48 hours. Only 12 prizes remaining!", timestamp="5 hours ago", avatarColor=new Color(0.23f,0.35f,0.60f), isScam=true, layout=CardLayout.Social, explanation="SCAM — Facebook has no official 'Rewards Program'. Requiring a 'processing fee' for a prize is always a scam. Asking for your phone number via DM and using countdown pressure ('12 prizes remaining') are classic manipulation tactics." },
+            new Email { senderName="X (Twitter)", senderEmail="via twitter.com", subject="New login to your X account", body="We noticed a new login to your X account from:\n\nDevice: Chrome on Windows\nLocation: Toronto, ON\nTime: Aug 17 at 9:41 AM\n\nIf this was you, no action is needed.\n\nIf this wasn't you, secure your account at: twitter.com/settings/security\n\n— X Security Team", timestamp="9:41 AM", avatarColor=new Color(0.10f,0.10f,0.10f), isScam=false, layout=CardLayout.Social, explanation="SAFE — A real security login notification from X. It gives specific details (device, location, time), doesn't ask you to click a link in the message, and directs you to twitter.com/settings — the real site." },
+            new Email { senderName="@Elon.Musk.Official2", senderEmail="via Twitter/X DM", subject="🚀 CRYPTO GIVEAWAY — Send 0.1 BTC get 1 BTC back!", body="For a limited time I'm giving back to my followers!\n\nSend any amount of Bitcoin to the address below and I'll send back DOUBLE within 30 minutes:\n\nBTC: 1A2B3C4D5EFake6Address789\n\nI'm doing this to celebrate Tesla's record quarter. Already sent $2.4M to 1,200 people today!\n\nMinimum: 0.05 BTC   Maximum: 2 BTC\n\nDon't miss this — closing in 2 hours!", timestamp="Yesterday", avatarColor=new Color(0.10f,0.10f,0.10f), isScam=true, layout=CardLayout.Social, explanation="SCAM — Crypto doubling scams impersonating celebrities are extremely common on social media. Nobody ever doubles your cryptocurrency. The '2 hours' deadline, the inflated claims ('sent $2.4M today'), and an unverified account are all red flags." },
+            new Email { senderName="LinkedIn", senderEmail="via linkedin.com", subject="Sarah Chen accepted your connection request", body="Great news — Sarah Chen accepted your connection request!\n\nSarah Chen\nProduct Manager at Shopify | Toronto\n\nYou now have 312 connections.\n\nView Sarah's profile: linkedin.com/in/sarah-chen-pm\n\n— LinkedIn", timestamp="Tuesday", avatarColor=new Color(0.00f,0.46f,0.71f), isScam=false, layout=CardLayout.Social, explanation="SAFE — A real LinkedIn connection notification. It references a specific person and action you initiated, links to linkedin.com, and doesn't ask for any information or payment." },
+            new Email { senderName="@Meta.Verified.Support", senderEmail="via Facebook DM", subject="Get your blue verification badge today!", body="Hi! We noticed your page has strong engagement and you may qualify for a Meta Verified blue badge ✓\n\nVerification gives you:\n• Blue checkmark badge\n• Priority support\n• More reach and visibility\n\nTo apply, DM us:\n1. Your full legal name\n2. Date of birth\n3. A photo of your government ID\n4. Your Facebook login email and password\n\nFee: $49.99 paid via gift card\n\nOffer valid for 72 hours only.", timestamp="Monday", avatarColor=new Color(0.23f,0.35f,0.60f), isScam=true, layout=CardLayout.Social, explanation="SCAM — Meta never asks for your password or government ID via DM. Requiring gift cards as payment is a universal scam signal. Real Meta Verified is applied for through the app settings, not through unsolicited DMs." },
+            new Email { senderName="Instagram", senderEmail="via instagram.com", subject="@janedoe and 47 others liked your photo", body="@janedoe, @mike.photos, and 47 others liked your photo.\n\n\"Sunset at Kensington Market 🌅\"\n\nView your post: instagram.com/p/abc123def456\n\n— Instagram\n\nYou're receiving this because you have post notifications turned on.", timestamp="Sunday", avatarColor=new Color(0.75f,0.25f,0.75f), isScam=false, layout=CardLayout.Social, explanation="SAFE — A real Instagram engagement notification. It names specific users, references your actual post caption, links to instagram.com, and explains why you're receiving it. No personal info or action required." },
+        };
+    }
+
+    void InitializeCombinedContent()
+    {
+        var pool = new List<Email>();
+        pool.Add(new Email { senderName = "PayPal Support", senderEmail = "support@paypa1.com", subject = "URGENT: Account suspended", body = "Dear Customer,\n\nYour PayPal account has been suspended. Verify immediately or your account will be permanently deleted within 24 hours.\n\n— PayPal Support", timestamp = "Today", avatarColor = new Color(0.07f, 0.45f, 0.71f), isScam = true, layout = CardLayout.Email, explanation = "SCAM — 'paypa1.com' uses the number 1 instead of L. Real PayPal emails come from paypal.com. 24-hour threats are classic phishing pressure." });
+        pool.Add(new Email { senderName = "Amazon", senderEmail = "orders@amazon.com", subject = "Your order has shipped", body = "Hello,\n\nYour order #112-4857293 has shipped. Estimated delivery June 12.\n\n— Amazon", timestamp = "Today", avatarColor = new Color(1f, 0.6f, 0f), isScam = false, layout = CardLayout.Email, explanation = "SAFE — Real amazon.com domain, specific order number, calm tone, no personal info requested." });
+        pool.Add(new Email { senderName = "Survey Rewards Hub", senderEmail = "rewards@survey-hub-canada.net", subject = "Earn $75 in 2 minutes!", body = "You've been selected for a short survey. Receive $75 in your PayPal account on completion.\n\nStart: survey-hub-canada.net/survey\n\nOffer expires in 30 minutes.", timestamp = "Today", avatarColor = new Color(0.20f, 0.70f, 0.30f), isScam = true, layout = CardLayout.Website, explanation = "SCAM — No company pays $75 for a 2-minute survey. The 30-minute deadline is fake urgency. These sites steal your PayPal login." });
+        pool.Add(new Email { senderName = "GitHub", senderEmail = "notifications@github.com", subject = "PR merged: fix login bug", body = "Hi johndoe,\n\nYour pull request #142 was merged into main by @teamlead.\n\nView: github.com/myorg/myrepo/pull/142\n\n— GitHub", timestamp = "Today", avatarColor = new Color(0.10f, 0.10f, 0.10f), isScam = false, layout = CardLayout.Website, explanation = "SAFE — Real GitHub domain, specific PR number, links to github.com, no payment or personal info requested." });
+        pool.Add(new Email { senderName = "+1-888-555-0147", senderEmail = "Unknown number", subject = "RBC account locked", body = "THEM: URGENT: Suspicious activity on your RBC account. Card LOCKED. Restore here: rbc-secure-verify.net/unlock\nYOU: Is this real?\nTHEM: Yes. RBC Security. Verify within 15 mins.", timestamp = "Today", avatarColor = new Color(0.78f, 0.10f, 0.10f), isScam = true, layout = CardLayout.SMS, explanation = "SCAM — Real banks never send links to unlock cards via text. 'rbc-secure-verify.net' is not RBC's domain. The 15-minute fake deadline creates panic." });
+        pool.Add(new Email { senderName = "TD Bank", senderEmail = "Short code 39733", subject = "Transaction alert", body = "THEM: TD: Purchase of $47.82 at Tim Hortons on your Visa ending 4821. Not you? Call 1-800-983-8472 or visit td.com/security\nYOU: That was me, all good!\nTHEM: Great, no action needed.", timestamp = "Today", avatarColor = new Color(0.00f, 0.35f, 0.65f), isScam = false, layout = CardLayout.SMS, explanation = "SAFE — Legitimate bank alert from a registered short code. Shows real purchase details, last 4 digits, and directs to td.com — no link to click." });
+        pool.Add(new Email { senderName = "@Meta.Verified.Support", senderEmail = "via Facebook DM", subject = "Get your blue badge today!", body = "You may qualify for a Meta Verified blue badge ✓\n\nTo apply DM us:\n• Full legal name\n• Date of birth  \n• Government ID photo\n• Facebook password\n\nFee: $49.99 via gift card. Offer valid 72 hours.", timestamp = "Today", avatarColor = new Color(0.23f, 0.35f, 0.60f), isScam = true, layout = CardLayout.Social, explanation = "SCAM — Meta never asks for your password or ID via DM. Gift card payment is a universal scam signal. Real Meta Verified is applied for in the app settings." });
+        pool.Add(new Email { senderName = "LinkedIn", senderEmail = "via linkedin.com", subject = "Sarah Chen accepted your request", body = "Sarah Chen accepted your connection request!\n\nSarah Chen — Product Manager at Shopify\n\nView her profile: linkedin.com/in/sarah-chen-pm\n\n— LinkedIn", timestamp = "Today", avatarColor = new Color(0.00f, 0.46f, 0.71f), isScam = false, layout = CardLayout.Social, explanation = "SAFE — Real LinkedIn notification for an action you initiated. Links to linkedin.com, names a specific person, no personal info or payment requested." });
+        for (int i = pool.Count - 1; i > 0; i--)
+        { int j = Random.Range(0, i + 1); var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp; }
+        emails = pool.ToArray();
     }
 }
