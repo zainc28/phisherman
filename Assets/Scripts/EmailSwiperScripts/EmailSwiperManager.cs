@@ -104,10 +104,6 @@ public class EmailSwiperManager : MonoBehaviour
     public TMP_Text resultScore;
     public TMP_Text resultMessage;
 
-    // ===== Commentator =====
-    [Header("Commentator")]
-    public Commentator commentator;
-
     // ===== Internal =====
     private int score, streak, cracks, currentIndex, fishCaughtLeft, fishCaughtRight;
     private float timeRemaining;
@@ -161,8 +157,22 @@ public class EmailSwiperManager : MonoBehaviour
     private Email[] emails;
     private int _worldTheme = 1;
 
-    static readonly Color SMSBubbleIn = new Color(0.90f, 0.90f, 0.90f);
-    static readonly Color SMSBubbleOut = new Color(0.20f, 0.55f, 0.95f);
+    // iMessage colors
+    static readonly Color iMsgBubbleIn = new Color(0.90f, 0.90f, 0.92f);
+    static readonly Color iMsgBubbleOut = new Color(0.00f, 0.48f, 1.00f);
+    static readonly Color iMsgBg = new Color(0.97f, 0.97f, 0.97f);
+    static readonly Color iMsgHeader = new Color(0.95f, 0.95f, 0.95f);
+
+    // Facebook colors
+    static readonly Color FBBlue = new Color(0.11f, 0.46f, 0.95f);
+    static readonly Color FBDark = new Color(0.11f, 0.13f, 0.13f);
+    static readonly Color FBCard = new Color(0.98f, 0.98f, 1.00f);
+    static readonly Color FBMuted = new Color(0.40f, 0.40f, 0.45f);
+
+    // Website colors
+    static readonly Color WebBg = new Color(0.97f, 0.97f, 1.00f);
+
+    // SMS / Social legacy
     static readonly Color SMSBg = new Color(0.96f, 0.96f, 0.98f);
     static readonly Color SocialBg = new Color(0.24f, 0.40f, 0.70f);
     static readonly Color SocialCard = new Color(0.98f, 0.98f, 1.00f);
@@ -218,19 +228,34 @@ public class EmailSwiperManager : MonoBehaviour
             { var img = t.GetComponent<Image>(); if (img != null) heartImages.Add(img); }
         UpdateHearts();
 
+        // Setup audio sources — use builder-assigned sources, then ensure clips are wired
         var sources = GetComponents<AudioSource>();
         _sfxSource = sources.Length > 0 ? sources[0] : gameObject.AddComponent<AudioSource>();
         _musicSource = sources.Length > 1 ? sources[1] : gameObject.AddComponent<AudioSource>();
-        _sfxSource.playOnAwake = false; _sfxSource.loop = false;
-        _musicSource.playOnAwake = false; _musicSource.loop = true;
+        _sfxSource.playOnAwake = false; _sfxSource.loop = false; _sfxSource.volume = sfxVolume;
+        _musicSource.playOnAwake = false; _musicSource.loop = true; _musicSource.volume = musicVolume;
+        // Clips are assigned in the Inspector/builder as serialized fields — wire them to the sources now
+        if (bgMusic != null && _musicSource.clip == null) _musicSource.clip = bgMusic;
+        // sfxCardFlip, sfxCorrect, sfxWrong are played via PlayOneShot so no clip assignment needed
     }
 
     // ===================================================================
     //  Audio
     // ===================================================================
-    void PlayBgMusic() { if (_musicSource == null || bgMusic == null) return; _musicSource.clip = bgMusic; _musicSource.volume = musicVolume; _musicSource.loop = true; _musicSource.Play(); }
+    void PlayBgMusic()
+    {
+        if (_musicSource == null || bgMusic == null) return;
+        _musicSource.clip = bgMusic;
+        _musicSource.volume = musicVolume;
+        _musicSource.loop = true;
+        _musicSource.Play();
+    }
     void StopBgMusic() { if (_musicSource != null && _musicSource.isPlaying) _musicSource.Stop(); }
-    void PlaySFX(AudioClip clip) { if (_sfxSource == null || clip == null) return; _sfxSource.PlayOneShot(clip, sfxVolume); }
+    void PlaySFX(AudioClip clip)
+    {
+        if (_sfxSource == null || clip == null) return;
+        _sfxSource.PlayOneShot(clip, sfxVolume);
+    }
 
     // ===================================================================
     //  Update
@@ -240,8 +265,6 @@ public class EmailSwiperManager : MonoBehaviour
         if (!gameRunning) return;
         timeRemaining -= Time.deltaTime;
         UpdateTimerUI();
-        if (!warnedLowTime && timeRemaining < 15f && timeRemaining > 0f)
-        { warnedLowTime = true; commentator?.Say("Quick now, time's running out!"); }
         if (timeRemaining <= 0f) { timeRemaining = 0f; EndGame(); }
         AnimatePoolFish();
     }
@@ -258,16 +281,6 @@ public class EmailSwiperManager : MonoBehaviour
         LoadCard(0);
         gameRunning = true;
         PlayBgMusic();
-
-        string openLine = _worldTheme switch
-        {
-            2 => "Sort each post — scam to the left, safe to the right! Watch those URLs!",
-            3 => "Sort each text message — scam to the left, safe to the right! Trust your gut!",
-            4 => "Sort each notification — scam to the left, safe to the right! Fake accounts everywhere!",
-            5 => "You've seen it all — emails, websites, texts, social media. Sort every one!",
-            _ => "Sort each email into the nets — scam to the left, safe to the right!"
-        };
-        commentator?.Say(openLine);
     }
 
     // ===================================================================
@@ -311,52 +324,123 @@ public class EmailSwiperManager : MonoBehaviour
 
     void ApplyWebsiteLayout(Email e)
     {
+        // World 2 – website / forum look
         if (cardSender != null) { cardSender.text = e.senderName; cardSender.fontSize = 20; cardSender.color = new Color(0.10f, 0.10f, 0.20f); }
-        if (cardEmail != null) { cardEmail.text = e.senderEmail; cardEmail.fontSize = 14; cardEmail.color = new Color(0.20f, 0.45f, 0.80f); cardEmail.gameObject.SetActive(true); }
-        if (cardSubject != null) { cardSubject.text = e.subject; cardSubject.fontSize = 22; cardSubject.color = new Color(0.10f, 0.10f, 0.20f); cardSubject.fontStyle = FontStyles.Bold; cardSubject.gameObject.SetActive(true); }
-        if (cardBody != null) { cardBody.text = e.body; cardBody.fontSize = 18; cardBody.color = new Color(0.10f, 0.10f, 0.20f); cardBody.alignment = TextAlignmentOptions.TopLeft; }
+        if (cardEmail != null) { cardEmail.text = "🔒 " + e.senderEmail; cardEmail.fontSize = 13; cardEmail.color = new Color(0.18f, 0.55f, 0.18f); cardEmail.gameObject.SetActive(true); }
+        if (cardSubject != null) { cardSubject.text = e.subject; cardSubject.fontSize = 21; cardSubject.color = new Color(0.08f, 0.08f, 0.18f); cardSubject.fontStyle = FontStyles.Bold; cardSubject.gameObject.SetActive(true); }
+        if (cardBody != null)
+        {
+            // Wrap body in a styled "web page" look
+            string styled = $"<size=11><color=#888888>──────────────────────────</color></size>\n{e.body}";
+            cardBody.text = styled; cardBody.fontSize = 17; cardBody.color = new Color(0.12f, 0.12f, 0.20f); cardBody.alignment = TextAlignmentOptions.TopLeft;
+        }
         if (cardAvatar != null) { cardAvatar.color = e.avatarColor; cardAvatar.gameObject.SetActive(true); }
         if (cardAvatarLetter != null) cardAvatarLetter.text = string.IsNullOrEmpty(e.senderName) ? "?" : e.senderName[0].ToString().ToUpper();
-        SetCardBg(new Color(0.97f, 0.97f, 1.00f));
+        SetCardBg(WebBg);
     }
 
+    // ---------------------------------------------------------------
+    //  iMessage-style SMS layout
+    // ---------------------------------------------------------------
     void ApplySMSLayout(Email e)
     {
-        if (cardSender != null) { cardSender.text = e.senderName; cardSender.fontSize = 20; cardSender.color = new Color(0.10f, 0.10f, 0.10f); cardSender.fontStyle = FontStyles.Bold; }
-        if (cardEmail != null) { cardEmail.gameObject.SetActive(false); }
-        if (cardSubject != null) { cardSubject.gameObject.SetActive(false); }
-        if (cardAvatar != null) { cardAvatar.color = e.avatarColor; cardAvatar.gameObject.SetActive(true); }
-        if (cardAvatarLetter != null) cardAvatarLetter.text = "💬";
+        // Header: contact name centred like iMessage
+        if (cardSender != null)
+        {
+            cardSender.text = e.senderName;
+            cardSender.fontSize = 17;
+            cardSender.color = new Color(0.08f, 0.08f, 0.10f);
+            cardSender.fontStyle = FontStyles.Bold;
+            cardSender.alignment = TextAlignmentOptions.Center;
+        }
+        if (cardEmail != null) cardEmail.gameObject.SetActive(false);
+        if (cardSubject != null) cardSubject.gameObject.SetActive(false);
+
+        // Avatar becomes the contact icon circle at top-centre
+        if (cardAvatar != null)
+        {
+            cardAvatar.color = e.avatarColor;
+            cardAvatar.gameObject.SetActive(true);
+        }
+        if (cardAvatarLetter != null)
+            cardAvatarLetter.text = string.IsNullOrEmpty(e.senderName) ? "?" : e.senderName[0].ToString().ToUpper();
+
+        // Build iMessage bubble layout in body
         if (cardBody != null)
         {
             var lines = e.body.Split('\n');
-            var formatted = new System.Text.StringBuilder();
+            var sb = new System.Text.StringBuilder();
             foreach (var line in lines)
             {
                 if (line.StartsWith("THEM: "))
-                    formatted.AppendLine($"<color=#222222><b>{e.senderName}</b></color>\n  {line.Substring(6)}\n");
+                {
+                    // Incoming: left-aligned, grey bubble style
+                    sb.AppendLine($"<align=left><color=#1C1C1E><size=90%>{line.Substring(6)}</size></color></align>");
+                    sb.AppendLine();
+                }
                 else if (line.StartsWith("YOU: "))
-                    formatted.AppendLine($"<align=right><color=#1a6fff>You</color>\n  {line.Substring(5)}</align>\n");
+                {
+                    // Outgoing: right-aligned, blue bubble style
+                    sb.AppendLine($"<align=right><color=#0A84FF><size=90%>{line.Substring(5)}</size></color></align>");
+                    sb.AppendLine();
+                }
                 else if (!string.IsNullOrWhiteSpace(line))
-                    formatted.AppendLine($"<color=#888888><size=80%>{line}</size></color>");
+                {
+                    // Timestamp / system message
+                    sb.AppendLine($"<align=center><color=#8E8E93><size=75%>{line}</size></color></align>");
+                    sb.AppendLine();
+                }
             }
-            cardBody.text = formatted.ToString();
-            cardBody.fontSize = 17;
+            cardBody.text = sb.ToString();
+            cardBody.fontSize = 16;
             cardBody.alignment = TextAlignmentOptions.TopLeft;
             cardBody.color = Color.black;
         }
-        SetCardBg(SMSBg);
+        SetCardBg(iMsgBg);
     }
 
+    // ---------------------------------------------------------------
+    //  Facebook-style Social layout
+    // ---------------------------------------------------------------
     void ApplySocialLayout(Email e)
     {
-        if (cardSender != null) { cardSender.text = e.senderName; cardSender.fontSize = 20; cardSender.color = Color.white; }
-        if (cardEmail != null) { cardEmail.text = e.senderEmail; cardEmail.fontSize = 14; cardEmail.color = new Color(0.85f, 0.90f, 1.00f); cardEmail.gameObject.SetActive(true); }
-        if (cardSubject != null) { cardSubject.text = e.subject; cardSubject.fontSize = 22; cardSubject.color = new Color(0.10f, 0.10f, 0.20f); cardSubject.fontStyle = FontStyles.Bold; cardSubject.gameObject.SetActive(true); }
-        if (cardBody != null) { cardBody.text = e.body; cardBody.fontSize = 18; cardBody.color = new Color(0.15f, 0.15f, 0.25f); cardBody.alignment = TextAlignmentOptions.TopLeft; }
+        // Header: Facebook blue bar look
+        if (cardSender != null)
+        {
+            cardSender.text = e.senderName;
+            cardSender.fontSize = 18;
+            cardSender.color = new Color(0.06f, 0.06f, 0.09f);
+            cardSender.fontStyle = FontStyles.Bold;
+        }
+        if (cardEmail != null)
+        {
+            // Show handle/page name in muted colour
+            cardEmail.text = e.senderEmail;
+            cardEmail.fontSize = 13;
+            cardEmail.color = FBMuted;
+            cardEmail.gameObject.SetActive(true);
+        }
+        if (cardSubject != null)
+        {
+            cardSubject.text = e.subject;
+            cardSubject.fontSize = 19;
+            cardSubject.color = new Color(0.06f, 0.06f, 0.09f);
+            cardSubject.fontStyle = FontStyles.Bold;
+            cardSubject.gameObject.SetActive(true);
+        }
+        if (cardBody != null)
+        {
+            // Facebook post body: add "Like · Comment · Share" footer
+            string postBody = e.body + "\n\n<size=75%><color=#0866FF>👍 Like   💬 Comment   ↗ Share</color></size>";
+            cardBody.text = postBody;
+            cardBody.fontSize = 16;
+            cardBody.color = new Color(0.08f, 0.08f, 0.12f);
+            cardBody.alignment = TextAlignmentOptions.TopLeft;
+        }
         if (cardAvatar != null) { cardAvatar.color = e.avatarColor; cardAvatar.gameObject.SetActive(true); }
-        if (cardAvatarLetter != null) cardAvatarLetter.text = string.IsNullOrEmpty(e.senderName) ? "?" : e.senderName[0].ToString().ToUpper();
-        SetCardBg(SocialCard);
+        if (cardAvatarLetter != null)
+            cardAvatarLetter.text = string.IsNullOrEmpty(e.senderName) ? "?" : e.senderName[0].ToString().ToUpper();
+        SetCardBg(FBCard);
     }
 
     void SetCardBg(Color col)
@@ -418,9 +502,21 @@ public class EmailSwiperManager : MonoBehaviour
         var email = emails[currentIndex];
         bool correct = (playerSaidScam == email.isScam);
         answered[currentIndex] = true; correctAnswers[currentIndex] = correct;
+
+        // Play card-flip SFX on every swipe
+        PlaySFX(sfxCardFlip);
+
         if (correct)
-        { int gain = correctPoints + Mathf.Max(0, streak) * streakBonus; score += gain; streak++; correctCount++; if (correctCount >= targetCorrectToWin) wonEarly = true; ReactToCorrect(); }
-        else { streak = 0; cracks++; UpdateHearts(); ReactToWrong(); }
+        {
+            int gain = correctPoints + Mathf.Max(0, streak) * streakBonus;
+            score += gain; streak++; correctCount++;
+            if (correctCount >= targetCorrectToWin) wonEarly = true;
+        }
+        else
+        {
+            streak = 0; cracks++;
+            UpdateHearts();
+        }
         UpdateAllUI();
         StartCoroutine(SwipeSequence(dir, correct, email));
     }
@@ -433,8 +529,22 @@ public class EmailSwiperManager : MonoBehaviour
         yield return StartCoroutine(CardMorphToFish(dir, correct));
         RectTransform targetNet = (dir == -1) ? leftNetRT : rightNetRT;
         yield return StartCoroutine(FishArcToNet(fishAnimRT.anchoredPosition, targetNet, correct));
-        if (correct) { PlaySFX(sfxCorrect); SpawnNetFish(dir); int gain = correctPoints + Mathf.Max(0, streak - 1) * streakBonus; StartCoroutine(ShowScorePopup(gain, targetNet)); StartCoroutine(NetBounce(targetNet)); }
-        else { PlaySFX(sfxWrong); PlayerProgress.RegisterFish("fish_puffer"); yield return StartCoroutine(PufferRocksBoat()); }
+
+        if (correct)
+        {
+            PlaySFX(sfxCorrect); // water_splash on correct
+            SpawnNetFish(dir);
+            int gain = correctPoints + Mathf.Max(0, streak - 1) * streakBonus;
+            StartCoroutine(ShowScorePopup(gain, targetNet));
+            StartCoroutine(NetBounce(targetNet));
+        }
+        else
+        {
+            PlaySFX(sfxWrong); // impact on wrong
+            PlayerProgress.RegisterFish("fish_puffer");
+            yield return StartCoroutine(PufferRocksBoat());
+        }
+
         yield return StartCoroutine(ShowFeedback(correct, email.explanation));
         if (wonEarly || cracks >= maxCracks || currentIndex + 1 >= emails.Length) EndGame();
         else LoadCard(currentIndex + 1);
@@ -567,25 +677,6 @@ public class EmailSwiperManager : MonoBehaviour
     void UpdateProgress() { if (progressText != null) progressText.text = $"{correctCount} / {targetCorrectToWin} correct"; }
 
     // ===================================================================
-    //  Commentator
-    // ===================================================================
-    void ReactToCorrect()
-    {
-        if (commentator == null) return;
-        if (streak == 3) commentator.Say("Oh my, you're on a roll!");
-        else if (streak == 6) commentator.Say("Goodness, what a sharp eye!");
-        else commentator.SayRandom(new[] { "Good catch, dear!", "Very nice!", "You're so smart.", "That's the way!" });
-    }
-    void ReactToWrong()
-    {
-        if (commentator == null) return;
-        if (cracks >= maxCracks) return;
-        if (cracks == maxCracks - 1) commentator.Say("One more hit and the boat sinks!");
-        else if (cracks == maxCracks - 2) commentator.Say("Be careful — the boat's taking on water…");
-        else commentator.SayRandom(new[] { "Oh no, that pufferfish hit the hull!", "Ouch! The boat's rocking…", "Don't worry, scammers are clever." });
-    }
-
-    // ===================================================================
     //  Feedback
     // ===================================================================
     IEnumerator ShowFeedback(bool correct, string explanation)
@@ -601,7 +692,7 @@ public class EmailSwiperManager : MonoBehaviour
     }
 
     // ===================================================================
-    //  End game — CHANGED: writes interior_result
+    //  End game
     // ===================================================================
     void EndGame()
     {
@@ -609,7 +700,6 @@ public class EmailSwiperManager : MonoBehaviour
         swipeCard.Lock();
         StopBgMusic();
 
-        // Determine win/loss for InteriorDialogueManager
         bool sank = cracks >= maxCracks;
         int correct = 0;
         for (int i = 0; i < correctAnswers.Length; i++) if (answered[i] && correctAnswers[i]) correct++;
@@ -631,21 +721,19 @@ public class EmailSwiperManager : MonoBehaviour
         float pct = wonEarly ? 1f : (emails.Length > 0 ? (float)correct / emails.Length : 0);
         PlayerProgress.QueueFromPerformance(pct);
         if (cracks == 0) PlayerProgress.RegisterFish("fish_guardian");
-        string stars, msg, quip;
-        if (wonEarly) { stars = "★ ★ ★"; msg = $"You sorted {targetCorrectToWin} correctly — mission complete!"; quip = "Excellent work! You've got a real eye for this now."; }
-        else if (cracks >= maxCracks) { stars = "★"; msg = "The boat sank! Those pufferfish got you.\nRead carefully and try again."; quip = "Oh dear… the boat couldn't take any more."; }
-        else if (timeRemaining <= 0 && pct < 0.7f) { stars = "★"; msg = "Time's up — you'll be quicker next time."; quip = "Time got away from us, dear."; }
-        else if (pct >= 0.95f) { stars = "★ ★ ★"; msg = "Phish-master! The nets are full of happy fish."; quip = "Oh thank you, dear! You're wonderful."; }
-        else if (pct >= 0.7f) { stars = "★ ★"; msg = "Solid work! Review the ones that got you."; quip = "That was a big help — thank you, dear!"; }
-        else { stars = "★"; msg = "Scammers are tricky. Try again and read carefully."; quip = "It's a good start. We'll get them next time."; }
+        string stars, msg;
+        if (wonEarly) { stars = "★ ★ ★"; msg = $"You sorted {targetCorrectToWin} correctly — mission complete!"; }
+        else if (cracks >= maxCracks) { stars = "★"; msg = "The boat sank! Those pufferfish got you.\nRead carefully and try again."; }
+        else if (timeRemaining <= 0 && pct < 0.7f) { stars = "★"; msg = "Time's up — you'll be quicker next time."; }
+        else if (pct >= 0.95f) { stars = "★ ★ ★"; msg = "Phish-master! The nets are full of happy fish."; }
+        else if (pct >= 0.7f) { stars = "★ ★"; msg = "Solid work! Review the ones that got you."; }
+        else { stars = "★"; msg = "Scammers are tricky. Try again and read carefully."; }
         if (resultStars != null) resultStars.text = stars;
         if (resultMessage != null) resultMessage.text = msg;
-        commentator?.Say(quip);
     }
 
     public void OnPlayAgain() { SceneManager.LoadScene(SceneManager.GetActiveScene().name); }
 
-    // CHANGED: reads interior_source instead of hardcoding "WorldMap"
     public void OnReturnToMap()
     {
         string src = PlayerPrefs.GetString("interior_source", "WorldMap");
@@ -657,7 +745,7 @@ public class EmailSwiperManager : MonoBehaviour
     public static TMP_Text MakeText(Transform parent, string name, string content, int size, Color color, TextAlignmentOptions align, FontStyles style = FontStyles.Normal) { var go = new GameObject(name, typeof(RectTransform)); go.transform.SetParent(parent, false); var t = go.AddComponent<TextMeshProUGUI>(); t.text = content; t.fontSize = size; t.color = color; t.alignment = align; t.fontStyle = style; t.raycastTarget = false; return t; }
 
     // ===================================================================
-    //  Content — all unchanged from original
+    //  Content
     // ===================================================================
     void InitializeEmails()
     {

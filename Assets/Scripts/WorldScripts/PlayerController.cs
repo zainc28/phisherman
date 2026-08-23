@@ -1,39 +1,43 @@
 ﻿using UnityEngine;
+using UnityEngine.EventSystems;
 
+// ============================================================
+//  PlayerController
+//  WASD + click-to-move for all world map scenes (1-5).
+//
+//  FIX: Added IsPointerOverGameObject() guard to the mouse-click
+//  handler. Without this, clicking the [M] World Map button (or
+//  any other UI button) simultaneously triggered a click-to-move
+//  in world space, which looked like the map wasn't opening even
+//  though it was — the player just moved and the map panel
+//  appeared briefly before being obscured.
+// ============================================================
 public class PlayerController : MonoBehaviour
 {
     public float moveSpeed = 3.5f;
     public Vector2 boundsX = new Vector2(-7.5f, 7.5f);
     public Vector2 boundsY = new Vector2(-4.5f, 4.5f);
 
-    // Walk animation
-    public float walkFrameInterval = 0.18f; // seconds between sprite swaps
+    public float walkFrameInterval = 0.18f;
 
     SpriteRenderer _sr;
     Sprite _idleSprite;
     Sprite _walkSprite;
 
-    // Click-to-move
     Vector3? _clickTarget;
 
-    // Polygon walkable zone
     Vector2[] _zoneVerts;
     bool _hasZone;
 
-    // Animation
     float _animTimer;
     bool _walkFrame;
-    bool _wasMoving;
 
     void Start()
     {
         _sr = GetComponent<SpriteRenderer>();
         if (_sr != null) _idleSprite = _sr.sprite;
-
-        // Find phisherman_walking sprite from the project
         _walkSprite = FindWalkSprite();
 
-        // Read WalkableZone polygon
         var zoneGo = GameObject.Find("WalkableZone");
         if (zoneGo != null)
         {
@@ -57,19 +61,25 @@ public class PlayerController : MonoBehaviour
         bool wasdActive = Mathf.Abs(h) > 0.01f || Mathf.Abs(v) > 0.01f;
 
         // ── Click to move ────────────────────────────────────
+        // FIX: guard with IsPointerOverGameObject so clicking any
+        // UI element (map button, CTA badge, close button, etc.)
+        // never also triggers a world-space move.
         if (Input.GetMouseButtonDown(0) && Camera.main != null)
         {
-            Vector3 worldPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-            worldPos.z = transform.position.z;
-            // Only set target if click is within bounds
-            if (worldPos.x >= boundsX.x && worldPos.x <= boundsX.y &&
-                worldPos.y >= boundsY.x && worldPos.y <= boundsY.y)
+            var es = EventSystem.current;
+            bool overUI = es != null && es.IsPointerOverGameObject();
+            if (!overUI)
             {
-                _clickTarget = worldPos;
+                Vector3 worldPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+                worldPos.z = transform.position.z;
+                if (worldPos.x >= boundsX.x && worldPos.x <= boundsX.y &&
+                    worldPos.y >= boundsY.x && worldPos.y <= boundsY.y)
+                {
+                    _clickTarget = worldPos;
+                }
             }
         }
 
-        // ── WASD cancels click target ────────────────────────
         if (wasdActive) _clickTarget = null;
 
         bool moving = false;
@@ -109,7 +119,7 @@ public class PlayerController : MonoBehaviour
                 if (IsInsideZone(newPos))
                     transform.position = newPos;
                 else
-                    _clickTarget = null; // hit zone boundary, stop
+                    _clickTarget = null;
 
                 if (_sr != null)
                 {
@@ -135,17 +145,13 @@ public class PlayerController : MonoBehaviour
             }
             else
             {
-                // Reset to idle when stopped
                 _animTimer = 0f;
                 _walkFrame = false;
                 _sr.sprite = _idleSprite;
             }
         }
-
-        _wasMoving = moving;
     }
 
-    // Returns true if pos is inside the walkable polygon, or if no polygon exists
     bool IsInsideZone(Vector3 pos)
     {
         if (!_hasZone || _zoneVerts == null) return true;
@@ -167,24 +173,15 @@ public class PlayerController : MonoBehaviour
         return inside;
     }
 
-    // Finds phisherman_walking sprite without requiring a project reference
     static Sprite FindWalkSprite()
     {
-        // Search all loaded SpriteRenderers in the scene for a cached reference
-        // Fall back to searching resources if not found
-        var allRenderers = FindObjectsByType<SpriteRenderer>(FindObjectsSortMode.None);
-        foreach (var sr in allRenderers)
-        {
-            if (sr.sprite != null &&
-                sr.sprite.name.ToLower().Contains("phisherman_walking"))
-                return sr.sprite;
-        }
-
-        // Try MapWalkAnimator on this object — it already has the walk sprite
         var animator = FindObjectOfType<MapWalkAnimator>();
         if (animator != null && animator.walkSprite != null)
             return animator.walkSprite;
-
+        var allRenderers = FindObjectsByType<SpriteRenderer>(FindObjectsSortMode.None);
+        foreach (var sr in allRenderers)
+            if (sr.sprite != null && sr.sprite.name.ToLower().Contains("phisherman_walking"))
+                return sr.sprite;
         return null;
     }
 }

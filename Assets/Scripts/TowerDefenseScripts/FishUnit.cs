@@ -4,10 +4,11 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// One fish+log unit. 
+/// One fish+log unit.
 /// CHANGES:
-///  - Init now takes laneIdx so it can free its lane on death
-///  - OnFishRemoved(laneIdx) called instead of OnFishRemoved()
+///  - Log scale reduced to 60% of original (was 1.6 x 0.85, now 0.96 x 0.51)
+///  - laneIdx tracked so manager can free lane on death
+///  - Commentator removed
 /// </summary>
 public class FishUnit : MonoBehaviour
 {
@@ -36,13 +37,13 @@ public class FishUnit : MonoBehaviour
     private float bobTimer;
     private float bobOffset;
     private Color fishColor;
-    private int laneIndex = -1;   // CHANGED: track which lane this fish occupies
+    private int laneIndex = -1;
 
     private Transform speargunPivot;
     private GameObject reelLineGO;
 
     // =================================================================
-    // Init — CHANGED: added laneIdx parameter
+    //  Init
     // =================================================================
 
     public void Init(bool scam, string label, float speed, int laneIdx,
@@ -69,32 +70,33 @@ public class FishUnit : MonoBehaviour
     }
 
     // =================================================================
-    // Build child visuals
+    //  Build child visuals
     // =================================================================
 
     void BuildVisuals()
     {
-        // No visible fish body — only the log + hanging fish are shown.
-        // fishSR is kept as a hidden renderer so state-change code (puff/happy sprites)
-        // doesn't null-ref; it's invisible (no sprite assigned, size zero).
+        // Invisible fish body renderer — state-change code references it without null-ref
         var fishGO = new GameObject("FishBody");
         fishGO.transform.SetParent(transform, false);
         fishGO.transform.localPosition = Vector3.zero;
         fishSR = fishGO.AddComponent<SpriteRenderer>();
-        fishSR.sprite = null;          // invisible — log+hanging fish carry the visuals
-        fishSR.sortingOrder = -99;     // behind everything just in case
-        fishGO.transform.localScale = Vector3.one * 0.01f;  // effectively invisible
+        fishSR.sprite = null;
+        fishSR.sortingOrder = -99;
+        fishGO.transform.localScale = Vector3.one * 0.01f;
 
         logRoot = new GameObject("LogRoot").transform;
         logRoot.SetParent(transform, false);
-        logRoot.localPosition = new Vector3(0f, 0.55f, 0f);  // log sits above unit centre
+        logRoot.localPosition = new Vector3(0f, 0.55f, 0f);
 
         var logGO = new GameObject("Log");
         logGO.transform.SetParent(logRoot, false);
         logGO.transform.localPosition = Vector3.zero;
         logSR = logGO.AddComponent<SpriteRenderer>();
-        logSR.sprite = logSprite; logSR.color = Color.white; logSR.sortingOrder = 3;
-        logGO.transform.localScale = new Vector3(1.6f, 0.85f, 1f);
+        logSR.sprite = logSprite;
+        logSR.color = Color.white;
+        logSR.sortingOrder = 3;
+        // Log reduced to 60% of original (was 1.6 x 0.85)
+        logGO.transform.localScale = new Vector3(0.96f, 0.51f, 1f);
 
         var canvasGO = new GameObject("LabelCanvas");
         canvasGO.transform.SetParent(logRoot, false);
@@ -110,13 +112,17 @@ public class FishUnit : MonoBehaviour
 
         var textGO = new GameObject("Label"); textGO.transform.SetParent(canvasGO.transform, false);
         labelTMP = textGO.AddComponent<TextMeshProUGUI>();
-        labelTMP.text = labelText; labelTMP.fontSize = 26; labelTMP.color = Color.white;
-        labelTMP.fontStyle = FontStyles.Bold; labelTMP.alignment = TextAlignmentOptions.Center; labelTMP.raycastTarget = false;
+        labelTMP.text = labelText;
+        labelTMP.fontSize = 26;
+        labelTMP.color = Color.white;
+        labelTMP.fontStyle = FontStyles.Bold;
+        labelTMP.alignment = TextAlignmentOptions.Center;
+        labelTMP.raycastTarget = false;
         var tRT = textGO.GetComponent<RectTransform>(); tRT.anchorMin = Vector2.zero; tRT.anchorMax = Vector2.one; tRT.offsetMin = new Vector2(4, 0); tRT.offsetMax = new Vector2(-4, 0);
     }
 
     // =================================================================
-    // Update
+    //  Update
     // =================================================================
 
     void Update()
@@ -158,7 +164,7 @@ public class FishUnit : MonoBehaviour
     }
 
     // =================================================================
-    // Spear hit
+    //  Spear hit
     // =================================================================
 
     public void TakeSpearHit(Transform pivot)
@@ -179,7 +185,7 @@ public class FishUnit : MonoBehaviour
     public void TakeSpearHit() { TakeSpearHit(null); }
 
     // =================================================================
-    // Reel-in
+    //  Reel-in
     // =================================================================
 
     IEnumerator ReelToTower()
@@ -210,23 +216,18 @@ public class FishUnit : MonoBehaviour
             state = State.Defused; currentSpeed = baseSpeed * 3.0f; hitRegistered = false;
             if (fishHappySprite != null) fishSR.sprite = fishHappySprite;
             manager.OnRedFishSpearHit(transform.position);
-            manager.commentator?.SayRandom(new[] { "Defused!", "It's safe now!", "Good eye, dear!" });
         }
         else
         {
-            // CHANGED: charge toward the tower instead of exploding on the spot —
-            // hitRegistered reset so CheckReachedTower can fire again once it arrives,
-            // OnReachedTower already handles Enraged -> Exploding.
             state = State.Enraged; currentSpeed = baseSpeed * 2.2f; hitRegistered = false;
             if (fishPuffedSprite != null) fishSR.sprite = fishPuffedSprite;
             StartCoroutine(PuffUpAnim());
             manager.OnGreenFishShotEarly(transform.position);
-            manager.commentator?.SayRandom(new[] { "Oh no, you made a safe one angry!", "Don't shoot the strong passwords!", "Watch out — it's charging!" });
         }
     }
 
     // =================================================================
-    // Reel line helpers
+    //  Reel line helpers
     // =================================================================
 
     void SpawnReelLine()
@@ -234,7 +235,8 @@ public class FishUnit : MonoBehaviour
         reelLineGO = new GameObject("ReelLine");
         reelLineGO.transform.SetParent(transform, false);
         reelLineSR = reelLineGO.AddComponent<SpriteRenderer>();
-        reelLineSR.color = new Color(0.95f, 0.85f, 0.30f, 0.88f); reelLineSR.sortingOrder = 10;
+        reelLineSR.color = new Color(0.95f, 0.85f, 0.30f, 0.88f);
+        reelLineSR.sortingOrder = 10;
         reelLineSR.sprite = MakePixelSprite();
     }
 
@@ -258,7 +260,7 @@ public class FishUnit : MonoBehaviour
     }
 
     // =================================================================
-    // Visual helpers
+    //  Visual helpers
     // =================================================================
 
     IEnumerator HitFlash()
@@ -276,7 +278,7 @@ public class FishUnit : MonoBehaviour
     }
 
     // =================================================================
-    // Natural arrival at tower
+    //  Natural arrival at tower
     // =================================================================
 
     void OnReachedTower()
@@ -286,7 +288,6 @@ public class FishUnit : MonoBehaviour
             state = State.Collected;
             if (logRoot != null) logRoot.gameObject.SetActive(false);
             manager.OnGreenFishCollected(gameObject, fishSR.sprite, state == State.Defused);
-            // CHANGED: pass laneIndex so manager frees the lane
             manager.OnFishRemoved(laneIndex);
             Destroy(gameObject);
         }
@@ -305,17 +306,11 @@ public class FishUnit : MonoBehaviour
 
         float dur = 0.38f, t = 0f; Vector3 baseScale = transform.localScale;
         while (t < dur)
-        {
-            t += Time.deltaTime; float p = Mathf.Clamp01(t / dur);
-            transform.localScale = baseScale * (1f + p * 1.2f);
-            fishSR.color = Color.Lerp(new Color(1f, 0.45f, 0.1f), Color.red, p);
-            yield return null;
-        }
+        { t += Time.deltaTime; float p = Mathf.Clamp01(t / dur); transform.localScale = baseScale * (1f + p * 1.2f); fishSR.color = Color.Lerp(new Color(1f, 0.45f, 0.1f), Color.red, p); yield return null; }
         fishSR.color = Color.white; transform.localScale = baseScale * 2.5f;
         yield return new WaitForSeconds(0.05f);
 
         manager.OnRedFishReachedTower(transform.position, false);
-        // CHANGED: free lane on explosion too
         manager.OnFishRemoved(laneIndex);
 
         t = 0f; dur = 0.22f;
@@ -324,7 +319,7 @@ public class FishUnit : MonoBehaviour
     }
 
     // =================================================================
-    // Pixel sprite
+    //  Pixel sprite
     // =================================================================
 
     static Sprite _pixSprite;

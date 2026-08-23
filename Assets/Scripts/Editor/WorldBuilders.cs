@@ -28,9 +28,9 @@ public static class WorldMapBuilder
     public static void Build()
     {
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
-        Vector2[] savedVerts = null; Vector3 savedZonePos = Vector3.zero;
-        var existing = GameObject.Find("WalkableZone");
-        if (existing != null) { var pc = existing.GetComponent<PolygonCollider2D>(); if (pc != null) { savedVerts = pc.points.ToArray(); savedZonePos = existing.transform.position; Debug.Log($"[WorldMapBuilder] Saved WalkableZone: {savedVerts.Length} verts."); } }
+        // Use disk-based save (same as Worlds 2-5) so the polygon is preserved
+        // regardless of which scene happens to be open in the editor right now.
+        var savedVerts = SharedWorldBuilderUtils.SaveWalkableZone(ScenePath, "WorldMapBuilder", out var savedZonePos);
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         if (savedVerts != null) { var zGo = new GameObject("WalkableZone"); zGo.transform.position = savedZonePos; var pc2 = zGo.AddComponent<PolygonCollider2D>(); pc2.isTrigger = true; pc2.SetPath(0, savedVerts); Debug.Log($"[WorldMapBuilder] Restored WalkableZone: {savedVerts.Length} verts."); }
         else { var zGo = new GameObject("WalkableZone"); var pc2 = zGo.AddComponent<PolygonCollider2D>(); pc2.isTrigger = true; pc2.SetPath(0, new Vector2[] { new Vector2(-7.5f, -4.5f), new Vector2(-7.5f, 4.5f), new Vector2(7.5f, 4.5f), new Vector2(7.5f, -4.5f) }); Debug.LogWarning("[WorldMapBuilder] No WalkableZone — placeholder created."); }
@@ -579,7 +579,7 @@ public static class World3Builder
 
         SharedWorldBuilderUtils.AddDoorCTA("Door_W3_House1", playerT, -4.0f, 0.4f, "AuntCarolInterior", "Aunt Carol", Hex("#2BB3A3"), lockedPopup);
         SharedWorldBuilderUtils.AddDoorCTA("Door_W3_House2", playerT, 0.2f, 1.2f, "UncleMarcusInterior", "Uncle Marcus", Hex("#FF9F1C"), lockedPopup);
-        SharedWorldBuilderUtils.AddDoorCTA("Door_W3_House3", playerT, 4.3f, 0.2f, "GrandpaLouInterior", "Grandpa Lou", Hex("#FFD93D"), lockedPopup);
+        SharedWorldBuilderUtils.AddDoorCTA("Door_W3_House3", playerT, 4.3f, 0.2f, "GrandpaLouInterior", "Grandpa Lou", Hex("#A29BFE"), lockedPopup);
 
         // Left = go back to World 2 (always unlocked)
         SharedWorldBuilderUtils.AddWorldTransitionCTA("WorldCTA_W2", playerT, "WorldMap2", "World 2",

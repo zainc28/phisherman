@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System.Collections;
+using System.IO;
 using System.Linq;
 using TMPro;
 using UnityEditor;
@@ -7,438 +8,567 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 
-/// <summary>
-/// Builds the MainMenu scene.
-/// Run via: Phisherman > Build Main Menu Scene
-///
-/// Layout:
-///   - main_menu_bg fills the screen
-///   - Title "PHISHERMAN" top-centre
-///   - Three buttons centre-right: Story Mode / Arcade Mode / Settings
-///   - Arcade panel (hidden by default): 3 minigame cards + back
-///   - Settings panel (hidden by default): placeholder sliders + back
-///
-/// Button style matches the CTA border style from the world map:
-///   dark fill + coloured border + bold white text.
-/// </summary>
+// ============================================================
+//  MainMenuBuilder  (Editor-only)
+//  Run via: Phisherman > Build Main Menu Scene
+// ============================================================
 public static class MainMenuBuilder
 {
-    private const string ScenesDir = "Assets/Scenes";
-    private const string ScenePath = "Assets/Scenes/MainMenu.unity";
+    const string ScenesDir = "Assets/Scenes";
+    const string ScenePath = "Assets/Scenes/MainMenu.unity";
 
-    // Palette
-    static readonly Color StoryCol = Hex("#FF9F1C");   // orange  — story mode
-    static readonly Color ArcadeCol = Hex("#4ECDC4");   // teal    — arcade mode
-    static readonly Color SettingsCol = Hex("#A29BFE");   // purple  — settings
-    static readonly Color BackCol = Hex("#636E72");   // grey    — back buttons
-    static readonly Color PanelBg = new Color(0.05f, 0.07f, 0.14f, 0.96f);
-    static readonly Color DarkFill = new Color(0.06f, 0.08f, 0.14f, 0.92f);
-
-    // Minigame card colours
-    static readonly Color EmailCol = Hex("#FF6B6B");
-    static readonly Color SpotCol = Hex("#FFD93D");
-    static readonly Color TowerCol = Hex("#2ECC71");
+    static readonly Color BgDark = new Color(0.03f, 0.06f, 0.12f, 1f);
+    static readonly Color PanelBg = new Color(0.04f, 0.06f, 0.13f, 0.98f);
+    static readonly Color CardBg = new Color(0.05f, 0.08f, 0.17f, 0.97f);
+    static readonly Color StoryC = Hex("#00E5FF");
+    static readonly Color ArcadeC = Hex("#FFD93D");
+    static readonly Color SettingC = Hex("#A29BFE");
+    static readonly Color ExitC = Hex("#636E72");
+    static readonly Color ResetC = Hex("#E74C3C");
+    static readonly Color EmailC = Hex("#FF6B6B");
+    static readonly Color SpotC = Hex("#FFD93D");
+    static readonly Color TowerC = Hex("#2ECC71");
 
     [MenuItem("Phisherman/Build Main Menu Scene")]
     public static void Build()
     {
-        if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
-        var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+        // Delete stale scene file so nothing from the old scene persists
+        if (File.Exists(ScenePath))
+        {
+            AssetDatabase.DeleteAsset(ScenePath);
+            AssetDatabase.Refresh();
+        }
 
-        // ── Camera ───────────────────────────────────────────────────
+        if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
+        EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+        // Camera
         var camGo = new GameObject("Main Camera"); camGo.tag = "MainCamera";
         var cam = camGo.AddComponent<Camera>(); camGo.AddComponent<AudioListener>();
-        cam.clearFlags = CameraClearFlags.SolidColor;
-        cam.backgroundColor = Hex("#0D1B2A");
-        cam.orthographic = true;
-        camGo.transform.position = new Vector3(0, 0, -10);
+        cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = BgDark;
+        cam.orthographic = true; camGo.transform.position = new Vector3(0, 0, -10);
 
-        // ── EventSystem ───────────────────────────────────────────────
-        var es = new GameObject("EventSystem");
-        es.AddComponent<EventSystem>(); es.AddComponent<StandaloneInputModule>();
+        // EventSystem
+        var esGo = new GameObject("EventSystem");
+        esGo.AddComponent<EventSystem>(); esGo.AddComponent<StandaloneInputModule>();
 
-        // ── Canvas ────────────────────────────────────────────────────
-        var canvasGo = new GameObject("Canvas");
-        var canvas = canvasGo.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        var scaler = canvasGo.AddComponent<CanvasScaler>();
+        // Canvas — sortingOrder 200 beats any in-game HUD canvas
+        var cGo = new GameObject("Canvas");
+        var cv = cGo.AddComponent<Canvas>();
+        cv.renderMode = RenderMode.ScreenSpaceOverlay;
+        cv.sortingOrder = 200;
+        var scaler = cGo.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);
         scaler.matchWidthOrHeight = 0.5f;
-        canvasGo.AddComponent<GraphicRaycaster>();
-        var canvasRT = canvasGo.GetComponent<RectTransform>();
+        cGo.AddComponent<GraphicRaycaster>();
+        var cRT = cGo.GetComponent<RectTransform>();
+        var rootCG = cGo.AddComponent<CanvasGroup>();
 
-        // Canvas group for fade in/out
-        var rootCG = canvasGo.AddComponent<CanvasGroup>();
-
-        // ── Background ────────────────────────────────────────────────
+        // Background sprite
         Sprite bgSpr = FindSprite("main_menu_bg");
-        var bgImg = Img(canvasRT, "Background", bgSpr != null ? Color.white : Hex("#0D1B2A"));
+        var bgImg = MkImg(cRT, "Background", bgSpr != null ? Color.white : BgDark);
         if (bgSpr != null) { bgImg.sprite = bgSpr; bgImg.preserveAspect = false; }
-        Stretch(bgImg.rectTransform);
-        bgImg.raycastTarget = false;
-        if (bgSpr == null) Debug.LogWarning("[MainMenuBuilder] 'main_menu_bg' not found — import it as Sprite (2D and UI).");
+        Stretch(bgImg.rectTransform); bgImg.raycastTarget = false;
 
-        // No vignette — background art already has atmosphere built in
+        // Dark vignette so buttons read clearly over art
+        var vign = MkImg(cRT, "Vignette", new Color(0, 0, 0, 0.40f));
+        Stretch(vign.rectTransform); vign.raycastTarget = false;
 
-        // ── Manager GO ────────────────────────────────────────────────
-        var mgrGo = new GameObject("MainMenuManager");
-        var mgr = mgrGo.AddComponent<MainMenuManager>();
+        // Manager MonoBehaviour
+        var mgr = new GameObject("MainMenuManager").AddComponent<MainMenuManager>();
         mgr.canvasGroup = rootCG;
 
-        // ── Main panel ────────────────────────────────────────────────
-        // The background image already has Story Mode / Arcade Mode /
-        // Settings buttons baked in. We place invisible transparent
-        // click-catcher buttons exactly over them.
-        // Positions eyeballed from the screenshot — tweak anchorMin/Max
-        // in the Scene view if they don't line up perfectly.
+        // ── Main panel ────────────────────────────────────────
         var mainPanel = new GameObject("MainPanel", typeof(RectTransform));
-        mainPanel.transform.SetParent(canvasRT, false);
+        mainPanel.transform.SetParent(cRT, false);
         Stretch(mainPanel.GetComponent<RectTransform>());
 
-        // Transparent hit-boxes over the baked-in button art
-        // Story Mode  — centre band, upper third of screen
-        var storyBtn = MakeInvisibleButton(mainPanel.GetComponent<RectTransform>(),
-            "StoryBtn", new Vector2(0.34f, 0.595f), new Vector2(0.72f, 0.685f));
-        // Arcade Mode — centre band, middle
-        var arcadeBtn = MakeInvisibleButton(mainPanel.GetComponent<RectTransform>(),
-            "ArcadeBtn", new Vector2(0.34f, 0.455f), new Vector2(0.72f, 0.545f));
-        // Settings    — centre band, lower
-        var settingsBtn = MakeInvisibleButton(mainPanel.GetComponent<RectTransform>(),
-            "SettingsBtn", new Vector2(0.34f, 0.315f), new Vector2(0.72f, 0.405f));
-        // Exit Game   — bottom right corner
-        var exitBtn = MakeInvisibleButton(mainPanel.GetComponent<RectTransform>(),
-            "ExitBtn", new Vector2(0.75f, 0.045f), new Vector2(0.95f, 0.115f));
+        // Title
+        var titleTxt = MkTxt(mainPanel.transform, "TitleText", "PHISHERMAN",
+            84, StoryC, TextAlignmentOptions.Center, FontStyles.Bold);
+        titleTxt.textWrappingMode = TextWrappingModes.NoWrap;
+        SetAnch(titleTxt.rectTransform, 0.20f, 0.83f, 0.80f, 0.97f);
 
-        // ── ARCADE PANEL ──────────────────────────────────────────────
-        var arcadePanel = BuildArcadePanel(canvasRT, mgr);
+        // Tagline
+        var tagTxt = MkTxt(mainPanel.transform, "Tagline",
+            "An Educational Anti-Phishing Adventure",
+            21, new Color(1, 1, 1, 0.40f), TextAlignmentOptions.Center);
+        SetAnch(tagTxt.rectTransform, 0.15f, 0.78f, 0.85f, 0.83f);
 
-        // ── SETTINGS PANEL ────────────────────────────────────────────
-        var settingsPanel = BuildSettingsPanel(canvasRT, mgr);
+        // Three main buttons — plain text, no Unicode symbols
+        var storyBtn = MkBtn(mainPanel.transform, "StoryBtn", "STORY MODE", StoryC, 0.30f, 0.585f, 0.70f, 0.668f);
+        var arcadeBtn = MkBtn(mainPanel.transform, "ArcadeBtn", "ARCADE MODE", ArcadeC, 0.30f, 0.466f, 0.70f, 0.549f);
+        var settingsBtn = MkBtn(mainPanel.transform, "SettingsBtn", "SETTINGS", SettingC, 0.30f, 0.347f, 0.70f, 0.430f);
+        var exitBtn = MkBtn(mainPanel.transform, "ExitBtn", "EXIT GAME", ExitC, 0.76f, 0.038f, 0.95f, 0.108f, 24);
 
-        // ── Wire manager ──────────────────────────────────────────────
+        // Version label
+        var verTxt = MkTxt(mainPanel.transform, "Ver", "v0.1 - Research Prototype",
+            15, new Color(1, 1, 1, 0.25f), TextAlignmentOptions.Left);
+        SetAnch(verTxt.rectTransform, 0.01f, 0.008f, 0.35f, 0.045f, ox: 12);
+
+        // Sub-panels (built before wiring so mgr references are set)
+        var arcadePanel = BuildArcadePanel(cRT, mgr);
+        var settingsPanel = BuildSettingsPanel(cRT, mgr);
+
         mgr.mainPanel = mainPanel;
         mgr.arcadePanel = arcadePanel;
         mgr.settingsPanel = settingsPanel;
 
-        UnityEventTools.AddPersistentListener(storyBtn.GetComponent<Button>().onClick, mgr.OnStoryModeClicked);
-        UnityEventTools.AddPersistentListener(arcadeBtn.GetComponent<Button>().onClick, mgr.OnArcadeModeClicked);
-        UnityEventTools.AddPersistentListener(settingsBtn.GetComponent<Button>().onClick, mgr.OnSettingsClicked);
-        UnityEventTools.AddPersistentListener(exitBtn.GetComponent<Button>().onClick, mgr.OnExitClicked);
+        // Wire main buttons — direct AddPersistentListener, no lambdas
+        UnityEventTools.AddPersistentListener(storyBtn.GetComponent<Button>().onClick, mgr.OnStoryMode);
+        UnityEventTools.AddPersistentListener(arcadeBtn.GetComponent<Button>().onClick, mgr.OnArcadeMode);
+        UnityEventTools.AddPersistentListener(settingsBtn.GetComponent<Button>().onClick, mgr.OnSettings);
+        UnityEventTools.AddPersistentListener(exitBtn.GetComponent<Button>().onClick, mgr.OnExit);
 
-        // Initial visibility
         arcadePanel.SetActive(false);
         settingsPanel.SetActive(false);
 
-        // ── Save ──────────────────────────────────────────────────────
+        var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, ScenePath);
         AddToBuild(ScenePath);
         AssetDatabase.SaveAssets(); AssetDatabase.Refresh();
-        Debug.Log($"[MainMenuBuilder] Built → {ScenePath}");
+        Debug.Log("[MainMenuBuilder] Built -> " + ScenePath);
     }
 
-    // =========================================================================
-    // Arcade panel — 3 minigame cards
-    // =========================================================================
-    static GameObject BuildArcadePanel(RectTransform canvasRT, MainMenuManager mgr)
+    // =========================================================
+    //  Arcade panel
+    // =========================================================
+    static GameObject BuildArcadePanel(RectTransform cRT, MainMenuManager mgr)
     {
-        var panel = new GameObject("ArcadePanel", typeof(RectTransform));
-        panel.transform.SetParent(canvasRT, false);
+        var panel = MkPanel(cRT, "ArcadePanel", 0.07f, 0.06f, 0.93f, 0.94f);
         var pRT = panel.GetComponent<RectTransform>();
-        pRT.anchorMin = new Vector2(0.1f, 0.08f);
-        pRT.anchorMax = new Vector2(0.9f, 0.92f);
-        pRT.offsetMin = pRT.offsetMax = Vector2.zero;
+        TopBar(pRT, ArcadeC);
 
-        // Background
-        var bg = panel.AddComponent<Image>(); bg.color = PanelBg;
+        var t1 = MkTxt(panel.transform, "Title", "ARCADE MODE", 48, ArcadeC, TextAlignmentOptions.Center, FontStyles.Bold);
+        SetAnch(t1.rectTransform, 0f, 0.88f, 1f, 1f);
 
-        // Top border accent
-        var bord = Img(pRT, "TopBorder", ArcadeCol);
-        var brt = bord.rectTransform;
-        brt.anchorMin = new Vector2(0, 1); brt.anchorMax = new Vector2(1, 1);
-        brt.pivot = new Vector2(0.5f, 1); brt.sizeDelta = new Vector2(0, 5);
-        bord.raycastTarget = false;
+        var t2 = MkTxt(panel.transform, "Sub", "Choose a minigame — no story progress required.",
+            21, new Color(1, 1, 1, 0.46f), TextAlignmentOptions.Center);
+        SetAnch(t2.rectTransform, 0.05f, 0.82f, 0.95f, 0.89f);
 
-        // Title
-        var t = Txt(pRT, "Title", "ARCADE MODE — Choose a Minigame", 40,
-            ArcadeCol, TextAlignmentOptions.Center, FontStyles.Bold);
-        var trt = t.rectTransform;
-        trt.anchorMin = new Vector2(0, 0.82f); trt.anchorMax = new Vector2(1, 1f);
-        trt.offsetMin = new Vector2(20, 0); trt.offsetMax = new Vector2(-20, 0);
+        var emailCard = MkCard(pRT, "EmailCard", "Email Swiper",
+            "Sort real vs. phishing emails.\nSwipe SCAM or SAFE.",
+            EmailC, "fish", 0.02f, 0.13f, 0.33f, 0.80f);
 
-        // Three minigame cards side by side
-        BuildMinigameCard(pRT, "EmailSwiperCard",
-            "Email Swiper",
-            "Sort phishing emails.\nSwipe SCAM or SAFE!",
-            EmailCol,
-            "fish",
-            new Vector2(0.02f, 0.12f), new Vector2(0.32f, 0.80f),
-            mgr.OnPlayEmailSwiper, mgr);
+        var spotCard = MkCard(pRT, "SpotCard", "Spot the Difference",
+            "Find every red flag the\nfake email hides.",
+            SpotC, "magnifying_glass", 0.36f, 0.13f, 0.64f, 0.80f);
 
-        BuildMinigameCard(pRT, "SpotDiffCard",
-            "Spot the Difference",
-            "Find the red flags\nhidden in real emails.",
-            SpotCol,
-            "magnifying_glass",
-            new Vector2(0.35f, 0.12f), new Vector2(0.65f, 0.80f),
-            mgr.OnPlaySpotDiff, mgr);
+        var towerCard = MkCard(pRT, "TowerCard", "Tower Defense",
+            "Block waves of phishing\nattacks before they land.",
+            TowerC, "tower", 0.67f, 0.13f, 0.98f, 0.80f);
 
-        BuildMinigameCard(pRT, "TowerDefenseCard",
-            "Tower Defense",
-            "Defend your inbox from\nwaves of phishing attacks!",
-            TowerCol,
-            "tower",
-            new Vector2(0.68f, 0.12f), new Vector2(0.98f, 0.80f),
-            mgr.OnPlayTowerDefense, mgr);
+        var backBtn = MkBtn(panel.transform, "BackBtn", "Back", ExitC, 0.36f, 0.01f, 0.64f, 0.10f, 27);
 
-        // Back button
-        var back = MakeMenuButton(pRT, "BackBtn", "← Back", BackCol,
-            new Vector2(0.35f, 0.01f), new Vector2(0.65f, 0.10f));
-        UnityEventTools.AddPersistentListener(back.GetComponent<Button>().onClick, mgr.OnArcadeBack);
+        // Wire arcade buttons
+        UnityEventTools.AddPersistentListener(emailCard.GetComponent<Button>().onClick, mgr.OnPlayEmailSwiper);
+        UnityEventTools.AddPersistentListener(spotCard.GetComponent<Button>().onClick, mgr.OnPlaySpotDiff);
+        UnityEventTools.AddPersistentListener(towerCard.GetComponent<Button>().onClick, mgr.OnPlayTowerDefense);
+        UnityEventTools.AddPersistentListener(backBtn.GetComponent<Button>().onClick, mgr.OnArcadeBack);
 
         return panel;
     }
 
-    static void BuildMinigameCard(RectTransform parent, string name,
-        string title, string desc, Color col, string iconSpriteName,
-        Vector2 anchorMin, Vector2 anchorMax,
-        UnityEngine.Events.UnityAction action, MainMenuManager mgr)
+    static GameObject MkCard(RectTransform parent, string name,
+        string title, string desc, Color col, string iconName,
+        float xMin, float yMin, float xMax, float yMax)
     {
-        var card = new GameObject(name, typeof(RectTransform));
-        card.transform.SetParent(parent, false);
-        var cRT = card.GetComponent<RectTransform>();
-        cRT.anchorMin = anchorMin; cRT.anchorMax = anchorMax;
-        cRT.offsetMin = new Vector2(8, 0); cRT.offsetMax = new Vector2(-8, 0);
+        var go = new GameObject(name, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = new Vector2(xMin, yMin); rt.anchorMax = new Vector2(xMax, yMax);
+        rt.offsetMin = new Vector2(6, 0); rt.offsetMax = new Vector2(-6, 0);
 
-        // Card dark fill
-        var fill = card.AddComponent<Image>(); fill.color = DarkFill;
+        var bg = go.AddComponent<Image>(); bg.color = CardBg;
 
-        // Coloured border
-        var border = Img(cRT, "Border", col);
-        var brt = border.rectTransform;
-        brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one;
-        brt.offsetMin = new Vector2(-3, -3); brt.offsetMax = new Vector2(3, 3);
-        border.raycastTarget = false;
+        // Top accent bar
+        var tb = MkImg(rt, "TB", col);
+        tb.rectTransform.anchorMin = new Vector2(0, 1); tb.rectTransform.anchorMax = new Vector2(1, 1);
+        tb.rectTransform.pivot = new Vector2(0.5f, 1); tb.rectTransform.sizeDelta = new Vector2(0, 4);
+        tb.raycastTarget = false;
 
-        // Overlay fill on top of border so border is just an outline
-        var fill2 = Img(cRT, "Fill", DarkFill); Stretch(fill2.rectTransform); fill2.raycastTarget = false;
+        // Icon
+        Sprite spr = FindSprite(iconName);
+        var icon = MkImg(rt, "Icon", spr != null ? Color.white : new Color(col.r, col.g, col.b, 0.12f));
+        if (spr != null) { icon.sprite = spr; icon.preserveAspect = true; }
+        icon.rectTransform.anchorMin = new Vector2(0.12f, 0.46f);
+        icon.rectTransform.anchorMax = new Vector2(0.88f, 0.88f);
+        icon.rectTransform.offsetMin = icon.rectTransform.offsetMax = Vector2.zero;
+        icon.raycastTarget = false;
 
-        // Icon (top half)
-        Sprite iconSpr = FindSprite(iconSpriteName);
-        if (iconSpr != null)
-        {
-            var icon = Img(cRT, "Icon", Color.white);
-            icon.sprite = iconSpr; icon.preserveAspect = true; icon.raycastTarget = false;
-            var irt = icon.rectTransform;
-            irt.anchorMin = new Vector2(0.2f, 0.48f); irt.anchorMax = new Vector2(0.8f, 0.90f);
-            irt.offsetMin = irt.offsetMax = Vector2.zero;
-        }
-        else
-        {
-            // Coloured circle fallback
-            var dot = Img(cRT, "Icon", col); dot.sprite = GetCircle(); dot.preserveAspect = true; dot.raycastTarget = false;
-            var irt = dot.rectTransform;
-            irt.anchorMin = new Vector2(0.3f, 0.52f); irt.anchorMax = new Vector2(0.7f, 0.88f);
-            irt.offsetMin = irt.offsetMax = Vector2.zero;
-        }
+        var tTitle = MkTxt(rt, "Title", title, 26, col, TextAlignmentOptions.Center, FontStyles.Bold);
+        SetAnch(tTitle.rectTransform, 0f, 0.28f, 1f, 0.46f, ox: 8, ox2: -8);
 
-        // Title
-        var titleTxt = Txt(cRT, "Title", title, 28, col, TextAlignmentOptions.Center, FontStyles.Bold);
-        var ttrt = titleTxt.rectTransform;
-        ttrt.anchorMin = new Vector2(0, 0.30f); ttrt.anchorMax = new Vector2(1, 0.50f);
-        ttrt.offsetMin = new Vector2(8, 0); ttrt.offsetMax = new Vector2(-8, 0);
+        var tDesc = MkTxt(rt, "Desc", desc, 17, new Color(1, 1, 1, 0.58f), TextAlignmentOptions.Center);
+        tDesc.textWrappingMode = TextWrappingModes.Normal;
+        SetAnch(tDesc.rectTransform, 0f, 0.04f, 1f, 0.28f, ox: 10, ox2: -10);
 
-        // Desc
-        var descTxt = Txt(cRT, "Desc", desc, 19, new Color(1, 1, 1, 0.70f), TextAlignmentOptions.Center);
-        descTxt.textWrappingMode = TextWrappingModes.Normal;
-        var dtrt = descTxt.rectTransform;
-        dtrt.anchorMin = new Vector2(0, 0.10f); dtrt.anchorMax = new Vector2(1, 0.32f);
-        dtrt.offsetMin = new Vector2(10, 0); dtrt.offsetMax = new Vector2(-10, 0);
-
-        // Invisible button over the whole card
-        var btn = card.AddComponent<Button>(); btn.targetGraphic = fill;
+        var btn = go.AddComponent<Button>(); btn.targetGraphic = bg;
         var cb = btn.colors;
-        cb.normalColor = DarkFill;
-        cb.highlightedColor = new Color(col.r * 0.25f, col.g * 0.25f, col.b * 0.25f, 0.95f);
-        cb.pressedColor = new Color(col.r * 0.40f, col.g * 0.40f, col.b * 0.40f, 1f);
+        cb.normalColor = CardBg;
+        cb.highlightedColor = new Color(col.r * 0.22f, col.g * 0.22f, col.b * 0.22f, 0.97f);
+        cb.pressedColor = new Color(col.r * 0.36f, col.g * 0.36f, col.b * 0.36f, 1f);
         btn.colors = cb;
-        UnityEventTools.AddPersistentListener(btn.onClick, action);
+        MkHover(go, 1.030f, 0.975f);
+        return go;
     }
 
-    // =========================================================================
-    // Settings panel — placeholder
-    // =========================================================================
-    static GameObject BuildSettingsPanel(RectTransform canvasRT, MainMenuManager mgr)
+    // =========================================================
+    //  Settings panel
+    // =========================================================
+    static GameObject BuildSettingsPanel(RectTransform cRT, MainMenuManager mgr)
     {
-        var panel = new GameObject("SettingsPanel", typeof(RectTransform));
-        panel.transform.SetParent(canvasRT, false);
+        var panel = MkPanel(cRT, "SettingsPanel", 0.15f, 0.06f, 0.85f, 0.94f);
         var pRT = panel.GetComponent<RectTransform>();
-        pRT.anchorMin = new Vector2(0.15f, 0.08f);
-        pRT.anchorMax = new Vector2(0.85f, 0.92f);
-        pRT.offsetMin = pRT.offsetMax = Vector2.zero;
+        TopBar(pRT, SettingC);
 
-        var bg = panel.AddComponent<Image>(); bg.color = PanelBg;
+        var t1 = MkTxt(panel.transform, "Title", "SETTINGS", 48, SettingC, TextAlignmentOptions.Center, FontStyles.Bold);
+        SetAnch(t1.rectTransform, 0f, 0.88f, 1f, 1f);
 
-        // Top border
-        var bord = Img(pRT, "TopBorder", SettingsCol);
-        var brt = bord.rectTransform;
-        brt.anchorMin = new Vector2(0, 1); brt.anchorMax = new Vector2(1, 1);
-        brt.pivot = new Vector2(0.5f, 1); brt.sizeDelta = new Vector2(0, 5);
-        bord.raycastTarget = false;
+        MkVolRow(pRT, "Master Volume", SettingC, 0.73f, 0.82f);
+        MkVolRow(pRT, "Music Volume", SettingC, 0.60f, 0.69f);
+        MkVolRow(pRT, "SFX Volume", SettingC, 0.47f, 0.56f);
 
-        // Title
-        var t = Txt(pRT, "Title", "SETTINGS", 46, SettingsCol, TextAlignmentOptions.Center, FontStyles.Bold);
-        var trt = t.rectTransform; trt.anchorMin = new Vector2(0, 0.84f); trt.anchorMax = new Vector2(1, 1f); trt.offsetMin = trt.offsetMax = Vector2.zero;
+        // Divider
+        var div = MkImg(pRT, "Div", new Color(1, 1, 1, 0.07f));
+        div.rectTransform.anchorMin = new Vector2(0.04f, 0.44f);
+        div.rectTransform.anchorMax = new Vector2(0.96f, 0.44f);
+        div.rectTransform.sizeDelta = new Vector2(0, 1);
+        div.raycastTarget = false;
 
-        // Placeholder rows
-        BuildSettingRow(pRT, "Master Volume", SettingsCol, new Vector2(0, 0.68f), new Vector2(1, 0.80f));
-        BuildSettingRow(pRT, "Music Volume", SettingsCol, new Vector2(0, 0.54f), new Vector2(1, 0.66f));
-        BuildSettingRow(pRT, "SFX Volume", SettingsCol, new Vector2(0, 0.40f), new Vector2(1, 0.52f));
+        var dangLbl = MkTxt(panel.transform, "DLbl", "DANGER ZONE", 18,
+            new Color(ResetC.r, ResetC.g, ResetC.b, 0.50f), TextAlignmentOptions.Left, FontStyles.Bold);
+        SetAnch(dangLbl.rectTransform, 0.06f, 0.37f, 0.50f, 0.44f);
 
-        // Accessibility label
-        var accLbl = Txt(pRT, "AccLabel", "Accessibility", 30, new Color(1, 1, 1, 0.55f), TextAlignmentOptions.Left, FontStyles.Bold);
-        var alrt = accLbl.rectTransform; alrt.anchorMin = new Vector2(0.05f, 0.28f); alrt.anchorMax = new Vector2(0.5f, 0.37f); alrt.offsetMin = alrt.offsetMax = Vector2.zero;
+        var resetBtn = MkBtn(panel.transform, "ResetProgressBtn",
+            "Reset All Progress", ResetC, 0.08f, 0.24f, 0.92f, 0.36f, 29);
 
-        // Coming soon note
-        var note = Txt(pRT, "Note", "More settings coming soon…", 22, new Color(1, 1, 1, 0.35f), TextAlignmentOptions.Center, FontStyles.Italic);
-        var nrt = note.rectTransform; nrt.anchorMin = new Vector2(0, 0.10f); nrt.anchorMax = new Vector2(1, 0.26f); nrt.offsetMin = nrt.offsetMax = Vector2.zero;
+        var warn = MkTxt(panel.transform, "ResetWarn",
+            "Permanently erases XP, levels, fish stickers, and all world / house progress.",
+            15, new Color(1f, 0.45f, 0.45f, 0.60f), TextAlignmentOptions.Center);
+        warn.textWrappingMode = TextWrappingModes.Normal;
+        SetAnch(warn.rectTransform, 0.05f, 0.15f, 0.95f, 0.24f);
 
-        // Back
-        var back = MakeMenuButton(pRT, "BackBtn", "← Back", BackCol, new Vector2(0.35f, 0.01f), new Vector2(0.65f, 0.10f));
-        UnityEventTools.AddPersistentListener(back.GetComponent<Button>().onClick, mgr.OnSettingsBack);
+        var backBtn = MkBtn(panel.transform, "BackBtn", "Back", ExitC, 0.36f, 0.01f, 0.64f, 0.10f, 27);
 
-        // Wire SettingsManager (placeholder — fields null for now)
-        var sm = panel.AddComponent<SettingsManager>();
+        // Wire settings buttons
+        UnityEventTools.AddPersistentListener(resetBtn.GetComponent<Button>().onClick, mgr.OnResetProgress);
+        UnityEventTools.AddPersistentListener(backBtn.GetComponent<Button>().onClick, mgr.OnSettingsBack);
 
+        panel.AddComponent<SettingsManager>();
         return panel;
     }
 
-    static void BuildSettingRow(RectTransform parent, string label, Color col, Vector2 anchorMin, Vector2 anchorMax)
+    static void MkVolRow(RectTransform parent, string label, Color col, float yMin, float yMax)
     {
-        var row = new GameObject(label.Replace(" ", "_") + "_Row", typeof(RectTransform));
+        var row = new GameObject(label.Replace(" ", "") + "Row", typeof(RectTransform));
         row.transform.SetParent(parent, false);
-        var rRT = row.GetComponent<RectTransform>();
-        rRT.anchorMin = anchorMin; rRT.anchorMax = anchorMax;
-        rRT.offsetMin = new Vector2(40, 4); rRT.offsetMax = new Vector2(-40, -4);
+        var r = row.GetComponent<RectTransform>();
+        r.anchorMin = new Vector2(0.04f, yMin); r.anchorMax = new Vector2(0.96f, yMax);
+        r.offsetMin = new Vector2(0, 3); r.offsetMax = new Vector2(0, -3);
 
-        var lbl = Txt(rRT, "Label", label, 26, Color.white, TextAlignmentOptions.MidlineLeft);
-        var lrt = lbl.rectTransform; lrt.anchorMin = new Vector2(0, 0); lrt.anchorMax = new Vector2(0.35f, 1); lrt.offsetMin = lrt.offsetMax = Vector2.zero;
+        var lbl = MkTxt(row.transform, "Lbl", label, 25, Color.white, TextAlignmentOptions.MidlineLeft);
+        lbl.rectTransform.anchorMin = Vector2.zero; lbl.rectTransform.anchorMax = new Vector2(0.32f, 1);
+        lbl.rectTransform.offsetMin = new Vector2(8, 0); lbl.rectTransform.offsetMax = Vector2.zero;
 
-        // Slider track (visual only — functional slider wired by SettingsManager at runtime)
-        var trackBg = Img(rRT, "TrackBg", new Color(1, 1, 1, 0.10f));
-        var tRT = trackBg.rectTransform; tRT.anchorMin = new Vector2(0.37f, 0.25f); tRT.anchorMax = new Vector2(0.95f, 0.75f); tRT.offsetMin = tRT.offsetMax = Vector2.zero;
+        var track = MkImg(row.transform, "Track", new Color(1, 1, 1, 0.09f));
+        track.rectTransform.anchorMin = new Vector2(0.34f, 0.20f);
+        track.rectTransform.anchorMax = new Vector2(0.93f, 0.80f);
+        track.rectTransform.offsetMin = track.rectTransform.offsetMax = Vector2.zero;
 
-        var fill = Img(tRT, "Fill", col); fill.raycastTarget = false;
-        var fRT = fill.rectTransform; fRT.anchorMin = Vector2.zero; fRT.anchorMax = new Vector2(0.8f, 1); fRT.offsetMin = fRT.offsetMax = Vector2.zero;
+        var fill = MkImg(track.rectTransform, "Fill", col); fill.raycastTarget = false;
+        fill.rectTransform.anchorMin = Vector2.zero;
+        fill.rectTransform.anchorMax = new Vector2(0.80f, 1);
+        fill.rectTransform.offsetMin = new Vector2(2, 2);
+        fill.rectTransform.offsetMax = new Vector2(-2, -2);
     }
 
-    // =========================================================================
-    // UI helpers
-    // =========================================================================
-
-    /// Invisible transparent button — sits over baked-in art, no visual of its own.
-    static GameObject MakeInvisibleButton(RectTransform parent, string name,
-        Vector2 anchorMin, Vector2 anchorMax)
+    // =========================================================
+    //  Button factory — real Image+Button+MenuHoverButton
+    // =========================================================
+    static GameObject MkBtn(Transform parent, string name, string label,
+        Color col, float xMin, float yMin, float xMax, float yMax, int fontSize = 33)
     {
         var go = new GameObject(name, typeof(RectTransform));
         go.transform.SetParent(parent, false);
         var rt = go.GetComponent<RectTransform>();
-        rt.anchorMin = anchorMin; rt.anchorMax = anchorMax;
+        rt.anchorMin = new Vector2(xMin, yMin); rt.anchorMax = new Vector2(xMax, yMax);
         rt.offsetMin = rt.offsetMax = Vector2.zero;
-        var img = go.AddComponent<Image>(); img.color = new Color(0, 0, 0, 0);
-        var btn = go.AddComponent<Button>(); btn.targetGraphic = img;
+
+        // Background — this is the Button targetGraphic
+        var bg = go.AddComponent<Image>(); bg.color = new Color(0.04f, 0.06f, 0.13f, 0.95f);
+
+        // Left colour accent bar (5 px wide)
+        var accGo = new GameObject("Acc", typeof(RectTransform));
+        accGo.transform.SetParent(go.transform, false);
+        var accImg = accGo.AddComponent<Image>(); accImg.color = col; accImg.raycastTarget = false;
+        var accRT = accGo.GetComponent<RectTransform>();
+        accRT.anchorMin = Vector2.zero; accRT.anchorMax = new Vector2(0, 1);
+        accRT.pivot = new Vector2(0, 0.5f); accRT.sizeDelta = new Vector2(5, 0);
+
+        // Subtle bottom border line
+        var brdGo = new GameObject("Brd", typeof(RectTransform));
+        brdGo.transform.SetParent(go.transform, false);
+        var brdImg = brdGo.AddComponent<Image>();
+        brdImg.color = new Color(col.r, col.g, col.b, 0.28f); brdImg.raycastTarget = false;
+        var brdRT = brdGo.GetComponent<RectTransform>();
+        brdRT.anchorMin = Vector2.zero; brdRT.anchorMax = new Vector2(1, 0);
+        brdRT.pivot = new Vector2(0.5f, 0); brdRT.sizeDelta = new Vector2(0, 2);
+
+        // Label text
+        var txt = MkTxt(go.transform, "Label", label, fontSize, col,
+            TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
+        txt.rectTransform.anchorMin = Vector2.zero; txt.rectTransform.anchorMax = Vector2.one;
+        txt.rectTransform.offsetMin = new Vector2(20, 0); txt.rectTransform.offsetMax = new Vector2(-12, 0);
+
+        // Button component
+        var btn = go.AddComponent<Button>(); btn.targetGraphic = bg;
         var cb = btn.colors;
-        cb.normalColor = new Color(0, 0, 0, 0);
-        cb.highlightedColor = new Color(1, 1, 1, 0.08f);
-        cb.pressedColor = new Color(1, 1, 1, 0.15f);
-        btn.colors = cb;
+        cb.normalColor = new Color(0.04f, 0.06f, 0.13f, 0.95f);
+        cb.highlightedColor = new Color(col.r * 0.18f, col.g * 0.18f, col.b * 0.18f, 0.97f);
+        cb.pressedColor = new Color(col.r * 0.30f, col.g * 0.30f, col.b * 0.30f, 1.00f);
+        cb.colorMultiplier = 1f; btn.colors = cb;
+
+        MkHover(go, 1.025f, 0.975f);
         return go;
     }
 
-    /// Creates a styled CTA-style button (dark fill + coloured border + bold text).
-    static GameObject MakeMenuButton(RectTransform parent, string name, string label,
-        Color col, Vector2 anchorMin, Vector2 anchorMax)
+    // =========================================================
+    //  Helpers
+    // =========================================================
+    static GameObject MkPanel(RectTransform cRT, string name,
+        float xMin, float yMin, float xMax, float yMax)
     {
-        var go = new GameObject(name, typeof(RectTransform));
-        go.transform.SetParent(parent, false);
+        var go = new GameObject(name, typeof(RectTransform)); go.transform.SetParent(cRT, false);
         var rt = go.GetComponent<RectTransform>();
-        rt.anchorMin = anchorMin; rt.anchorMax = anchorMax;
-        rt.offsetMin = new Vector2(0, 4); rt.offsetMax = new Vector2(0, -4);
-
-        // Border (coloured, slightly larger)
-        var borderGo = new GameObject("Border", typeof(RectTransform));
-        borderGo.transform.SetParent(go.transform, false);
-        var borderImg = borderGo.AddComponent<Image>(); borderImg.color = col; borderImg.raycastTarget = false;
-        var brt = borderGo.GetComponent<RectTransform>();
-        brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one;
-        brt.offsetMin = new Vector2(-3, -3); brt.offsetMax = new Vector2(3, 3);
-
-        // Dark fill
-        var fillGo = new GameObject("Fill", typeof(RectTransform));
-        fillGo.transform.SetParent(go.transform, false);
-        var fillImg = fillGo.AddComponent<Image>(); fillImg.color = DarkFill; fillImg.raycastTarget = false;
-        var frt = fillGo.GetComponent<RectTransform>();
-        frt.anchorMin = Vector2.zero; frt.anchorMax = Vector2.one; frt.offsetMin = frt.offsetMax = Vector2.zero;
-
-        // Label
-        var txt = Txt(go.transform, "Label", label, 36, col,
-            TextAlignmentOptions.Center, FontStyles.Bold);
-        Stretch(txt.rectTransform);
-
-        // Button component on root
-        var img2 = go.AddComponent<Image>(); img2.color = new Color(0, 0, 0, 0);
-        var btn = go.AddComponent<Button>(); btn.targetGraphic = img2;
-        var cb = btn.colors;
-        cb.normalColor = new Color(0, 0, 0, 0);
-        cb.highlightedColor = new Color(col.r, col.g, col.b, 0.18f);
-        cb.pressedColor = new Color(col.r, col.g, col.b, 0.35f);
-        btn.colors = cb;
-
-        return go;
+        rt.anchorMin = new Vector2(xMin, yMin); rt.anchorMax = new Vector2(xMax, yMax);
+        rt.offsetMin = rt.offsetMax = Vector2.zero;
+        go.AddComponent<Image>().color = PanelBg; return go;
     }
 
-    // ── Sprite / asset helpers ────────────────────────────────────────
-    static Sprite FindSprite(string name)
+    static void TopBar(RectTransform p, Color col)
     {
-        foreach (var g in AssetDatabase.FindAssets(name + " t:Sprite"))
-        {
-            var p = AssetDatabase.GUIDToAssetPath(g);
-            if (Path.GetFileNameWithoutExtension(p).ToLower() == name.ToLower())
-            { var s = AssetDatabase.LoadAssetAtPath<Sprite>(p); if (s != null) return s; }
-        }
+        var b = MkImg(p, "TopBar", col);
+        b.rectTransform.anchorMin = new Vector2(0, 1); b.rectTransform.anchorMax = new Vector2(1, 1);
+        b.rectTransform.pivot = new Vector2(0.5f, 1); b.rectTransform.sizeDelta = new Vector2(0, 5);
+        b.raycastTarget = false;
+    }
+
+    static void MkHover(GameObject go, float h, float p, float spd = 10f)
+    {
+        var hv = go.AddComponent<MenuHoverButton>();
+        hv.normalScale = Vector3.one;
+        hv.hoverScale = new Vector3(h, h, 1f);
+        hv.pressScale = new Vector3(p, p, 1f);
+        hv.animSpeed = spd;
+    }
+
+    static void SetAnch(RectTransform rt,
+        float xMin, float yMin, float xMax, float yMax,
+        float ox = 0, float oy = 0, float ox2 = 0, float oy2 = 0)
+    {
+        rt.anchorMin = new Vector2(xMin, yMin); rt.anchorMax = new Vector2(xMax, yMax);
+        rt.offsetMin = new Vector2(ox, oy); rt.offsetMax = new Vector2(ox2, oy2);
+    }
+
+    static Sprite FindSprite(string n)
+    {
+        foreach (var g in AssetDatabase.FindAssets(n + " t:Sprite"))
+        { var p = AssetDatabase.GUIDToAssetPath(g); if (Path.GetFileNameWithoutExtension(p).ToLower() == n.ToLower()) { var s = AssetDatabase.LoadAssetAtPath<Sprite>(p); if (s != null) return s; } }
         return null;
     }
+    static Image MkImg(Transform p, string n, Color c) { var go = new GameObject(n, typeof(RectTransform)); go.transform.SetParent(p, false); var i = go.AddComponent<Image>(); i.color = c; return i; }
+    static Image MkImg(RectTransform p, string n, Color c) => MkImg((Transform)p, n, c);
+    static TMP_Text MkTxt(Transform p, string n, string txt, int sz, Color col, TextAlignmentOptions al, FontStyles fs = FontStyles.Normal)
+    { var go = new GameObject(n, typeof(RectTransform)); go.transform.SetParent(p, false); var t = go.AddComponent<TextMeshProUGUI>(); t.text = txt; t.fontSize = sz; t.color = col; t.alignment = al; t.fontStyle = fs; t.raycastTarget = false; return t; }
+    static TMP_Text MkTxt(RectTransform p, string n, string txt, int sz, Color col, TextAlignmentOptions al, FontStyles fs = FontStyles.Normal) => MkTxt((Transform)p, n, txt, sz, col, al, fs);
+    static void Stretch(RectTransform r) { r.anchorMin = Vector2.zero; r.anchorMax = Vector2.one; r.offsetMin = r.offsetMax = Vector2.zero; }
+    static Color Hex(string h) => ColorUtility.TryParseHtmlString(h, out var c) ? c : Color.magenta;
+    static void AddToBuild(string path) { var s = EditorBuildSettings.scenes.ToList(); if (!s.Any(x => x.path == path)) { s.Add(new EditorBuildSettingsScene(path, true)); EditorBuildSettings.scenes = s.ToArray(); } }
+}
 
-    static Sprite GetCircle()
-    { try { return AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd"); } catch { return null; } }
+// ============================================================
+//  MainMenuManager  (Runtime)
+//
+//  Awake() destroys any DontDestroyOnLoad canvas/raycasters
+//  that would block clicks on main menu buttons. This is the
+//  root cause of "buttons don't respond" — a LevelSystemHUD or
+//  audio manager canvas persists from the previous scene and
+//  sits invisibly on top eating all GraphicRaycaster events.
+// ============================================================
+public class MainMenuManager : MonoBehaviour
+{
+    [Header("Panels")]
+    public GameObject mainPanel;
+    public GameObject arcadePanel;
+    public GameObject settingsPanel;
 
-    static Image Img(Transform p, string n, Color c)
+    [Header("Fade")]
+    public CanvasGroup canvasGroup;
+    public float fadeDuration = 0.35f;
+
+    bool _resetPending;
+    float _resetTimer;
+    const float ResetWindow = 4f;
+    const string ResetLabel = "Reset All Progress";
+    TMP_Text _resetLbl;
+
+    void Awake()
     {
-        var go = new GameObject(n, typeof(RectTransform)); go.transform.SetParent(p, false);
-        var img = go.AddComponent<Image>(); img.color = c; return img;
+        // Destroy every canvas that lives in the DontDestroyOnLoad scene —
+        // they intercept raycasts and prevent our buttons from receiving clicks.
+        foreach (var c in FindObjectsByType<Canvas>(FindObjectsSortMode.None))
+            if (c != null && c.gameObject.scene.name == "DontDestroyOnLoad")
+                Destroy(c.gameObject);
     }
 
-    static TMP_Text Txt(Transform p, string n, string text, int size, Color col,
-        TextAlignmentOptions align, FontStyles style = FontStyles.Normal)
+    void Start()
     {
-        var go = new GameObject(n, typeof(RectTransform)); go.transform.SetParent(p, false);
-        var t = go.AddComponent<TextMeshProUGUI>();
-        t.text = text; t.fontSize = size; t.color = col;
-        t.alignment = align; t.fontStyle = style; t.raycastTarget = false; return t;
+        On(mainPanel); Off(arcadePanel); Off(settingsPanel);
+        if (canvasGroup) StartCoroutine(FadeIn());
+
+        // Cache the reset button label so we can update its text
+        if (settingsPanel)
+        {
+            var rb = settingsPanel.transform.Find("ResetProgressBtn");
+            if (rb) { var lbl = rb.Find("Label"); if (lbl) _resetLbl = lbl.GetComponent<TMP_Text>(); }
+        }
     }
 
-    static void Stretch(RectTransform r)
-    { r.anchorMin = Vector2.zero; r.anchorMax = Vector2.one; r.offsetMin = r.offsetMax = Vector2.zero; }
-
-    static Color Hex(string h) =>
-        ColorUtility.TryParseHtmlString(h, out var c) ? c : Color.magenta;
-
-    static void AddToBuild(string path)
+    void Update()
     {
-        var scenes = EditorBuildSettings.scenes.ToList();
-        if (!scenes.Any(s => s.path == path))
-        { scenes.Add(new EditorBuildSettingsScene(path, true)); EditorBuildSettings.scenes = scenes.ToArray(); }
+        if (_resetPending) { _resetTimer -= Time.unscaledDeltaTime; if (_resetTimer <= 0f) CancelReset(); }
     }
+
+    static void On(GameObject g) { if (g) g.SetActive(true); }
+    static void Off(GameObject g) { if (g) g.SetActive(false); }
+
+    IEnumerator FadeIn()
+    {
+        canvasGroup.alpha = 0f; float t = 0f;
+        while (t < fadeDuration) { t += Time.unscaledDeltaTime; canvasGroup.alpha = Mathf.Clamp01(t / fadeDuration); yield return null; }
+        canvasGroup.alpha = 1f;
+    }
+
+    IEnumerator FadeLoad(string scene)
+    {
+        if (canvasGroup)
+        { float t = 0f; while (t < fadeDuration) { t += Time.unscaledDeltaTime; canvasGroup.alpha = 1f - Mathf.Clamp01(t / fadeDuration); yield return null; } }
+        SceneManager.LoadScene(scene);
+    }
+
+    // ── Main panel buttons ────────────────────────────────────
+    public void OnStoryMode()
+    {
+        string dest = PlayerPrefs.GetInt("backstory_seen", 0) == 0 ? "Backstory" : "WorldMap";
+        StartCoroutine(FadeLoad(dest));
+    }
+    public void OnArcadeMode() { Off(mainPanel); On(arcadePanel); }
+    public void OnSettings() { Off(mainPanel); On(settingsPanel); }
+    public void OnExit()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
+    }
+
+    // ── Arcade panel buttons ──────────────────────────────────
+    public void OnPlayEmailSwiper() => StartCoroutine(FadeLoad("EmailSwiper"));
+    public void OnPlaySpotDiff() => StartCoroutine(FadeLoad("SpotDifference"));
+    public void OnPlayTowerDefense() => StartCoroutine(FadeLoad("TowerDefense"));
+    public void OnArcadeBack() { Off(arcadePanel); On(mainPanel); }
+
+    // ── Settings panel buttons ────────────────────────────────
+    public void OnSettingsBack() { CancelReset(); Off(settingsPanel); On(mainPanel); }
+
+    public void OnResetProgress()
+    {
+        if (!_resetPending)
+        {
+            _resetPending = true; _resetTimer = ResetWindow;
+            if (_resetLbl) _resetLbl.text = "Tap again to confirm!";
+            return;
+        }
+        DoReset();
+    }
+
+    void DoReset()
+    {
+        string[] keys =
+        {
+            "pp_total_xp", "pp_pending_xp", "pp_discovered_fish", "backstory_seen",
+            "completed_ApartmentInterior",   "completed_PizzaInterior",         "completed_OfficeInterior",
+            "completed_FlatInterior",        "completed_PizzaW2Interior",       "completed_OfficeW2Interior",
+            "completed_AuntCarolInterior",   "completed_UncleMarcusInterior",   "completed_GrandpaLouInterior",
+            "completed_GrandmaIrisInterior", "completed_UncleFelixInterior",    "completed_AuntDanaInterior",
+            "completed_GrandpaErnestInterior","completed_AuntPriyaInterior",    "completed_UncleDiegoInterior",
+            "vol_master", "vol_music", "vol_sfx", "acc_largetext", "acc_highcontrast",
+            "mg_theme_world", "interior_result", "interior_source"
+        };
+        foreach (var k in keys) PlayerPrefs.DeleteKey(k);
+        PlayerPrefs.Save();
+
+        _resetPending = false;
+        if (_resetLbl) _resetLbl.text = "All Progress Reset!";
+        StartCoroutine(RestoreLabel(2.2f));
+    }
+
+    void CancelReset() { _resetPending = false; if (_resetLbl) _resetLbl.text = ResetLabel; }
+    IEnumerator RestoreLabel(float d) { yield return new WaitForSecondsRealtime(d); if (_resetLbl) _resetLbl.text = ResetLabel; }
+}
+
+// ============================================================
+//  SettingsManager  (placeholder — assign Sliders in Inspector)
+// ============================================================
+public class SettingsManager : MonoBehaviour
+{
+    public Slider masterVolume, musicVolume, sfxVolume;
+    public Toggle largeTextToggle, highContrastToggle;
+
+    void Start()
+    {
+        Bind(masterVolume, "vol_master", 1.0f, v => { AudioListener.volume = v; PlayerPrefs.SetFloat("vol_master", v); });
+        Bind(musicVolume, "vol_music", 0.8f, v => PlayerPrefs.SetFloat("vol_music", v));
+        Bind(sfxVolume, "vol_sfx", 1.0f, v => PlayerPrefs.SetFloat("vol_sfx", v));
+        BindT(largeTextToggle, "acc_largetext", false);
+        BindT(highContrastToggle, "acc_highcontrast", false);
+        AudioListener.volume = PlayerPrefs.GetFloat("vol_master", 1f);
+    }
+    static void Bind(Slider s, string k, float d, UnityEngine.Events.UnityAction<float> cb)
+    { if (!s) return; s.value = PlayerPrefs.GetFloat(k, d); s.onValueChanged.AddListener(cb); }
+    static void BindT(Toggle t, string k, bool d)
+    { if (!t) return; t.isOn = PlayerPrefs.GetInt(k, d ? 1 : 0) == 1; t.onValueChanged.AddListener(v => PlayerPrefs.SetInt(k, v ? 1 : 0)); }
+}
+
+// ============================================================
+//  DoorTrigger  (unchanged)
+// ============================================================
+public class DoorTrigger : MonoBehaviour
+{
+    public Transform player; public string targetScene; public float triggerRadius = 0.6f;
+    public GameObject prompt; public float promptProximity = 2.3f, bobAmount = 0.10f, bobSpeed = 4f;
+    bool _fired; Vector3 _base; float _bt;
+    void Start() { if (prompt) { _base = prompt.transform.localPosition; prompt.SetActive(false); } }
+    void Update()
+    {
+        if (!player || _fired) return;
+        float d = Vector2.Distance(player.position, transform.position);
+        if (prompt) { bool n = d <= promptProximity; if (prompt.activeSelf != n) prompt.SetActive(n); if (n) { _bt += Time.deltaTime; prompt.transform.localPosition = _base + new Vector3(0, Mathf.Sin(_bt * bobSpeed) * bobAmount, 0); } }
+        if (d <= triggerRadius && !string.IsNullOrEmpty(targetScene)) { _fired = true; SceneManager.LoadScene(targetScene); }
+    }
+}
+
+// ============================================================
+//  SceneLoader  (unchanged)
+// ============================================================
+public class SceneLoader : MonoBehaviour
+{
+    public string sceneName;
+    public void Load() { if (!string.IsNullOrEmpty(sceneName)) SceneManager.LoadScene(sceneName); }
 }

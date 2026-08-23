@@ -11,29 +11,22 @@ using UnityEngine.UI;
 
 /// <summary>
 /// Builds the Email Swiper scene.
-///
-/// Asset swaps vs original:
-///  - Boat      → swiper_boat   (single sprite)
-///  - SCAM net  → scam_net      (single sprite)
-///  - SAFE net  → safe_net      (single sprite)
-///  - Caught fish in net → pufferfish_4_deflated
-///  - Wrong-guess puffer → pufferfish_1_default (flies to boat, damages it)
-///  - Boat damage states → swiper_boat_damaged_1 … _4
-///  - Phisherman on deck → phisherman_chibi (first frame of sheet)
-///  - Fishing rod → fishing_rod sprite attached to phisherman's hand
-///  - Rod line   → 4 segments drawn from rod tip to card bob
-///  - HUD        → 3 heart sprites top-left only, no bar / timer
-///  - Background → swiper_background (full-screen, no procedural ocean)
+/// FIXES:
+///  - SwipeButtonRelay.target assigned directly after SwipeCard is created (not via FindObjectsByType)
+///    so nets are always clickable and consistent.
+///  - NetHoverEffect wired reliably.
+///  - All audio clips assigned: bgMusic = adventure_music_v1, sfxCardFlip, sfxCorrect = water_splash,
+///    sfxWrong = impact.
+///  - Commentator removed.
+///  - Log/hanging fish sizes: fish 2x (0.80), log 60% (0.96 x 0.51).
 /// </summary>
 public static class EmailSwiperBuilder
 {
     private const string ScenesDir = "Assets/Scenes";
     private const string ScenePath = "Assets/Scenes/EmailSwiper.unity";
 
-    // Colours used in procedural fallbacks and UI
     static readonly Color OceanMid = Hex("#0F4A6B");
     static readonly Color OceanTop = Hex("#1A6B8A");
-    static readonly Color OceanDeep = new Color(0.07f, 0.09f, 0.15f, 0.55f);
     static readonly Color HorizonCol = Hex("#E8F4F8");
     static readonly Color SkyTop = Hex("#6BB8D4");
     static readonly Color SkyBot = Hex("#A8D8EA");
@@ -56,27 +49,25 @@ public static class EmailSwiperBuilder
     static readonly Color Aqua = Hex("#81ECEC");
     static readonly Color HudBg = new Color(0.04f, 0.08f, 0.15f, 0.92f);
     static readonly Color HudBorder = Hex("#1E3A5A");
-    static readonly Color BoatMast = Hex("#7A5230");
     static readonly Color CrackColor = Hex("#FDCB6E");
 
-    // CHANGED: expanded from 2 to 10 fish border schemes
     static readonly (Color a, Color b, Color accent, string name)[] FishSchemes =
     {
-        (Hex("#FF6B1A"), Color.white,              Hex("#1A1A1A"), "Clownfish"),           // 0
-        (Hex("#1A6EFF"), Hex("#FFE033"),            Color.white,   "Blue Tang"),            // 1
-        (Hex("#1A3878"), Hex("#6EB8F0"),            Hex("#E8E8FF"), "Blue Flowy"),           // 2
-        (Hex("#F0DCA0"), Hex("#7A5A38"),            Hex("#4A3418"), "Spotted"),              // 3
-        (Hex("#38A048"), Hex("#80D460"),            Hex("#1A5828"), "Green"),                // 4
-        (Hex("#5070A0"), Hex("#C0CCD8"),            Hex("#384858"), "Tuna"),                 // 5
-        (Hex("#CC3818"), Hex("#F0C088"),            Hex("#801008"), "Spiky"),                // 6
-        (Hex("#B0B8C0"), Hex("#D83838"),            Hex("#606870"), "Piranha"),              // 7
-        (Hex("#E85868"), Hex("#48C8D0"),            Hex("#282850"), "Rainbow"),              // 8
-        (Hex("#2060D8"), Hex("#F8D028"),            Hex("#080808"), "Dory"),                 // 9
+        (Hex("#FF6B1A"), Color.white,           Hex("#1A1A1A"), "Clownfish"),
+        (Hex("#1A6EFF"), Hex("#FFE033"),         Color.white,   "Blue Tang"),
+        (Hex("#1A3878"), Hex("#6EB8F0"),         Hex("#E8E8FF"), "Blue Flowy"),
+        (Hex("#F0DCA0"), Hex("#7A5A38"),         Hex("#4A3418"), "Spotted"),
+        (Hex("#38A048"), Hex("#80D460"),         Hex("#1A5828"), "Green"),
+        (Hex("#5070A0"), Hex("#C0CCD8"),         Hex("#384858"), "Tuna"),
+        (Hex("#CC3818"), Hex("#F0C088"),         Hex("#801008"), "Spiky"),
+        (Hex("#B0B8C0"), Hex("#D83838"),         Hex("#606870"), "Piranha"),
+        (Hex("#E85868"), Hex("#48C8D0"),         Hex("#282850"), "Rainbow"),
+        (Hex("#2060D8"), Hex("#F8D028"),         Hex("#080808"), "Dory"),
     };
 
-    // =========================================================================
-    // Build
-    // =========================================================================
+    // =================================================================
+    //  Build
+    // =================================================================
 
     [MenuItem("Phisherman/Build Email Swiper Scene")]
     public static void Build()
@@ -86,102 +77,102 @@ public static class EmailSwiperBuilder
 
         Sprite circle = GetCircle();
 
-        // ── Sprite loading ────────────────────────────────────────────
         Sprite bgSpr = FindSprite("swiper_background");
-
         Sprite boatSpr = FindSprite("swiper_boat");
         Sprite scamNetSpr = FindSprite("scam_net");
         Sprite safeNetSpr = FindSprite("safe_net");
 
         var chibiList = LoadSpritesInOrder("phisherman_chibi");
         Sprite phishermanSpr = chibiList.Count > 0 ? chibiList[0] : FindSprite("phisherman");
-
         Sprite fishingRodSpr = FindSprite("fishing_rod");
-
         Sprite puffDeflated = FindSprite("pufferfish_4_deflated");
-        Sprite puffMad = FindSprite("pufferfish_1_default");
-        if (puffMad == null) puffMad = FindSprite("pufferfish_2_smile");
-
-        Sprite[] boatDamaged = new Sprite[4];
-        for (int i = 1; i <= 4; i++)
-            boatDamaged[i - 1] = FindSprite("swiper_boat_damaged_" + i);
-
+        Sprite puffMad = FindSprite("pufferfish_1_default") ?? FindSprite("pufferfish_2_smile");
         Sprite heartSpr = FindSprite("heart");
-
-        // CHANGED: load fish_1 through fish_20 sprites for the pool array
         Sprite[] fishPoolArr = LoadFishPoolSprites();
 
-        // ── Log ──────────────────────────────────────────────────────
+        // Audio
+        AudioClip bgMusicClip = FindAudio("adventure_music_v1") ?? FindAudio("frutiger_music_fresh_waters");
+        AudioClip cardFlipClip = FindAudio("card_flip");
+        AudioClip splashClip = FindAudio("water_splash");
+        AudioClip impactClip = FindAudio("impact");
+
         LogFound("swiper_background", bgSpr);
         LogFound("swiper_boat", boatSpr);
         LogFound("scam_net", scamNetSpr);
         LogFound("safe_net", safeNetSpr);
         LogFound("phisherman_chibi[0]", phishermanSpr);
         LogFound("fishing_rod", fishingRodSpr);
-        LogFound("pufferfish_4_deflated", puffDeflated);
-        LogFound("pufferfish_1_default", puffMad);
         LogFound("heart", heartSpr);
         Debug.Log($"[EmailSwiperBuilder] fishPoolSprites: {fishPoolArr.Count(s => s != null)}/20 loaded");
+        Debug.Log($"[EmailSwiperBuilder] bgMusic: {(bgMusicClip != null ? bgMusicClip.name : "NOT FOUND")}");
+        Debug.Log($"[EmailSwiperBuilder] cardFlip: {(cardFlipClip != null ? cardFlipClip.name : "NOT FOUND")}");
 
-        // ── Camera ───────────────────────────────────────────────────
+        // ── Camera ──
         var camGo = new GameObject("Main Camera"); camGo.tag = "MainCamera";
         var cam = camGo.AddComponent<Camera>(); camGo.AddComponent<AudioListener>();
         cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = OceanMid;
         cam.orthographic = true;
 
-        // ── EventSystem ───────────────────────────────────────────────
         var es = new GameObject("EventSystem"); es.AddComponent<EventSystem>(); es.AddComponent<StandaloneInputModule>();
 
-        // ── Canvas ────────────────────────────────────────────────────
+        // ── Canvas ──
         var canvasGo = new GameObject("Canvas"); var canvas = canvasGo.AddComponent<Canvas>(); canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         var scaler = canvasGo.AddComponent<CanvasScaler>(); scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize; scaler.referenceResolution = new Vector2(1920, 1080); scaler.matchWidthOrHeight = 0.5f;
         canvasGo.AddComponent<GraphicRaycaster>(); var canvasRT = canvasGo.GetComponent<RectTransform>();
 
-        // ── Manager ───────────────────────────────────────────────────
+        // ── Manager ──
         var mgrGo = new GameObject("GameManager"); var mgr = mgrGo.AddComponent<EmailSwiperManager>();
-        var sfxSrc = mgrGo.AddComponent<AudioSource>(); sfxSrc.playOnAwake = false;
-        var musSrc = mgrGo.AddComponent<AudioSource>(); musSrc.playOnAwake = false; musSrc.loop = true;
-        mgr.circleSprite = circle;
 
-        // CHANGED: fishNormalSprite = first fish from pool (was pufferfish_4_deflated!)
-        // fishPufferSprite = pufferfish_1_default (the angry one that hits the boat)
+        // Wire audio sources properly — clip assigned here so it's baked into the scene
+        var sfxSrc = mgrGo.AddComponent<AudioSource>();
+        var musSrc = mgrGo.AddComponent<AudioSource>();
+        sfxSrc.playOnAwake = false; sfxSrc.loop = false; sfxSrc.volume = 0.85f;
+        musSrc.playOnAwake = false; musSrc.loop = true; musSrc.volume = 0.35f;
+        if (bgMusicClip != null) musSrc.clip = bgMusicClip;
+
+        mgr.circleSprite = circle;
         mgr.fishNormalSprite = (fishPoolArr.Length > 0 && fishPoolArr[0] != null) ? fishPoolArr[0] : (puffDeflated ?? FindSprite("fish_normal"));
         mgr.fishPufferSprite = puffMad ?? FindSprite("fish_puffer");
-
-        // CHANGED: assign the loaded fish pool sprites so net fish are random
         mgr.fishPoolSprites = fishPoolArr;
+        mgr.heartSprite = heartSpr;
 
-        // ── Background ────────────────────────────────────────────────
+        // Assign all audio clips
+        mgr.bgMusic = bgMusicClip;
+        mgr.sfxCardFlip = cardFlipClip;
+        mgr.sfxCorrect = splashClip;   // water_splash on correct swipe
+        mgr.sfxWrong = impactClip;   // impact on wrong swipe
+        mgr.musicVolume = 0.35f;
+        mgr.sfxVolume = 0.85f;
+
+        // ── Background ──
         BuildBackground(canvasRT, bgSpr);
 
-        // ── HUD — 3 hearts top-left, nothing else ────────────────────
+        // ── HUD ──
         BuildHeartHud(canvasRT, mgr, circle, heartSpr);
-
-        // ── Score (top-right, minimal) ────────────────────────────────
         BuildScoreDisplay(canvasRT, mgr);
 
-        // ── Boat + nets ───────────────────────────────────────────────
+        // ── Boat + nets — build card FIRST so SwipeCard exists, then nets ──
         RectTransform rodTipRT = null;
         BuildBoat(canvasRT, mgr, circle, phishermanSpr, fishingRodSpr, boatSpr, out rodTipRT);
-        BuildNet(canvasRT, mgr, isLeft: true, circle, scamNetSpr);
-        BuildNet(canvasRT, mgr, isLeft: false, circle, safeNetSpr);
 
-        // ── Game root (card area) ─────────────────────────────────────
+        // ── Game root (card area) ──
         var grImg = Img(canvasRT, "GameRoot", new Color(0, 0, 0, 0)); var grRT = grImg.rectTransform;
         grRT.anchorMin = new Vector2(0, 0.08f); grRT.anchorMax = new Vector2(1, 0.70f); grRT.offsetMin = grRT.offsetMax = Vector2.zero; grImg.raycastTarget = false;
 
         CanvasGroup scamCG, safeCG;
         BuildSwipeZones(grRT, out scamCG, out safeCG);
+
+        // Build card — this creates the SwipeCard component
         BuildCard(grRT, mgr, scamCG, safeCG, canvas);
 
-        foreach (var relay in UnityEngine.Object.FindObjectsByType<SwipeButtonRelay>(FindObjectsSortMode.None))
-            relay.target = mgr.swipeCard;
+        // Now build nets, passing the already-created SwipeCard directly
+        BuildNet(canvasRT, mgr, isLeft: true, circle, scamNetSpr, mgr.swipeCard);
+        BuildNet(canvasRT, mgr, isLeft: false, circle, safeNetSpr, mgr.swipeCard);
 
         BuildRod(canvasRT, mgr.swipeCard, canvas, circle, rodTipRT);
-
         BuildFishAnim(canvasRT, mgr, circle);
         BuildScorePopup(canvasRT, mgr);
-        mgr.commentator = BuildCommentator(canvasRT, circle);
+
         var feedback = BuildFeedbackPanel(canvasRT, mgr);
         var tutorial = BuildTutorialPanel(canvasRT, mgr);
         var result = BuildResultPanel(canvasRT, mgr);
@@ -194,11 +185,9 @@ public static class EmailSwiperBuilder
         grImg.gameObject.SetActive(false);
         feedback.SetActive(false); result.SetActive(false); tutorial.SetActive(true);
 
-        // CHANGED: move nets above game root in sibling order so both are
-        // clickable (the DragOverlay inside GameRoot was blocking the safe net)
+        // Ensure nets render on top of card overlay so they receive clicks
         mgr.leftNetRT.transform.SetAsLastSibling();
         mgr.rightNetRT.transform.SetAsLastSibling();
-        // Keep overlay panels on top of everything
         feedback.transform.SetAsLastSibling();
         tutorial.transform.SetAsLastSibling();
         result.transform.SetAsLastSibling();
@@ -210,9 +199,9 @@ public static class EmailSwiperBuilder
         Debug.Log($"[EmailSwiperBuilder] Built → {ScenePath}");
     }
 
-    // =========================================================================
-    // CHANGED: Load fish_1 through fish_20 sprites by prefix matching
-    // =========================================================================
+    // =================================================================
+    //  Fish pool sprite loader
+    // =================================================================
     static Sprite[] LoadFishPoolSprites()
     {
         var pool = new Sprite[20];
@@ -225,24 +214,19 @@ public static class EmailSwiperBuilder
             {
                 string prefix = "fish_" + i + "_";
                 if (fn.StartsWith(prefix) && pool[i - 1] == null)
-                {
-                    pool[i - 1] = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-                    break;
-                }
+                { pool[i - 1] = AssetDatabase.LoadAssetAtPath<Sprite>(path); break; }
             }
         }
         return pool;
     }
 
-    // =========================================================================
-    // Background
-    // =========================================================================
+    // =================================================================
+    //  Background
+    // =================================================================
     static void BuildBackground(RectTransform canvasRT, Sprite bgSpr)
     {
         if (bgSpr != null)
-        {
-            var bg = Img(canvasRT, "Background", Color.white); bg.sprite = bgSpr; bg.preserveAspect = false; Stretch(bg.rectTransform); bg.raycastTarget = false; return;
-        }
+        { var bg = Img(canvasRT, "Background", Color.white); bg.sprite = bgSpr; bg.preserveAspect = false; Stretch(bg.rectTransform); bg.raycastTarget = false; return; }
         var bgBase = Img(canvasRT, "BgBase", OceanMid); Stretch(bgBase.rectTransform); bgBase.raycastTarget = false;
         var sky = Img(canvasRT, "Sky", SkyBot); sky.rectTransform.anchorMin = new Vector2(0, 0.70f); sky.rectTransform.anchorMax = Vector2.one; sky.rectTransform.offsetMin = sky.rectTransform.offsetMax = Vector2.zero; sky.raycastTarget = false;
         var skyT = Img(canvasRT, "SkyTop", SkyTop); skyT.rectTransform.anchorMin = new Vector2(0, 0.85f); skyT.rectTransform.anchorMax = Vector2.one; skyT.rectTransform.offsetMin = skyT.rectTransform.offsetMax = Vector2.zero; skyT.raycastTarget = false;
@@ -251,9 +235,9 @@ public static class EmailSwiperBuilder
         for (int i = 0; i < wY.Length; i++) { var w = Img(canvasRT, "Wave_" + i, i % 2 == 0 ? WaveShine : WaveGlint); var wr = w.rectTransform; wr.anchorMin = new Vector2(0, wY[i]); wr.anchorMax = new Vector2(1, wY[i] + wH[i]); wr.offsetMin = wr.offsetMax = Vector2.zero; w.raycastTarget = false; }
     }
 
-    // =========================================================================
-    // HUD
-    // =========================================================================
+    // =================================================================
+    //  HUD
+    // =================================================================
     static void BuildHeartHud(RectTransform canvasRT, EmailSwiperManager mgr, Sprite circle, Sprite heartSpr)
     {
         var hh = new GameObject("HeartsHolder", typeof(RectTransform)); hh.transform.SetParent(canvasRT, false);
@@ -272,9 +256,6 @@ public static class EmailSwiperBuilder
         mgr.hudPanel = hh;
     }
 
-    // =========================================================================
-    // Score display
-    // =========================================================================
     static void BuildScoreDisplay(RectTransform canvasRT, EmailSwiperManager mgr)
     {
         var sH = new GameObject("ScoreHolder", typeof(RectTransform)); sH.transform.SetParent(canvasRT, false);
@@ -285,61 +266,90 @@ public static class EmailSwiperBuilder
         mgr.scoreText = scoreTxt; mgr.streakText = streakTxt; mgr.progressText = progTxt;
     }
 
-    // =========================================================================
-    // Boat
-    // =========================================================================
+    // =================================================================
+    //  Boat
+    // =================================================================
     static void BuildBoat(RectTransform canvasRT, EmailSwiperManager mgr, Sprite circle, Sprite phishermanSpr, Sprite fishingRodSpr, Sprite boatSpr, out RectTransform rodTipRT)
     {
         rodTipRT = null;
         var boatRoot = new GameObject("BoatRoot", typeof(RectTransform)); boatRoot.transform.SetParent(canvasRT, false);
         var brRT = boatRoot.GetComponent<RectTransform>(); brRT.anchorMin = new Vector2(0.275f, 0.68f); brRT.anchorMax = new Vector2(0.725f, 0.99f); brRT.offsetMin = brRT.offsetMax = Vector2.zero; mgr.boatRoot = brRT;
-        if (boatSpr != null) { var boatImg = Img(brRT, "Boat", Color.white); boatImg.sprite = boatSpr; boatImg.preserveAspect = true; boatImg.raycastTarget = false; Stretch(boatImg.rectTransform); mgr.boatHullRT = boatImg.rectTransform; }
-        else { var hull = Img(brRT, "Hull", Hex("#C8341A")); var hrt = hull.rectTransform; hrt.anchorMin = new Vector2(0.05f, 0); hrt.anchorMax = new Vector2(0.95f, 0.35f); hrt.offsetMin = hrt.offsetMax = Vector2.zero; hull.raycastTarget = false; mgr.boatHullRT = hrt; var deck = Img(brRT, "Deck", Hex("#E8D5A0")); var drt = deck.rectTransform; drt.anchorMin = new Vector2(0.03f, 0.32f); drt.anchorMax = new Vector2(0.97f, 0.44f); drt.offsetMin = drt.offsetMax = Vector2.zero; deck.raycastTarget = false; var cabin = Img(brRT, "Cabin", Hex("#FAFAFA")); var cabRT = cabin.rectTransform; cabRT.anchorMin = new Vector2(0.30f, 0.42f); cabRT.anchorMax = new Vector2(0.70f, 0.82f); cabRT.offsetMin = cabRT.offsetMax = Vector2.zero; cabin.raycastTarget = false; var mast = Img(brRT, "Mast", Hex("#7A5230")); var mrt = mast.rectTransform; mrt.anchorMin = new Vector2(0.47f, 0.42f); mrt.anchorMax = new Vector2(0.53f, 1.00f); mrt.offsetMin = mrt.offsetMax = Vector2.zero; mast.raycastTarget = false; }
+        if (boatSpr != null)
+        { var boatImg = Img(brRT, "Boat", Color.white); boatImg.sprite = boatSpr; boatImg.preserveAspect = true; boatImg.raycastTarget = false; Stretch(boatImg.rectTransform); mgr.boatHullRT = boatImg.rectTransform; }
+        else
+        { var hull = Img(brRT, "Hull", Hex("#C8341A")); var hrt = hull.rectTransform; hrt.anchorMin = new Vector2(0.05f, 0); hrt.anchorMax = new Vector2(0.95f, 0.35f); hrt.offsetMin = hrt.offsetMax = Vector2.zero; hull.raycastTarget = false; mgr.boatHullRT = hrt; }
         var crackSlots = new RectTransform[5]; float[] crX = { 0.15f, 0.30f, 0.50f, 0.70f, 0.85f }; float[] crY = { 0.15f, 0.22f, 0.12f, 0.20f, 0.14f };
         for (int i = 0; i < 5; i++) { var cr = Img(brRT, "Crack_" + i, CrackColor); cr.sprite = circle; var ccRT = cr.rectTransform; ccRT.anchorMin = ccRT.anchorMax = new Vector2(crX[i], crY[i]); ccRT.pivot = new Vector2(0.5f, 0.5f); ccRT.sizeDelta = new Vector2(32, 32); cr.raycastTarget = false; cr.gameObject.SetActive(false); crackSlots[i] = ccRT; }
         mgr.boatCrackSlots = crackSlots;
-        // CHANGED: pufferfish decoration on the boat deck (replaces the yellow dot)
-        Sprite deckPuff = FindSprite("pufferfish_1_default") ?? FindSprite("pufferfish_2_smile");
-        if (deckPuff != null) { var puffGo = Img(brRT, "DeckPuffer", Color.white); puffGo.sprite = deckPuff; puffGo.preserveAspect = true; puffGo.raycastTarget = false; var ppRT = puffGo.rectTransform; ppRT.anchorMin = ppRT.anchorMax = new Vector2(0.72f, 0.42f); ppRT.pivot = new Vector2(0.5f, 0.5f); ppRT.sizeDelta = new Vector2(52, 52); }
-
         var phGo = new GameObject("Phisherman", typeof(RectTransform)); phGo.transform.SetParent(brRT, false); var phRT = phGo.GetComponent<RectTransform>(); phRT.anchorMin = new Vector2(0.30f, 0.35f); phRT.anchorMax = new Vector2(0.52f, 0.90f); phRT.offsetMin = phRT.offsetMax = Vector2.zero;
         var phImg = phGo.AddComponent<Image>(); phImg.color = Color.white; phImg.preserveAspect = true; phImg.raycastTarget = false; if (phishermanSpr != null) phImg.sprite = phishermanSpr;
-        // CHANGED: rod tip moved to top of fishing rod sprite so line starts from rod tip
-        if (fishingRodSpr != null) { var rodGo = new GameObject("FishingRod", typeof(RectTransform)); rodGo.transform.SetParent(phRT, false); var rodRT = rodGo.GetComponent<RectTransform>(); rodRT.anchorMin = new Vector2(-0.2f, 0.4f); rodRT.anchorMax = new Vector2(0.6f, 1.1f); rodRT.offsetMin = rodRT.offsetMax = Vector2.zero; var rodImg = rodGo.AddComponent<Image>(); rodImg.sprite = fishingRodSpr; rodImg.color = Color.white; rodImg.preserveAspect = true; rodImg.raycastTarget = false; var tipGo = new GameObject("RodTip", typeof(RectTransform)); tipGo.transform.SetParent(brRT, false); var trt2 = tipGo.GetComponent<RectTransform>(); trt2.anchorMin = trt2.anchorMax = new Vector2(0.20f, 0.98f); trt2.pivot = new Vector2(0.5f, 0.5f); trt2.sizeDelta = new Vector2(4, 4); rodTipRT = trt2; }
-        else { var tipGo = new GameObject("RodTip", typeof(RectTransform)); tipGo.transform.SetParent(brRT, false); var trt2 = tipGo.GetComponent<RectTransform>(); trt2.anchorMin = trt2.anchorMax = new Vector2(0.42f, 0.91f); trt2.pivot = new Vector2(0.5f, 0.5f); trt2.sizeDelta = new Vector2(4, 4); rodTipRT = trt2; }
+        if (fishingRodSpr != null)
+        { var rodGo = new GameObject("FishingRod", typeof(RectTransform)); rodGo.transform.SetParent(phRT, false); var rodRT = rodGo.GetComponent<RectTransform>(); rodRT.anchorMin = new Vector2(-0.2f, 0.4f); rodRT.anchorMax = new Vector2(0.6f, 1.1f); rodRT.offsetMin = rodRT.offsetMax = Vector2.zero; var rodImg = rodGo.AddComponent<Image>(); rodImg.sprite = fishingRodSpr; rodImg.color = Color.white; rodImg.preserveAspect = true; rodImg.raycastTarget = false; var tipGo = new GameObject("RodTip", typeof(RectTransform)); tipGo.transform.SetParent(brRT, false); var trt2 = tipGo.GetComponent<RectTransform>(); trt2.anchorMin = trt2.anchorMax = new Vector2(0.20f, 0.98f); trt2.pivot = new Vector2(0.5f, 0.5f); trt2.sizeDelta = new Vector2(4, 4); rodTipRT = trt2; }
+        else
+        { var tipGo = new GameObject("RodTip", typeof(RectTransform)); tipGo.transform.SetParent(brRT, false); var trt2 = tipGo.GetComponent<RectTransform>(); trt2.anchorMin = trt2.anchorMax = new Vector2(0.42f, 0.91f); trt2.pivot = new Vector2(0.5f, 0.5f); trt2.sizeDelta = new Vector2(4, 4); rodTipRT = trt2; }
     }
 
-    // =========================================================================
-    // Nets
-    // =========================================================================
-    static void BuildNet(RectTransform canvasRT, EmailSwiperManager mgr, bool isLeft, Sprite circle, Sprite netSpr)
+    // =================================================================
+    //  Nets — FIX: accept SwipeCard directly, assign relay.target immediately
+    // =================================================================
+    static void BuildNet(RectTransform canvasRT, EmailSwiperManager mgr, bool isLeft, Sprite circle, Sprite netSpr, SwipeCard swipeCardRef)
     {
-        string side = isLeft ? "Left" : "Right"; Color col = isLeft ? ScamRed : SafeTeal; string label = isLeft ? "SCAM" : "SAFE"; int swipeDir = isLeft ? -1 : 1;
+        string side = isLeft ? "Left" : "Right";
+        Color col = isLeft ? ScamRed : SafeTeal;
+        string label = isLeft ? "SCAM" : "SAFE";
+        int swipeDir = isLeft ? -1 : 1;
+
         var netRoot = new GameObject(side + "NetRoot", typeof(RectTransform)); netRoot.transform.SetParent(canvasRT, false); var nrRT = netRoot.GetComponent<RectTransform>();
         float xMin = isLeft ? 0.01f : 0.74f; float xMax = isLeft ? 0.26f : 0.99f;
         nrRT.anchorMin = new Vector2(xMin, 0.48f); nrRT.anchorMax = new Vector2(xMax, 0.76f); nrRT.offsetMin = nrRT.offsetMax = Vector2.zero;
+
         var bgImg = netRoot.AddComponent<Image>(); bgImg.color = new Color(col.r, col.g, col.b, 0.08f); bgImg.raycastTarget = true;
-        var netBtn = netRoot.AddComponent<Button>(); netBtn.targetGraphic = bgImg; var cb = netBtn.colors; cb.normalColor = new Color(col.r, col.g, col.b, 0.08f); cb.highlightedColor = new Color(col.r, col.g, col.b, 0.25f); cb.pressedColor = new Color(col.r, col.g, col.b, 0.42f); cb.selectedColor = cb.normalColor; netBtn.colors = cb;
-        var relay = netRoot.AddComponent<SwipeButtonRelay>(); relay.direction = swipeDir; UnityEventTools.AddPersistentListener(netBtn.onClick, relay.Fire);
+        var netBtn = netRoot.AddComponent<Button>(); netBtn.targetGraphic = bgImg;
+        var cb = netBtn.colors;
+        cb.normalColor = new Color(col.r, col.g, col.b, 0.08f);
+        cb.highlightedColor = new Color(col.r, col.g, col.b, 0.30f);
+        cb.pressedColor = new Color(col.r, col.g, col.b, 0.50f);
+        cb.selectedColor = cb.normalColor;
+        netBtn.colors = cb;
+
+        // FIX: Create relay and assign target NOW (swipeCardRef is already valid)
+        var relay = netRoot.AddComponent<SwipeButtonRelay>();
+        relay.target = swipeCardRef;    // direct reference — no FindObjectsByType needed
+        relay.direction = swipeDir;
+        UnityEventTools.AddPersistentListener(netBtn.onClick, relay.Fire);
+
         Graphic glowMesh; RectTransform bagRT;
-        if (netSpr != null) { var netImg = Img(nrRT, "NetSprite", Color.white); netImg.sprite = netSpr; netImg.preserveAspect = true; netImg.raycastTarget = false; var niRT = netImg.rectTransform; niRT.anchorMin = new Vector2(0.04f, 0.06f); niRT.anchorMax = new Vector2(0.96f, 0.98f); niRT.offsetMin = niRT.offsetMax = Vector2.zero; glowMesh = netImg; bagRT = niRT; }
-        else { var netBag = Img(nrRT, "NetBag", new Color(col.r, col.g, col.b, 0.20f)); var nbRT = netBag.rectTransform; nbRT.anchorMin = new Vector2(0.08f, 0.14f); nbRT.anchorMax = new Vector2(0.92f, 0.92f); nbRT.offsetMin = nbRT.offsetMax = Vector2.zero; netBag.raycastTarget = false; var netLbl = Txt(nrRT, "NetLabel", label, 32, col, TextAlignmentOptions.Center, FontStyles.Bold); var nlRT = netLbl.rectTransform; nlRT.anchorMin = new Vector2(0.02f, 0); nlRT.anchorMax = new Vector2(0.98f, 0.16f); nlRT.offsetMin = nlRT.offsetMax = Vector2.zero; netLbl.raycastTarget = false; glowMesh = netBag; bagRT = nbRT; }
+        if (netSpr != null)
+        { var netImg = Img(nrRT, "NetSprite", Color.white); netImg.sprite = netSpr; netImg.preserveAspect = true; netImg.raycastTarget = false; var niRT = netImg.rectTransform; niRT.anchorMin = new Vector2(0.04f, 0.06f); niRT.anchorMax = new Vector2(0.96f, 0.98f); niRT.offsetMin = niRT.offsetMax = Vector2.zero; glowMesh = netImg; bagRT = niRT; }
+        else
+        { var netBag = Img(nrRT, "NetBag", new Color(col.r, col.g, col.b, 0.20f)); var nbRT = netBag.rectTransform; nbRT.anchorMin = new Vector2(0.08f, 0.14f); nbRT.anchorMax = new Vector2(0.92f, 0.92f); nbRT.offsetMin = nbRT.offsetMax = Vector2.zero; netBag.raycastTarget = false; var netLbl = Txt(nrRT, "NetLabel", label, 32, col, TextAlignmentOptions.Center, FontStyles.Bold); var nlRT = netLbl.rectTransform; nlRT.anchorMin = new Vector2(0.02f, 0); nlRT.anchorMax = new Vector2(0.98f, 0.16f); nlRT.offsetMin = nlRT.offsetMax = Vector2.zero; netLbl.raycastTarget = false; glowMesh = netBag; bagRT = nbRT; }
+
         var fishCont = RT(side + "FishCont", bagRT); Stretch(fishCont.GetComponent<RectTransform>()); var fishContRT = fishCont.GetComponent<RectTransform>();
-        var netHover = netRoot.AddComponent<NetHoverEffect>(); netHover.lift = 14f; netHover.swayAngle = 2.5f; netHover.swaySpeed = 2.4f; netHover.lerpSpeed = 12f; netHover.glowBoost = 0.16f; netHover.glowGraphics = new Graphic[] { glowMesh };
-        if (isLeft) { mgr.leftNetRT = nrRT; mgr.leftNetFishContainer = fishContRT; } else { mgr.rightNetRT = nrRT; mgr.rightNetFishContainer = fishContRT; }
+
+        // FIX: NetHoverEffect needs glowGraphics wired — assign here directly
+        var netHover = netRoot.AddComponent<NetHoverEffect>();
+        netHover.lift = 14f;
+        netHover.swayAngle = 2.5f;
+        netHover.swaySpeed = 2.4f;
+        netHover.lerpSpeed = 12f;
+        netHover.glowBoost = 0.16f;
+        netHover.glowGraphics = new Graphic[] { glowMesh };
+
+        if (isLeft) { mgr.leftNetRT = nrRT; mgr.leftNetFishContainer = fishContRT; }
+        else { mgr.rightNetRT = nrRT; mgr.rightNetFishContainer = fishContRT; }
     }
 
-    // =========================================================================
-    // Swipe zones
-    // =========================================================================
+    // =================================================================
+    //  Swipe zones
+    // =================================================================
     static void BuildSwipeZones(RectTransform parent, out CanvasGroup scamCG, out CanvasGroup safeCG)
     { scamCG = MakeZoneCG(parent, "ScamZone", 0.08f); safeCG = MakeZoneCG(parent, "SafeZone", 0.92f); }
     static CanvasGroup MakeZoneCG(RectTransform parent, string name, float xAnchor)
     { var go = new GameObject(name, typeof(RectTransform)); go.transform.SetParent(parent, false); var rt = go.GetComponent<RectTransform>(); rt.anchorMin = new Vector2(xAnchor - 0.08f, 0.15f); rt.anchorMax = new Vector2(xAnchor + 0.08f, 0.90f); var bg = go.AddComponent<Image>(); bg.color = new Color(0, 0, 0, 0); bg.raycastTarget = false; var cg = go.AddComponent<CanvasGroup>(); cg.alpha = 0f; cg.blocksRaycasts = false; cg.interactable = false; return cg; }
 
-    // =========================================================================
-    // Card
-    // =========================================================================
+    // =================================================================
+    //  Card — creates SwipeCard, returns it via mgr.swipeCard
+    // =================================================================
     static void BuildCard(RectTransform parent, EmailSwiperManager mgr, CanvasGroup scamHint, CanvasGroup safeHint, Canvas rootCanvas)
     {
         var shadow = Img(parent, "CardShadow", CardShadow); var shrt = shadow.rectTransform; shrt.anchorMin = shrt.anchorMax = new Vector2(0.5f, 0.52f); shrt.pivot = new Vector2(0.5f, 0.5f); shrt.sizeDelta = new Vector2(628, 668); shrt.anchoredPosition = new Vector2(8, -8); shadow.raycastTarget = false;
@@ -347,7 +357,6 @@ public static class EmailSwiperBuilder
         var cardCG = card.gameObject.AddComponent<CanvasGroup>();
         var cardBg = Img(crt, "CardBg", CardWhite); Stretch(cardBg.rectTransform); cardBg.raycastTarget = false;
 
-        // Build initial border stripes with a random scheme (manager swaps at runtime)
         var scheme = FishSchemes[Random.Range(0, FishSchemes.Length)];
         BuildStripedEdge(crt, "BorderTop", scheme, new Vector2(0, 1), new Vector2(1, 1), new Vector2(0.5f, 1), new Vector2(0, 12), Vector2.zero, true);
         BuildStripedEdge(crt, "BorderBottom", scheme, new Vector2(0, 0), new Vector2(1, 0), new Vector2(0.5f, 0), new Vector2(0, 12), Vector2.zero, true);
@@ -363,12 +372,25 @@ public static class EmailSwiperBuilder
         var div = Img(crt, "Divider", DividerCol); var dvrt = div.rectTransform; dvrt.anchorMin = new Vector2(0, 1); dvrt.anchorMax = new Vector2(1, 1); dvrt.pivot = new Vector2(0.5f, 1); dvrt.sizeDelta = new Vector2(-36, 1); dvrt.anchoredPosition = new Vector2(0, -110); div.raycastTarget = false;
         var subject = Txt(crt, "Subject", "Subject", 24, DarkText, TextAlignmentOptions.TopLeft, FontStyles.Bold); var sjrt = subject.rectTransform; sjrt.anchorMin = new Vector2(0, 1); sjrt.anchorMax = new Vector2(1, 1); sjrt.pivot = new Vector2(0, 1); sjrt.sizeDelta = new Vector2(-44, 60); sjrt.anchoredPosition = new Vector2(22, -124);
         var body = Txt(crt, "Body", "Body text...", 19, DarkText, TextAlignmentOptions.TopLeft); body.textWrappingMode = TextWrappingModes.Normal; body.overflowMode = TextOverflowModes.Ellipsis; var brt = body.rectTransform; brt.anchorMin = new Vector2(0, 0); brt.anchorMax = new Vector2(1, 1); brt.offsetMin = new Vector2(22, 26); brt.offsetMax = new Vector2(-22, -228);
-        var overlay = Img(parent, "DragOverlay", new Color(0, 0, 0, 0)); var olrt = overlay.rectTransform; olrt.anchorMin = olrt.anchorMax = new Vector2(0.5f, 0.52f); olrt.pivot = new Vector2(0.5f, 0.5f); olrt.sizeDelta = new Vector2(640, 680); overlay.raycastTarget = true;
-        var swipe = overlay.gameObject.AddComponent<SwipeCard>(); swipe.cardRoot = crt; swipe.scamIndicator = scamHint; swipe.safeIndicator = safeHint; swipe.cardBorder = card; swipe.rootCanvas = rootCanvas; swipe.cardCanvasGroup = cardCG;
-        foreach (var relay in UnityEngine.Object.FindObjectsByType<SwipeButtonRelay>(FindObjectsSortMode.None)) relay.target = swipe;
-        mgr.swipeCard = swipe; mgr.cardSender = senderName; mgr.cardEmail = senderEmail; mgr.cardSubject = subject; mgr.cardBody = body; mgr.cardAvatar = avatar; mgr.cardAvatarLetter = avatarLetter; mgr.cardCanvasGroup = cardCG;
 
-        // CHANGED: wire cardBorderRT so manager can recolour border stripes at runtime
+        // DragOverlay captures pointer events for dragging
+        var overlay = Img(parent, "DragOverlay", new Color(0, 0, 0, 0)); var olrt = overlay.rectTransform; olrt.anchorMin = olrt.anchorMax = new Vector2(0.5f, 0.52f); olrt.pivot = new Vector2(0.5f, 0.5f); olrt.sizeDelta = new Vector2(640, 680); overlay.raycastTarget = true;
+        var swipe = overlay.gameObject.AddComponent<SwipeCard>();
+        swipe.cardRoot = crt;
+        swipe.scamIndicator = scamHint;
+        swipe.safeIndicator = safeHint;
+        swipe.cardBorder = card;
+        swipe.rootCanvas = rootCanvas;
+        swipe.cardCanvasGroup = cardCG;
+
+        mgr.swipeCard = swipe;
+        mgr.cardSender = senderName;
+        mgr.cardEmail = senderEmail;
+        mgr.cardSubject = subject;
+        mgr.cardBody = body;
+        mgr.cardAvatar = avatar;
+        mgr.cardAvatarLetter = avatarLetter;
+        mgr.cardCanvasGroup = cardCG;
         mgr.cardBorderRT = crt;
     }
 
@@ -382,9 +404,9 @@ public static class EmailSwiperBuilder
         dotAnimator.dots = dots;
     }
 
-    // =========================================================================
-    // Rod
-    // =========================================================================
+    // =================================================================
+    //  Rod
+    // =================================================================
     static void BuildRod(RectTransform canvasRT, SwipeCard swipe, Canvas canvas, Sprite circle, RectTransform handAnchorRT)
     {
         if (swipe == null) return;
@@ -400,26 +422,14 @@ public static class EmailSwiperBuilder
         swipe.rodTipRT = tipRT; swipe.rodLineRT = seg1; swipe.rodLine2RT = seg2; swipe.rodLine3RT = seg3; swipe.rodLine4RT = seg4; swipe.rodBobRT = bobRT; swipe.rootCanvas = canvas;
     }
 
-    // =========================================================================
-    // Fish anim, score popup, commentator, panels
-    // =========================================================================
+    // =================================================================
+    //  Fish anim, score popup, panels
+    // =================================================================
     static void BuildFishAnim(RectTransform parent, EmailSwiperManager mgr, Sprite circle)
     { var go = RT("FishAnim", parent); var rrt = go.GetComponent<RectTransform>(); rrt.anchorMin = rrt.anchorMax = new Vector2(0.5f, 0.5f); rrt.pivot = new Vector2(0.5f, 0.5f); rrt.sizeDelta = new Vector2(68, 68); var img = go.AddComponent<Image>(); img.color = Color.white; img.preserveAspect = true; img.raycastTarget = false; go.SetActive(false); mgr.fishAnimRT = rrt; mgr.fishAnimImage = img; }
 
     static void BuildScorePopup(RectTransform parent, EmailSwiperManager mgr)
     { var go = RT("ScorePopup", parent); var rrt = go.GetComponent<RectTransform>(); rrt.anchorMin = rrt.anchorMax = new Vector2(0.5f, 0.5f); rrt.pivot = new Vector2(0.5f, 0.5f); rrt.sizeDelta = new Vector2(200, 60); var cg = go.AddComponent<CanvasGroup>(); cg.alpha = 0f; cg.blocksRaycasts = false; var txt = Txt(rrt, "Text", "+100", 36, ScoreGold, TextAlignmentOptions.Center, FontStyles.Bold); Stretch(txt.rectTransform); mgr.scorePopupRT = rrt; mgr.scorePopupText = txt; mgr.scorePopupCG = cg; }
-
-    static Commentator BuildCommentator(RectTransform parent, Sprite circle)
-    {
-        var root = RT("Commentator", parent); var rrt = root.GetComponent<RectTransform>(); rrt.anchorMin = rrt.anchorMax = Vector2.zero; rrt.pivot = Vector2.zero; rrt.sizeDelta = new Vector2(520, 112); rrt.anchoredPosition = new Vector2(28, 210);
-        var portrait = Img(rrt, "Portrait", new Color(1f, 0.72f, 0.78f)); portrait.sprite = circle; portrait.preserveAspect = true; var pr = portrait.rectTransform; pr.anchorMin = new Vector2(0, 0); pr.anchorMax = new Vector2(0, 1); pr.pivot = new Vector2(0, 0.5f); pr.sizeDelta = new Vector2(96, 0);
-        var letter = Txt(pr, "Letter", "G", 48, new Color(0.20f, 0.10f, 0.18f), TextAlignmentOptions.Center, FontStyles.Bold); Stretch(letter.rectTransform);
-        var bubble = Img(rrt, "Bubble", new Color(1, 1, 1, 0.92f)); var bbrt = bubble.rectTransform; bbrt.anchorMin = Vector2.zero; bbrt.anchorMax = Vector2.one; bbrt.offsetMin = new Vector2(110, 0); bbrt.offsetMax = Vector2.zero;
-        var speaker = Txt(bbrt, "Speaker", "Grandma", 14, new Color(0.78f, 0.30f, 0.50f), TextAlignmentOptions.MidlineLeft, FontStyles.Bold); var slrt = speaker.rectTransform; slrt.anchorMin = new Vector2(0, 1); slrt.anchorMax = new Vector2(1, 1); slrt.pivot = new Vector2(0, 1); slrt.sizeDelta = new Vector2(0, 20); slrt.anchoredPosition = new Vector2(12, -4);
-        var bText = Txt(bbrt, "BubbleText", "...", 18, new Color(0.13f, 0.13f, 0.13f), TextAlignmentOptions.MidlineLeft); bText.textWrappingMode = TextWrappingModes.Normal; var btrt = bText.rectTransform; btrt.anchorMin = Vector2.zero; btrt.anchorMax = Vector2.one; btrt.offsetMin = new Vector2(12, 4); btrt.offsetMax = new Vector2(-12, -22);
-        var comm = root.AddComponent<Commentator>(); comm.root = root; comm.portrait = portrait; comm.portraitLetter = letter; comm.bubbleBg = bubble; comm.bubbleText = bText; comm.speakerLabel = speaker; comm.portraitSprite = circle; comm.speakerName = "Grandma"; comm.portraitInitial = "G"; comm.portraitColor = new Color(1f, 0.72f, 0.78f);
-        return comm;
-    }
 
     static GameObject BuildTutorialPanel(RectTransform parent, EmailSwiperManager mgr)
     {
@@ -427,7 +437,7 @@ public static class EmailSwiperBuilder
         var card = Img(ov.rectTransform, "Card", CardWhite); var crt = card.rectTransform; crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.5f); crt.pivot = new Vector2(0.5f, 0.5f); crt.sizeDelta = new Vector2(820, 560);
         var hdr = Img(crt, "Header", Hex("#0F4A6B")); TopStretch(hdr.rectTransform, 90);
         var hLbl = Txt(hdr.rectTransform, "Title", "Phish Patrol - Email Swiper", 36, Aqua, TextAlignmentOptions.Center, FontStyles.Bold); Stretch(hLbl.rectTransform); hLbl.raycastTarget = false;
-        var body = Txt(crt, "Body", "Sort each email - SCAM or SAFE.\n\nDrag LEFT  -  SCAM Net\nDrag RIGHT -  SAFE Net\n\nCorrect catch lands in the net!\nWrong guess hits the boat - 3 hits and it sinks!", 24, DarkText, TextAlignmentOptions.Center); body.textWrappingMode = TextWrappingModes.Normal; var brt = body.rectTransform; brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one; brt.offsetMin = new Vector2(46, 100); brt.offsetMax = new Vector2(-46, -96);
+        var body = Txt(crt, "Body", "Sort each email — SCAM or SAFE.\n\nDrag LEFT  →  SCAM Net\nDrag RIGHT →  SAFE Net\n\nOr click the nets directly!\n\nCorrect catch lands in the net!\nWrong guess hits the boat — 3 hits and it sinks!", 24, DarkText, TextAlignmentOptions.Center); body.textWrappingMode = TextWrappingModes.Normal; var brt = body.rectTransform; brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one; brt.offsetMin = new Vector2(46, 100); brt.offsetMax = new Vector2(-46, -96);
         var btn = MakeButton(crt, "StartBtn", "Start!", 30, SafeTeal, Color.white); var sbrt = btn.GetComponent<RectTransform>(); sbrt.anchorMin = sbrt.anchorMax = new Vector2(0.5f, 0); sbrt.pivot = new Vector2(0.5f, 0); sbrt.sizeDelta = new Vector2(240, 62); sbrt.anchoredPosition = new Vector2(0, 24);
         UnityEventTools.AddPersistentListener(btn.GetComponent<Button>().onClick, mgr.OnTutorialStart);
         return ov.gameObject;
@@ -460,9 +470,9 @@ public static class EmailSwiperBuilder
         return ov.gameObject;
     }
 
-    // =========================================================================
-    // Striped card border
-    // =========================================================================
+    // =================================================================
+    //  Striped border
+    // =================================================================
     static void BuildStripedEdge(RectTransform cardRT, string name, (Color a, Color b, Color accent, string label) scheme,
         Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 sizeDelta, Vector2 anchoredPos, bool horizontal)
     {
@@ -477,18 +487,19 @@ public static class EmailSwiperBuilder
         accRT.offsetMin = accRT.offsetMax = Vector2.zero; acc.raycastTarget = false;
     }
 
-    // =========================================================================
-    // Sprite loading helpers
-    // =========================================================================
+    // =================================================================
+    //  Sprite / audio helpers
+    // =================================================================
     static List<Sprite> LoadSpritesInOrder(string baseName)
     { var list = new List<Sprite>(); var path = FindTexturePath(baseName); if (path == null) return list; var reps = AssetDatabase.LoadAllAssetRepresentationsAtPath(path).OfType<Sprite>().ToList(); if (reps.Count == 0) { var s = AssetDatabase.LoadAssetAtPath<Sprite>(path); if (s != null) list.Add(s); return list; } float avgH = reps.Average(s => s.rect.height); if (avgH < 1f) avgH = 1f; list = reps.OrderByDescending(s => Mathf.RoundToInt(s.rect.y / (avgH * 0.8f))).ThenBy(s => s.rect.x).ToList(); return list; }
     static string FindTexturePath(string baseName) { foreach (var g in AssetDatabase.FindAssets(baseName + " t:Texture2D")) { var p = AssetDatabase.GUIDToAssetPath(g); if (Path.GetFileNameWithoutExtension(p).ToLower() == baseName.ToLower()) return p; } return null; }
     static Sprite FindSprite(string name) { foreach (var g in AssetDatabase.FindAssets(name + " t:Sprite")) { var p = AssetDatabase.GUIDToAssetPath(g); if (Path.GetFileNameWithoutExtension(p).ToLower() == name.ToLower()) { var s = AssetDatabase.LoadAssetAtPath<Sprite>(p); if (s != null) return s; } } return null; }
+    static AudioClip FindAudio(string name) { foreach (var g in AssetDatabase.FindAssets(name + " t:AudioClip")) { var p = AssetDatabase.GUIDToAssetPath(g); if (Path.GetFileNameWithoutExtension(p).ToLower() == name.ToLower()) return AssetDatabase.LoadAssetAtPath<AudioClip>(p); } return null; }
     static void LogFound(string n, Sprite s) => Debug.Log($"[EmailSwiperBuilder] {n}: " + (s != null ? "✓" : "✗ not found"));
 
-    // =========================================================================
-    // Generic UI helpers
-    // =========================================================================
+    // =================================================================
+    //  Generic UI helpers
+    // =================================================================
     static Sprite GetCircle() { try { return AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd"); } catch { return null; } }
     static Image Img(Transform p, string n, Color c) { var go = new GameObject(n, typeof(RectTransform)); go.transform.SetParent(p, false); var img = go.AddComponent<Image>(); img.color = c; return img; }
     static TMP_Text Txt(Transform p, string n, string text, int size, Color col, TextAlignmentOptions align, FontStyles style = FontStyles.Normal) { var go = new GameObject(n, typeof(RectTransform)); go.transform.SetParent(p, false); var t = go.AddComponent<TextMeshProUGUI>(); t.text = text; t.fontSize = size; t.color = col; t.alignment = align; t.fontStyle = style; t.raycastTarget = false; return t; }

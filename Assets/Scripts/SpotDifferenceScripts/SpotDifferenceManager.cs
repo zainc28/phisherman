@@ -10,6 +10,7 @@ using UnityEngine.UI;
 // =============================================================================
 // SpotDifferenceManager.cs
 // DifferenceMarker + PanelClickReceiver + SpotDifferenceManager
+// Commentator removed. Sounds wired: splash on find, shark_music BGM, impact on all lives lost.
 // =============================================================================
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,9 +134,7 @@ public class SpotDifferenceManager : MonoBehaviour
     public AudioClip sfxWrong;
     public AudioClip sfxImpact;
     public AudioClip sfxRodWinding;
-
-    [Header("Commentator")]
-    public Commentator commentator;
+    public AudioClip bgMusicClip;   // assign shark_music_v1 in builder
 
     // ── Internal ──
     private int _score, _found, _total, _streak, _lives;
@@ -151,15 +150,6 @@ public class SpotDifferenceManager : MonoBehaviour
 
     // ── World theme ──
     private int _worldTheme = 1;
-
-    private static readonly string[] ProgressiveHints =
-    {
-        "Look at every part of that page carefully, dear.",
-        "Pay attention to the exact words they chose.",
-        "Check the URL — look at every character.",
-        "There's still something off in how they're asking for information.",
-        "One more — look at what they're asking you to enter."
-    };
 
     // =================================================================
     //  Lifecycle
@@ -181,7 +171,8 @@ public class SpotDifferenceManager : MonoBehaviour
         _magActive = false;
 
         if (heartImages != null)
-            foreach (var img in heartImages) if (img != null) img.gameObject.SetActive(false);
+            foreach (var img in heartImages)
+                if (img != null) img.gameObject.SetActive(false);
         livesHUD = gameObject.AddComponent<MinigameLivesHUD>();
         livesHUD.Initialize(maxLives, heartSprite);
 
@@ -195,20 +186,28 @@ public class SpotDifferenceManager : MonoBehaviour
 
         lureSimulation?.StartSim(maxLives, _total);
 
-        commentator?.Say(_worldTheme switch
-        {
-            2 => $"Find all {_total} red flags on that fake login page — look at every detail!",
-            3 => $"Find all {_total} red flags in that scam text message — something feels off!",
-            4 => $"Find all {_total} red flags on that fake social media page — don't be fooled!",
-            5 => $"The final case! Find all {_total} red flags using everything you've learned!",
-            _ => $"Find all {_total} red flags, dear — look closely at every detail!"
-        });
-
+        // ── Audio setup ──
         var sources = GetComponents<AudioSource>();
         sfxSource = sources.Length > 0 ? sources[0] : gameObject.AddComponent<AudioSource>();
         bgMusicSource = sources.Length > 1 ? sources[1] : gameObject.AddComponent<AudioSource>();
-        if (sfxSource != null) { sfxSource.playOnAwake = false; sfxSource.loop = false; }
-        if (bgMusicSource != null && bgMusicSource.clip != null) bgMusicSource.Play();
+
+        sfxSource.playOnAwake = false;
+        sfxSource.loop = false;
+        sfxSource.volume = 0.85f;
+        bgMusicSource.playOnAwake = false;
+        bgMusicSource.loop = true;
+        bgMusicSource.volume = 0.35f;
+
+        // Start shark_music BGM for the entire minigame
+        if (bgMusicClip != null)
+        {
+            bgMusicSource.clip = bgMusicClip;
+            bgMusicSource.Play();
+        }
+        else if (bgMusicSource.clip != null)
+        {
+            bgMusicSource.Play();
+        }
     }
 
     void Update()
@@ -223,6 +222,22 @@ public class SpotDifferenceManager : MonoBehaviour
     }
 
     // =================================================================
+    //  Audio helpers
+    // =================================================================
+
+    void PlaySFX(AudioClip clip)
+    {
+        if (sfxSource == null || clip == null) return;
+        sfxSource.PlayOneShot(clip, sfxSource.volume);
+    }
+
+    void StopBGM()
+    {
+        if (bgMusicSource != null && bgMusicSource.isPlaying)
+            bgMusicSource.Stop();
+    }
+
+    // =================================================================
     //  Timer
     // =================================================================
 
@@ -232,14 +247,11 @@ public class SpotDifferenceManager : MonoBehaviour
         int s = Mathf.CeilToInt(_timeRemaining);
         timerText.text = $"{s / 60}:{s % 60:D2}";
         timerText.color = _timeRemaining < 15f ? new Color(0.91f, 0.20f, 0.20f) : Color.white;
-        if (_timeRemaining < 15f && !_gameOver)
-            commentator?.Say("Hurry, dear — almost out of time!");
     }
 
     void OnTimerEnd()
     {
         if (_gameOver) return;
-        commentator?.Say("Time's up — the shark got the rod!");
         lureSimulation?.TriggerBreach();
         EndGame(false);
     }
@@ -295,23 +307,15 @@ public class SpotDifferenceManager : MonoBehaviour
 
         PlayerProgress.RegisterFish("fish_detective");
 
+        // Play splash SFX every time a flag is found
+        PlaySFX(sfxSplash);
         PlaySFX(sfxRodWinding);
+
         int findIdx = markers.IndexOf(marker);
         lureSimulation?.OnCorrectFind(findIdx);
-        PlaySFX(sfxSplash);
 
         var rt = marker.GetComponent<RectTransform>();
         if (rt != null) StartCoroutine(WaterDrips(rt));
-
-        int remaining = _total - _found;
-        if (remaining == 0) commentator?.Say("That's all of them! The hook is free!");
-        else if (remaining == 1) commentator?.Say("Just one more, dear!");
-        else if (_streak >= 3) commentator?.Say("You're catching them so quickly!");
-        else
-        {
-            int hi = Mathf.Clamp(_found, 0, ProgressiveHints.Length - 1);
-            commentator?.Say(ProgressiveHints[hi]);
-        }
 
         if (_found >= _total)
         {
@@ -335,32 +339,20 @@ public class SpotDifferenceManager : MonoBehaviour
         _streak = 0;
 
         livesHUD?.LoseLife(); UpdateHud();
+        // Play wrong sfx on wrong click
         PlaySFX(sfxWrong);
         lureSimulation?.OnWrongClick();
 
         ShowFeedback($"-{wrongPenalty}   Not a red flag  (−1 life)",
             new Color(0.78f, 0.20f, 0.20f));
-        commentator?.SayRandom(new[] {
-            "Careful, dear — that part looks normal.",
-            "Hmm, that's not one of them. Keep searching.",
-            "Not quite — look more carefully."
-        });
 
         if (_lives <= 0)
         {
+            // Play impact when all lives are lost
+            PlaySFX(sfxImpact);
             lureSimulation?.TriggerBreach();
-            commentator?.Say("Oh no — the shark got the rod!");
             EndGame(false);
         }
-    }
-
-    // =================================================================
-    //  Audio helper
-    // =================================================================
-
-    void PlaySFX(AudioClip clip)
-    {
-        if (sfxSource != null && clip != null) sfxSource.PlayOneShot(clip, 0.85f);
     }
 
     // =================================================================
@@ -425,7 +417,7 @@ public class SpotDifferenceManager : MonoBehaviour
     }
 
     // =================================================================
-    //  End game — CHANGED: writes interior_result
+    //  End game
     // =================================================================
 
     void EndGame(bool win)
@@ -433,12 +425,12 @@ public class SpotDifferenceManager : MonoBehaviour
         if (_gameOver) return;
         _gameOver = true;
         lureSimulation?.StopSim();
+        StopBGM();
 
         float accuracy = _total > 0 ? (float)_found / _total : 0f;
         PlayerProgress.QueueFromPerformance(accuracy);
         _xpQueuedForClear = true;
 
-        // Write win/lose so InteriorDialogueManager enters the right phase
         bool isWin = win || _found >= _total;
         PlayerPrefs.SetString("interior_result", isWin ? "win" : "lose");
         PlayerPrefs.Save();
@@ -519,7 +511,7 @@ public class SpotDifferenceManager : MonoBehaviour
     }
 
     // =================================================================
-    //  Buttons — CHANGED: BackToWorldMap reads interior_source
+    //  Buttons
     // =================================================================
 
     public void PlayAgain() { SceneManager.LoadScene(SceneManager.GetActiveScene().name); }
