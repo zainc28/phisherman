@@ -1,17 +1,22 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using System.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
 /// Phish Patrol — Tower Defense.
-/// WORLD 1: weak vs strong passwords
+/// WORLD 1: email phishing (bad sender domains, urgency phrases, lookalike URLs)
 /// WORLD 2: bad URLs vs safe URLs
 /// WORLD 3: smishing phrases vs safe messages
 /// WORLD 4: social media scam tactics vs real platforms
 /// WORLD 5: combined mix of all themes
 /// Commentator removed. Sounds wired. Educational TD taglines.
+///
+/// CHANGE vs original: World 1 (default case) arrays and tutorial text
+/// updated from password-themed to email-phishing-themed.
+/// Everything else is UNCHANGED.
 /// </summary>
 public class TowerDefenseManager : MonoBehaviour
 {
@@ -109,49 +114,70 @@ public class TowerDefenseManager : MonoBehaviour
     // ── Entry data (label + isScam flag) ──
     struct ED { public string label; public bool isScam; public ED(string l, bool s) { label = l; isScam = s; } }
 
-    // ── WORLD 1: passwords — teach what makes passwords weak vs strong ──
+    // ── WORLD 1: email phishing — teach bad sender domains, urgency, lookalike URLs ──
+    // CHANGED from password theme to email theme
     ED[] w1Scams = {
-        new ED("password123", true),  new ED("123456",     true),  new ED("qwerty",      true),
-        new ED("iloveyou",   true),   new ED("abc123",     true),  new ED("No numbers!",  true),
-        new ED("111111",     true),   new ED("letmein",    true),  new ED("Short & easy", true),
-        new ED("monkey",     true),   new ED("dragon",     true),  new ED("Dictionary wd",true),
-        new ED("hello",      true),   new ED("login",      true),  new ED("admin",        true),
-        new ED("Reused pass",true),   new ED("shadow",     true),  new ED("trustno1",     true),
-        new ED("12345678",   true),   new ED("Pet name!",  true),
+        new ED("paypa1.com",         true),  // '1' replacing 'l' in domain
+        new ED("amaz0n-secure.net",  true),  // '0' replacing 'o', wrong TLD
+        new ED("no-reply@g00gle.com",true),  // double-zero typo in sender
+        new ED("URGENT: Act now!",   true),  // artificial urgency phrase
+        new ED("Verify account",     true),  // unsolicited verify request
+        new ED("Click link NOW",     true),  // vague pressured CTA
+        new ED("Dear Customer,",     true),  // generic greeting — no name
+        new ED("apple-id.xyz",       true),  // wrong TLD for Apple
+        new ED("You've won $1000",   true),  // prize bait
+        new ED("irs-refund.tk",      true),  // fake government + .tk domain
+        new ED("Acct on hold!",      true),  // fear tactic
+        new ED("Expires 24hrs!",     true),  // fake deadline
+        new ED("micros0ft-fix.net",  true),  // typo impersonation
+        new ED("Unusual sign-in",    true),  // unsolicited alarm
+        new ED("Your pkg delayed",   true),  // parcel bait from unknown sender
+        new ED("Free gift — claim",  true),  // prize scam
+        new ED("SIN required!",      true),  // government impersonation
+        new ED("netflix-bill.net",   true),  // wrong domain for Netflix
+        new ED("Confirm password",   true),  // real orgs never ask via email
+        new ED("cra-etransfer.tk",   true),  // fake CRA, throwaway domain
     };
 
     ED[] w1Safes = {
-        new ED("K#9mP!2xL",    false), new ED("Blue$Tree47!",  false),
-        new ED("Xq8@nW3!vY",   false), new ED("Maple!Leaf99#", false),
-        new ED("T7@kLz!9Rp",   false), new ED("Sun$Rise2024!", false),
-        new ED("Wr9#mK!6Lp",   false), new ED("Cat!Rain$42X",  false),
-        new ED("Gr@pe!Vine88", false), new ED("Z3br@Dance#7",  false),
-        new ED("16+ chars ✓",  false), new ED("Unique/site ✓", false),
-        new ED("PassManager ✓",false), new ED("Mix of all 4",  false),
+        new ED("orders@amazon.com",   false),  // real Amazon sender domain
+        new ED("noreply@spotify.com", false),  // real Spotify sender domain
+        new ED("no-reply@uber.com",   false),  // real Uber sender domain
+        new ED("Hi [Your Name],",     false),  // personalised greeting
+        new ED("canada.ca ✓",        false),  // real government domain
+        new ED("paypal.com ✓",       false),  // real PayPal domain
+        new ED("Track your order",    false),  // benign delivery update
+        new ED("Your receipt is in",  false),  // normal transactional email
+        new ED("google.com ✓",       false),  // real Google domain
+        new ED("Padlock + HTTPS ✓",   false),  // teach: check for HTTPS
+        new ED("Your name used ✓",    false),  // teach: real emails use name
+        new ED("No link click ✓",     false),  // teach: log in directly
+        new ED("Call # on card ✓",    false),  // teach: verify by phone
+        new ED("Reply STOP to opt",   false),  // legit opt-out phrasing
     };
 
     // ── WORLD 2: URLs — teach how to spot fake vs real domains ──
     ED[] w2BadUrls = {
-        new ED("amaz0n.tk",       true),   // zero not o
-        new ED("bit.ly/fr33gift", true),   // shortened URL hides destination
-        new ED("login-paypa1.com",true),   // typo domain
-        new ED("netflix-verify.net",true), // wrong TLD
-        new ED("bank-secure.xyz", true),   // suspicious TLD
-        new ED("free-iphone.win", true),   // prize scam
-        new ED("ebay-support.ru", true),   // wrong country
-        new ED("claimprize.tk",   true),   // throwaway domain
-        new ED("micros0ft-fix.com",true),  // typo impersonation
-        new ED("gov-refund.tk",   true),   // fake gov
-        new ED("fb-login-help.net",true),  // fake social
-        new ED("apple-id.xyz",    true),   // wrong TLD
-        new ED("post-pkg.ru",     true),   // fake courier
-        new ED("winner2024.ml",   true),   // free domain scam
-        new ED("bank0famerica.com",true),  // number substitution
-        new ED("irs-refund.net",  true),   // fake IRS
-        new ED(".tk = free/fake", true),   // educational label
-        new ED("Lookalike URL!",  true),   // teach concept
-        new ED("Extra hyphens!",  true),   // teach red flag
-        new ED("Typo in name!",   true),   // teach red flag
+        new ED("amaz0n.tk",       true),
+        new ED("bit.ly/fr33gift", true),
+        new ED("login-paypa1.com",true),
+        new ED("netflix-verify.net",true),
+        new ED("bank-secure.xyz", true),
+        new ED("free-iphone.win", true),
+        new ED("ebay-support.ru", true),
+        new ED("claimprize.tk",   true),
+        new ED("micros0ft-fix.com",true),
+        new ED("gov-refund.tk",   true),
+        new ED("fb-login-help.net",true),
+        new ED("apple-id.xyz",    true),
+        new ED("post-pkg.ru",     true),
+        new ED("winner2024.ml",   true),
+        new ED("bank0famerica.com",true),
+        new ED("irs-refund.net",  true),
+        new ED(".tk = free/fake", true),
+        new ED("Lookalike URL!",  true),
+        new ED("Extra hyphens!",  true),
+        new ED("Typo in name!",   true),
     };
 
     ED[] w2GoodUrls = {
@@ -171,30 +197,28 @@ public class TowerDefenseManager : MonoBehaviour
         new ED("Padlock ✓",    false),
     };
 
-    // ── WORLD 3: smishing — teach what to watch for in texts ──
-    // Bad = red-flag smishing tactics labelled to teach awareness
-    // Good = safe text message patterns
+    // ── WORLD 3: smishing ──
     ED[] w3BadPhrases = {
-        new ED("Unknown sender",  true),   // no short code
-        new ED("Link in text!",   true),   // never click links
-        new ED("Act NOW!!",       true),   // artificial urgency
-        new ED("Free gift claim", true),   // prize scam
-        new ED("Verify account",  true),   // phishing prompt
-        new ED("Typos in msg",    true),   // unprofessional
-        new ED("Call this #",     true),   // scam hotline
-        new ED("Gift card fee",   true),   // payment red flag
-        new ED("Wire $ now",      true),   // money transfer
-        new ED("Share your OTP",  true),   // never share codes
-        new ED("Delivery fee $",  true),   // parcel fee scam
-        new ED("Expires soon!",   true),   // fake urgency
-        new ED("Bank link txt",   true),   // banks don't link
-        new ED("Win $ reply now", true),   // prize scam
-        new ED("Unusual login?",  true),   // alarm tactic
-        new ED("Loose access!",   true),   // fear + typo
-        new ED("Your $ on hold",  true),   // financial bait
-        new ED("Click b4 delete", true),   // pressure + typo
-        new ED("Refund waiting",  true),   // too good
-        new ED("Shared ur info",  true),   // manipulation
+        new ED("Unknown sender",  true),
+        new ED("Link in text!",   true),
+        new ED("Act NOW!!",       true),
+        new ED("Free gift claim", true),
+        new ED("Verify account",  true),
+        new ED("Typos in msg",    true),
+        new ED("Call this #",     true),
+        new ED("Gift card fee",   true),
+        new ED("Wire $ now",      true),
+        new ED("Share your OTP",  true),
+        new ED("Delivery fee $",  true),
+        new ED("Expires soon!",   true),
+        new ED("Bank link txt",   true),
+        new ED("Win $ reply now", true),
+        new ED("Unusual login?",  true),
+        new ED("Loose access!",   true),
+        new ED("Your $ on hold",  true),
+        new ED("Click b4 delete", true),
+        new ED("Refund waiting",  true),
+        new ED("Shared ur info",  true),
     };
 
     ED[] w3SafePhrases = {
@@ -208,34 +232,34 @@ public class TowerDefenseManager : MonoBehaviour
         new ED("Be there @ 7",  false),
         new ED("lol ok",        false),
         new ED("Confirmed ✓",   false),
-        new ED("Reply STOP opt",false),   // legit opt-out
-        new ED("Short code ✓",  false),   // teach: legit texts use short codes
-        new ED("No links = ✓",  false),   // teach: safe texts have no links
-        new ED("Call back # ✓", false),   // teach: real orgs give call-back #s
+        new ED("Reply STOP opt",false),
+        new ED("Short code ✓",  false),
+        new ED("No links = ✓",  false),
+        new ED("Call back # ✓", false),
     };
 
-    // ── WORLD 4: social media — teach fake account tactics ──
+    // ── WORLD 4: social media ──
     ED[] w4BadPhrases = {
-        new ED("Unverified acct", true),  // no blue check
-        new ED("DM to claim $",   true),  // prize via DM
-        new ED("Send crypto now", true),  // crypto scam
-        new ED("Pay $49 badge",   true),  // fake verification
-        new ED("Fake celeb acct", true),  // impersonation
-        new ED("Free followers",  true),  // account harvest
-        new ED("Acct deleted!",   true),  // fear tactic
-        new ED("Process fee $",   true),  // always a scam
-        new ED("Buy likes $5",    true),  // platform violation
-        new ED("Gift card prize", true),  // gift card = scam
-        new ED("Win! DM us",      true),  // unsolicited prize
-        new ED("Acct hacked!",    true),  // panic trigger
-        new ED("Click or lose",   true),  // urgency
-        new ED("#CryptoDouble",   true),  // doubling scam
-        new ED("ID via DM",       true),  // never share ID
-        new ED("New # = safe?",   true),  // not how banks work
-        new ED("Repost to win",   true),  // engagement farm
-        new ED("Limited time!",   true),  // fake urgency
-        new ED("Giveaway = risk", true),  // teach skepticism
-        new ED("Copycat logo",    true),  // visual spoof
+        new ED("Unverified acct", true),
+        new ED("DM to claim $",   true),
+        new ED("Send crypto now", true),
+        new ED("Pay $49 badge",   true),
+        new ED("Fake celeb acct", true),
+        new ED("Free followers",  true),
+        new ED("Acct deleted!",   true),
+        new ED("Process fee $",   true),
+        new ED("Buy likes $5",    true),
+        new ED("Gift card prize", true),
+        new ED("Win! DM us",      true),
+        new ED("Acct hacked!",    true),
+        new ED("Click or lose",   true),
+        new ED("#CryptoDouble",   true),
+        new ED("ID via DM",       true),
+        new ED("New # = safe?",   true),
+        new ED("Repost to win",   true),
+        new ED("Limited time!",   true),
+        new ED("Giveaway = risk", true),
+        new ED("Copycat logo",    true),
     };
 
     ED[] w4SafePhrases = {
@@ -251,23 +275,23 @@ public class TowerDefenseManager : MonoBehaviour
         new ED("@Spotify",       false),
         new ED("Tagged you",     false),
         new ED("@GitHub",        false),
-        new ED("Blue check ✓",   false),  // teach: verified accounts
-        new ED("Official page ✓",false),  // teach: check page type
+        new ED("Blue check ✓",   false),
+        new ED("Official page ✓",false),
     };
 
-    // ── WORLD 5: combined mix teaching all categories ──
+    // ── WORLD 5: combined mix ──
     ED[] w5Bad = {
-        new ED("password123",    true),  new ED("123456",         true),  new ED("No symbols!",   true),
-        new ED("amaz0n.tk",      true),  new ED("bit.ly/fr33",   true),  new ED("Wrong TLD .xyz", true),
-        new ED("Unknown sender", true),  new ED("Link in text!",  true),  new ED("Gift card fee",  true),
-        new ED("Fake celeb DM",  true),  new ED("Send crypto",    true),  new ED("DM to claim $",  true),
-        new ED("Act NOW!!",      true),  new ED("Typos = fake",   true),  new ED("Pay $49 badge",  true),
-        new ED("Lookalike URL",  true),  new ED("Acct deleted!",  true),  new ED("#CryptoDouble",  true),
-        new ED("Verify by text", true),  new ED("Prize expires!",  true),
+        new ED("paypa1.com",     true),  new ED("amaz0n-secure.net",true),  new ED("Dear Customer,", true),
+        new ED("amaz0n.tk",      true),  new ED("bit.ly/fr33",      true),  new ED("Wrong TLD .xyz", true),
+        new ED("Unknown sender", true),  new ED("Link in text!",    true),  new ED("Gift card fee",  true),
+        new ED("Fake celeb DM",  true),  new ED("Send crypto",      true),  new ED("DM to claim $",  true),
+        new ED("Act NOW!!",      true),  new ED("Typos = fake",     true),  new ED("Pay $49 badge",  true),
+        new ED("Lookalike URL",  true),  new ED("Acct deleted!",    true),  new ED("#CryptoDouble",  true),
+        new ED("Verify by text", true),  new ED("Prize expires!",   true),
     };
 
     ED[] w5Safe = {
-        new ED("K#9mP!2xL",    false), new ED("16+ chars ✓",  false),
+        new ED("orders@amazon.com",false), new ED("Your name used ✓",false),
         new ED("amazon.com",   false), new ED("paypal.com",    false), new ED("canada.ca",     false),
         new ED("Call back # ✓",false), new ED("Short code ✓",  false), new ED("No links = ✓",  false),
         new ED("@YouTube",     false), new ED("@NASA",         false), new ED("Blue check ✓",  false),
@@ -320,7 +344,7 @@ public class TowerDefenseManager : MonoBehaviour
                 tutBodies = new[]
                 {
                     "Fish carrying social media banners are swimming toward your tower!\n\nSome show fake account tactics and scams. Others show real, safe platforms.",
-                    "Read the banner:\n\nSCAM TACTIC — unverified accounts, crypto giveaways, DM prizes, gift card fees — SHOOT IT!\nSAFE PLATFORM — verified accounts, normal interactions — LET IT through!\n\nTip: No legitimate platform will DM you asking for payment or ID."
+                    "Read the banner:\n\nSCAM TACTIC — unverified accounts, crypto giveaways, DM prizes, gift card fees — SHOOT IT!\nSAFE PLATFORM — verified accounts, normal interactions — LET IT through!\n\nTip: No legitimate platform will DM you asking for payment, gift cards, or government ID."
                 };
                 break;
             case 5:
@@ -328,17 +352,18 @@ public class TowerDefenseManager : MonoBehaviour
                 tutTitles = new[] { "Phish Patrol — Final Gauntlet", "How to play" };
                 tutBodies = new[]
                 {
-                    "The final wave! Fish carry banners covering every scam type — passwords, URLs, smishing, and social media tactics.",
-                    "Apply everything you've learned:\n\nSHOOT weak passwords, fake URLs, smishing tactics, and social scam patterns.\nLET THROUGH strong passwords, real URLs, safe texts, and verified platforms.\n\nRemember: urgency + pressure + unknown sender = almost always a scam."
+                    "The final wave! Fish carry banners covering every scam type — emails, URLs, smishing, and social media tactics.",
+                    "Apply everything you've learned:\n\nSHOOT phishing emails, fake URLs, smishing tactics, and social scam patterns.\nLET THROUGH real sender domains, safe URLs, safe texts, and verified platforms.\n\nRemember: urgency + pressure + unknown sender = almost always a scam."
                 };
                 break;
             default:
+                // WORLD 1 — email phishing theme (CHANGED from password theme)
                 scams = w1Scams; safes = w1Safes;
-                tutTitles = new[] { "Phish Patrol — Password Edition", "How to play" };
+                tutTitles = new[] { "Phish Patrol — Email Edition", "How to play" };
                 tutBodies = new[]
                 {
-                    "Fish carrying password banners are swimming toward your tower!\n\nSome passwords are dangerously weak. Others are strong and secure.",
-                    "Read the password on each banner:\n\nWEAK password (common words, no symbols, short) — SHOOT IT!\nSTRONG password (mixed symbols, numbers, 12+ chars, unique) — LET IT through!\n\nTip: Never reuse passwords. Use a password manager."
+                    "Fish carrying email banners are swimming toward your tower!\n\nSome banners show phishing emails. Others show real, safe emails from legitimate senders.",
+                    "Read the banner on each fish:\n\nPHISHING EMAIL — typos in the domain (amaz0n, paypa1), urgency phrases, generic 'Dear Customer' greetings, suspicious links — SHOOT IT!\nSAFE EMAIL — real sender domain, calm tone, uses your name, no suspicious links — LET IT through!\n\nTip: Real companies never email asking you to click a link to verify your account. Always log in directly to the website."
                 };
                 break;
         }
@@ -348,7 +373,7 @@ public class TowerDefenseManager : MonoBehaviour
         gameOverPanel.SetActive(false);
         winPanel.SetActive(false);
 
-        // Audio setup - ensure sources are properly configured
+        // Audio setup
         var audioSources = GetComponents<AudioSource>();
         if (audioSources.Length == 0)
         {
@@ -508,7 +533,6 @@ public class TowerDefenseManager : MonoBehaviour
             if (d < bestDist) { bestDist = d; nearest = f; }
         }
         if (nearest == null) return;
-        // Play spear SFX on every shot
         PlaySFX(spearClip);
         if (spearSpawnPoint != null) StartCoroutine(BoltFlash(spearSpawnPoint.position, nearest.transform.position));
         nearest.TakeSpearHit(speargunPivot);
@@ -551,7 +575,6 @@ public class TowerDefenseManager : MonoBehaviour
 
     public void OnGreenFishCollected(GameObject fishGO, Sprite fishSpr, bool isDefused = false)
     {
-        // Play splash SFX when a correct (safe) fish reaches the tower
         PlaySFX(sfxSplash);
         SpawnNetFish(fishSpr);
         PlayerProgress.RegisterFish(PlayerProgress.GetRandomNetFishId());
@@ -597,13 +620,12 @@ public class TowerDefenseManager : MonoBehaviour
                   fishNormalSprite, fishHappySprite, fishPuffedSprite, logSprite,
                   NeutralFishColor);
 
-        // Hanging fish: 2x bigger (0.80 scale), log 60% of original (0.96 x 0.51)
         if (hangingFishSprite != null)
         {
             var hfGo = new GameObject("HangingFish");
             hfGo.transform.SetParent(go.transform, false);
             hfGo.transform.localPosition = new Vector3(0f, 0.30f, 0.01f);
-            hfGo.transform.localScale = new Vector3(0.80f, 0.80f, 1f); // was 0.40f — now 2x
+            hfGo.transform.localScale = new Vector3(0.80f, 0.80f, 1f);
             var hfSR = hfGo.AddComponent<SpriteRenderer>();
             hfSR.sprite = hangingFishSprite;
             hfSR.color = Color.white;
@@ -672,7 +694,6 @@ public class TowerDefenseManager : MonoBehaviour
     {
         health = Mathf.Max(0, health - 1);
         livesHUD?.LoseLife();
-        // Play glass crack SFX when a heart is lost
         PlaySFX(sfxGlassCrack);
         SpawnCrack();
         StartCoroutine(ShakeTower(0.20f, 0.35f));
@@ -800,8 +821,8 @@ public class TowerDefenseManager : MonoBehaviour
                 2 => "A bad URL got through! Remember: typos in domain names, .tk/.xyz endings, and shortened links are red flags. Always check the full domain before clicking.",
                 3 => "A smishing tactic got through! Remember: real banks and services never send links by text. Unknown senders + urgency + links = scam.",
                 4 => "A social scam got through! Remember: no legitimate platform sends DMs asking for payment, gift cards, or government ID.",
-                5 => "The final wave broke through! Review your weak spots — check for typos in URLs, avoid clicking text links, verify accounts have blue checks, and never reuse passwords.",
-                _ => "Your tower cracked! Weak passwords like '123456' are cracked in seconds. Use 12+ characters with a mix of symbols, numbers, and letters — and never reuse them."
+                5 => "The final wave broke through! Review your weak spots — check for typos in emails and URLs, avoid clicking text links, verify accounts have blue checks.",
+                _ => "A phishing email got through! Remember: check the sender's domain carefully — 'paypa1.com' is not 'paypal.com'. Real companies never email you to click a link and verify your account."
             };
         PlayerProgress.QueueFromPerformance(ComputeAccuracy());
     }

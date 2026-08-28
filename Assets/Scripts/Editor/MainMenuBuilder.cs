@@ -14,8 +14,8 @@ using UnityEngine.SceneManagement;
 //  Run via: Phisherman > Build Main Menu Scene
 //
 //  All button wiring happens at runtime in MainMenuManager.Start().
-//  Buttons are found via Transform.Find() on their parent panel
-//  with includeInactive:true so inactive panels are still searchable.
+//  Buttons are found via GetComponentsInChildren(includeInactive:true)
+//  on each panel so inactive panels are still searchable.
 // ============================================================
 public static class MainMenuBuilder
 {
@@ -252,7 +252,7 @@ public static class MainMenuBuilder
     static void SetAnch(RectTransform rt, float xMin, float yMin, float xMax, float yMax, float ox = 0, float oy = 0, float ox2 = 0, float oy2 = 0)
     { rt.anchorMin = new Vector2(xMin, yMin); rt.anchorMax = new Vector2(xMax, yMax); rt.offsetMin = new Vector2(ox, oy); rt.offsetMax = new Vector2(ox2, oy2); }
 
-    static Sprite FindSprite(string n) { foreach (var g in AssetDatabase.FindAssets(n + " t:Sprite")) { var p = AssetDatabase.GUIDToAssetPath(g); if (Path.GetFileNameWithoutExtension(p).ToLower() == n.ToLower()) { var s = AssetDatabase.LoadAssetAtPath<Sprite>(p); if (s != null) return s; } } return null; }
+    static Sprite FindSprite(string n) { foreach (var g in AssetDatabase.FindAssets(n + " t:Sprite")) { var p = AssetDatabase.GUIDToAssetPath(g); if (System.IO.Path.GetFileNameWithoutExtension(p).ToLower() == n.ToLower()) { var s = AssetDatabase.LoadAssetAtPath<Sprite>(p); if (s != null) return s; } } return null; }
     static Image MkImg(Transform p, string n, Color c) { var go = new GameObject(n, typeof(RectTransform)); go.transform.SetParent(p, false); var i = go.AddComponent<Image>(); i.color = c; return i; }
     static Image MkImg(RectTransform p, string n, Color c) => MkImg((Transform)p, n, c);
     static TMP_Text MkTxt(Transform p, string n, string txt, int sz, Color col, TextAlignmentOptions al, FontStyles fs = FontStyles.Normal)
@@ -264,8 +264,7 @@ public static class MainMenuBuilder
 }
 
 // ============================================================
-//  With() extension — lets us configure a component inline
-//  without a separate variable. Only used inside the builder.
+//  With() extension
 // ============================================================
 public static class MMBExtensions
 {
@@ -276,8 +275,9 @@ public static class MMBExtensions
 //  MainMenuManager  (Runtime)
 //
 //  WireButtons() uses GetComponentsInChildren(includeInactive:true)
-//  on each panel so inactive panels are still searched correctly.
-//  This was the bug: GameObject.Find() skips inactive objects.
+//  so buttons inside inactive panels (ArcadePanel, SettingsPanel)
+//  are found and wired correctly. This is the fix for sub-panel
+//  buttons doing nothing.
 // ============================================================
 public class MainMenuManager : MonoBehaviour
 {
@@ -298,7 +298,7 @@ public class MainMenuManager : MonoBehaviour
 
     void Awake()
     {
-        // Kill any DDOL canvas that would eat our click events
+        // Destroy any DontDestroyOnLoad canvas that might intercept clicks
         foreach (var c in FindObjectsByType<Canvas>(FindObjectsSortMode.None))
             if (c != null && c.gameObject.scene.name == "DontDestroyOnLoad")
                 Destroy(c.gameObject);
@@ -306,16 +306,20 @@ public class MainMenuManager : MonoBehaviour
 
     void Start()
     {
-        // Show main panel, hide sub-panels
+        // Panels must be ACTIVE when WireButtons runs so
+        // GetComponentsInChildren can traverse them, then we hide them.
         SetActive(mainPanel, true);
+        SetActive(arcadePanel, true);
+        SetActive(settingsPanel, true);
+
+        WireButtons();
+        CacheResetLabel();
+
+        // Now hide sub-panels — buttons are already wired
         SetActive(arcadePanel, false);
         SetActive(settingsPanel, false);
 
-        // Wire BEFORE hiding — or use the panel-aware search below
-        WireButtons();
-
         if (canvasGroup) StartCoroutine(FadeIn());
-        CacheResetLabel();
     }
 
     void Update()
@@ -323,44 +327,28 @@ public class MainMenuManager : MonoBehaviour
         if (_resetPending) { _resetTimer -= Time.unscaledDeltaTime; if (_resetTimer <= 0f) CancelReset(); }
     }
 
-    // ── Button wiring ─────────────────────────────────────────
-    // Searches each panel with includeInactive:true so buttons inside
-    // disabled panels are still found and wired correctly.
+    // Searches inside a panel (which is active at wire-time) by button name.
     void WireButtons()
     {
-        // Main panel buttons (panel is active so normal search works too,
-        // but we use the panel-scoped search for consistency)
         BindIn(mainPanel, "StoryBtn", OnStoryMode);
         BindIn(mainPanel, "ArcadeBtn", OnArcadeMode);
         BindIn(mainPanel, "SettingsBtn", OnSettings);
         BindIn(mainPanel, "ExitBtn", OnExit);
-
-        // Arcade panel buttons — panel is INACTIVE, must use includeInactive
         BindIn(arcadePanel, "EmailCard", OnPlayEmailSwiper);
         BindIn(arcadePanel, "SpotCard", OnPlaySpotDiff);
         BindIn(arcadePanel, "TowerCard", OnPlayTowerDefense);
         BindIn(arcadePanel, "ArcadeBackBtn", OnArcadeBack);
-
-        // Settings panel buttons — panel is INACTIVE, must use includeInactive
         BindIn(settingsPanel, "ResetBtn", OnResetProgress);
         BindIn(settingsPanel, "SettingsBackBtn", OnSettingsBack);
     }
 
-    // Finds a Button by name inside a parent (including inactive children)
-    // and adds the listener. Logs a clear error if anything is missing.
     void BindIn(GameObject parent, string childName, UnityEngine.Events.UnityAction action)
     {
-        if (parent == null) { Debug.LogError("[MMM] Parent is null when looking for: " + childName); return; }
-
-        // Search all Buttons in the hierarchy (including inactive)
+        if (parent == null) { Debug.LogError("[MMM] Parent null, looking for: " + childName); return; }
         var buttons = parent.GetComponentsInChildren<Button>(includeInactive: true);
         foreach (var btn in buttons)
         {
-            if (btn.gameObject.name == childName)
-            {
-                btn.onClick.AddListener(action);
-                return;
-            }
+            if (btn.gameObject.name == childName) { btn.onClick.AddListener(action); return; }
         }
         Debug.LogError("[MMM] Button not found in " + parent.name + ": " + childName);
     }
@@ -383,15 +371,12 @@ public class MainMenuManager : MonoBehaviour
     void CacheResetLabel()
     {
         if (!settingsPanel) return;
-        var buttons = settingsPanel.GetComponentsInChildren<Button>(includeInactive: true);
-        foreach (var btn in buttons)
+        foreach (var btn in settingsPanel.GetComponentsInChildren<Button>(includeInactive: true))
         {
-            if (btn.gameObject.name == "ResetBtn")
-            {
-                var lbl = btn.transform.Find("Label");
-                if (lbl) _resetLbl = lbl.GetComponent<TMP_Text>();
-                break;
-            }
+            if (btn.gameObject.name != "ResetBtn") continue;
+            var lbl = btn.transform.Find("Label");
+            if (lbl) _resetLbl = lbl.GetComponent<TMP_Text>();
+            break;
         }
     }
 
@@ -447,7 +432,6 @@ public class MainMenuManager : MonoBehaviour
         };
         foreach (var k in keys) PlayerPrefs.DeleteKey(k);
         PlayerPrefs.Save();
-
         _resetPending = false;
         if (_resetLbl) _resetLbl.text = "All Progress Reset!";
         StartCoroutine(RestoreLabel(2.2f));
@@ -458,7 +442,7 @@ public class MainMenuManager : MonoBehaviour
 }
 
 // ============================================================
-//  SettingsManager  (placeholder — assign Sliders in Inspector)
+//  SettingsManager
 // ============================================================
 public class SettingsManager : MonoBehaviour
 {
@@ -478,7 +462,7 @@ public class SettingsManager : MonoBehaviour
 }
 
 // ============================================================
-//  DoorTrigger  (unchanged)
+//  DoorTrigger — UNCHANGED
 // ============================================================
 public class DoorTrigger : MonoBehaviour
 {
@@ -495,7 +479,7 @@ public class DoorTrigger : MonoBehaviour
 }
 
 // ============================================================
-//  SceneLoader  (unchanged)
+//  SceneLoader — UNCHANGED
 // ============================================================
 public class SceneLoader : MonoBehaviour
 {

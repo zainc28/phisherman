@@ -12,22 +12,8 @@ using UnityEngine.UI;
 /// Builds every interior dialogue scene in the game.
 /// Run via: Phisherman > Build Interior Scenes
 ///
-/// Each scene has:
-///   Intro dialogue → Choice (play / back)
-///   Post-win dialogue → return to world (completion marked)
-///   Post-lose dialogue → Retry panel (retry / give up)
-///
-/// WORLD 1 (existing, unchanged): ApartmentInterior, PizzaInterior, OfficeInterior
-/// WORLD 2 (new): FlatInterior, PizzaW2Interior, OfficeW2Interior
-/// WORLD 3 (existing, unchanged): AuntCarolInterior, UncleMarcusInterior, GrandpaLouInterior
-/// WORLD 4 (existing, unchanged): GrandmaIrisInterior, UncleFelixInterior, AuntDanaInterior
-/// WORLD 5 (existing, unchanged): GrandpaErnestInterior, AuntPriyaInterior, UncleDiegoInterior
-///
-/// Each world spreads across all three minigame types (EmailSwiper,
-/// TowerDefense, SpotDifference) and a different NPC sprite category
-/// (aunt/uncle/grandma/grandpa) so nothing repeats back-to-back.
-/// These scene names match WorldProgress.WorldRequirements exactly —
-/// keep them in sync if you rename anything here.
+/// CHANGE: Uncle Tony (PizzaInterior) now uses SpotDifference instead of EmailSwiper.
+/// All other worlds/scenes are UNCHANGED.
 /// </summary>
 public static class InteriorBuilder
 {
@@ -35,10 +21,10 @@ public static class InteriorBuilder
     public static void BuildAll()
     {
         // =====================================================================
-        // WORLD 1  (unchanged)
+        // WORLD 1
         // =====================================================================
 
-        // ── Apartment  (Grandma Rose → EmailSwiper) ───────────
+        // Grandma Rose → EmailSwiper (unchanged)
         BuildInterior(
             sceneName: "ApartmentInterior",
             bgName: "home_1_interior",
@@ -74,43 +60,43 @@ public static class InteriorBuilder
             }
         );
 
-        // ── Pizza Place  (Uncle Tony → EmailSwiper) ───────────
+        // CHANGED: Uncle Tony → SpotDifference (was EmailSwiper)
         BuildInterior(
             sceneName: "PizzaInterior",
             bgName: "pizza_interior",
             npcSpriteName: "uncle_1",
             npcName: "Uncle Tony",
-            minigame: "EmailSwiper",
+            minigame: "SpotDifference",
             returnScene: "WorldMap",
             accent: Hex("#FF6B6B"),
             introLines: new[]
             {
                 ("NPC",    "Hey, come in! I was just about to call you."),
                 ("Player", "What's up, Tony? You look stressed."),
-                ("NPC",    "The shop computer keeps getting pop-ups saying it's infected with a virus!"),
-                ("Player", "Let me guess — they want you to call a number and give remote access?"),
-                ("NPC",    "Exactly! They say they'll fix it for free. Seems fishy to me."),
-                ("Player", "Good instinct. That's a tech support scam. Never give access to someone who contacts you first."),
-                ("NPC",    "Can you check my inbox? There are some suspicious emails in there too."),
-                ("Player", "Absolutely. Let's sort through them together."),
+                ("NPC",    "I got two emails — both look like they're from Amazon, but something feels off about one of them."),
+                ("Player", "Smart instinct. Phishing emails copy the real thing almost perfectly."),
+                ("NPC",    "Can you go through both side-by-side and find what gives the fake one away?"),
+                ("Player", "That's exactly how you catch them. Let's compare every detail."),
+                ("NPC",    "My staff nearly clicked the link in one of them already."),
+                ("Player", "Good thing you stopped them. Let's find every red flag before anyone clicks anything."),
             },
             winLines: new[]
             {
-                ("NPC",    "Wow, you spotted every single one! That's impressive."),
-                ("Player", "Once you know the patterns, they're not hard to catch."),
-                ("NPC",    "The fake sender addresses were a dead giveaway, right?"),
-                ("Player", "Exactly. Real businesses never ask for login info by email."),
-                ("NPC",    "I'm sharing this with my staff. Thanks a million!"),
+                ("NPC",    "You spotted every single difference! I never would have caught that sender domain."),
+                ("Player", "The fake one replaces letters with numbers — 'amaz0n' instead of 'amazon'."),
+                ("NPC",    "And the link went somewhere completely different from what it said!"),
+                ("Player", "Always hover over links before clicking, and check the full sender address."),
+                ("NPC",    "I'm printing this out and putting it by every register. Thanks a million!"),
             },
             loseLines: new[]
             {
-                ("NPC",    "Hmm, a couple of those tripped you up, eh?"),
-                ("Player", "They were pretty convincing. Want me to try again?"),
-                ("NPC",    "Please! I need this place protected."),
+                ("NPC",    "Hmm, we missed a couple of those differences..."),
+                ("Player", "Phishing emails are designed to look convincing. Want to try again?"),
+                ("NPC",    "Please! I need to be sure before I show my staff."),
             }
         );
 
-        // ── Office  (Mrs. Patel → TowerDefense) ───────────────
+        // Mrs. Patel → TowerDefense (unchanged)
         BuildInterior(
             sceneName: "OfficeInterior",
             bgName: "office_interior",
@@ -147,10 +133,9 @@ public static class InteriorBuilder
         );
 
         // =====================================================================
-        // WORLD 2  —  Snow Town
+        // WORLD 2  (all unchanged)
         // =====================================================================
 
-        // ── Mr. Kowalski's flat  (pension scam emails → EmailSwiper) ──
         BuildInterior(
             sceneName: "FlatInterior",
             bgName: "home_1_interior",
@@ -186,7 +171,6 @@ public static class InteriorBuilder
             }
         );
 
-        // ── Nonna Bea's pizza shop  (fake supplier invoice flood → TowerDefense) ──
         BuildInterior(
             sceneName: "PizzaW2Interior",
             bgName: "pizza_interior",
@@ -222,7 +206,6 @@ public static class InteriorBuilder
             }
         );
 
-        // ── Mr. Frost's office  (compare real vs fake IT security email → SpotDifference) ──
         BuildInterior(
             sceneName: "OfficeW2Interior",
             bgName: "office_interior",
@@ -257,10 +240,9 @@ public static class InteriorBuilder
         );
 
         // =====================================================================
-        // WORLD 3  —  Urban Mobile Quarter
+        // WORLD 3 (all unchanged)
         // =====================================================================
 
-        // ── Aunt Carol's flat  (SMS/email mix → EmailSwiper) ──
         BuildInterior(
             sceneName: "AuntCarolInterior",
             bgName: "home_1_interior",
@@ -293,7 +275,6 @@ public static class InteriorBuilder
             }
         );
 
-        // ── Uncle Marcus's repair shop  (fake tech-support flood → TowerDefense) ──
         BuildInterior(
             sceneName: "UncleMarcusInterior",
             bgName: "pizza_interior",
@@ -326,7 +307,6 @@ public static class InteriorBuilder
             }
         );
 
-        // ── Grandpa Lou's place  (compare real vs fake bank email → SpotDifference) ──
         BuildInterior(
             sceneName: "GrandpaLouInterior",
             bgName: "home_1_interior",
@@ -360,10 +340,9 @@ public static class InteriorBuilder
         );
 
         // =====================================================================
-        // WORLD 4  —  Social Plaza
+        // WORLD 4 (all unchanged)
         // =====================================================================
 
-        // ── Grandma Iris's booth  (impersonation flood → TowerDefense) ──
         BuildInterior(
             sceneName: "GrandmaIrisInterior",
             bgName: "home_1_interior",
@@ -396,7 +375,6 @@ public static class InteriorBuilder
             }
         );
 
-        // ── Uncle Felix's stall  (compare fake vs real friend request → SpotDifference) ──
         BuildInterior(
             sceneName: "UncleFelixInterior",
             bgName: "office_interior",
@@ -429,7 +407,6 @@ public static class InteriorBuilder
             }
         );
 
-        // ── Aunt Dana's shop  (online shopping scam → EmailSwiper) ──
         BuildInterior(
             sceneName: "AuntDanaInterior",
             bgName: "home_1_interior",
@@ -463,10 +440,9 @@ public static class InteriorBuilder
         );
 
         // =====================================================================
-        // WORLD 5  —  The Inner Island (final world)
+        // WORLD 5 (all unchanged)
         // =====================================================================
 
-        // ── Grandpa Ernest's cabin  (sophisticated scam wave → EmailSwiper) ──
         BuildInterior(
             sceneName: "GrandpaErnestInterior",
             bgName: "office_interior",
@@ -499,7 +475,6 @@ public static class InteriorBuilder
             }
         );
 
-        // ── Aunt Priya's office  (crypto investment scam compare → SpotDifference) ──
         BuildInterior(
             sceneName: "AuntPriyaInterior",
             bgName: "office_interior",
@@ -532,7 +507,6 @@ public static class InteriorBuilder
             }
         );
 
-        // ── Uncle Diego's harbor house  (final gauntlet → TowerDefense) ──
         BuildInterior(
             sceneName: "UncleDiegoInterior",
             bgName: "pizza_interior",
@@ -567,11 +541,11 @@ public static class InteriorBuilder
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log("[InteriorBuilder] Built 15 interior scenes (World 1: 3, World 2: 3, World 3: 3, World 4: 3, World 5: 3).");
+        Debug.Log("[InteriorBuilder] Built 15 interior scenes.");
     }
 
     // =========================================================================
-    // Core builder
+    // Core builder — UNCHANGED
     // =========================================================================
     static void BuildInterior(
         string sceneName, string bgName, string npcSpriteName,
@@ -593,30 +567,24 @@ public static class InteriorBuilder
 
         LogFound(bgName, bgSpr); LogFound(npcSpriteName, npcSpr); LogFound("phisherman", phSpr);
 
-        // Camera
         var camGo = new GameObject("Main Camera"); camGo.tag = "MainCamera";
         var cam = camGo.AddComponent<Camera>(); camGo.AddComponent<AudioListener>();
         cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = Hex("#1A1A2E");
         cam.orthographic = true; cam.orthographicSize = 4.5f;
         camGo.transform.position = new Vector3(0, 0, -10);
 
-        // EventSystem
         var esGo = new GameObject("EventSystem"); esGo.AddComponent<EventSystem>(); esGo.AddComponent<StandaloneInputModule>();
 
-        // Canvas
         var canvasGo = new GameObject("Canvas"); var canvas = canvasGo.AddComponent<Canvas>(); canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         var scaler = canvasGo.AddComponent<CanvasScaler>(); scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize; scaler.referenceResolution = new Vector2(1920, 1080); scaler.matchWidthOrHeight = 0.5f;
         canvasGo.AddComponent<GraphicRaycaster>(); var canvasRT = canvasGo.GetComponent<RectTransform>();
 
-        // Background
         var bgImg = Img(canvasRT, "Background", bgSpr != null ? Color.white : Hex("#2A2438"));
         if (bgSpr != null) { bgImg.sprite = bgSpr; bgImg.preserveAspect = false; }
         Stretch(bgImg.rectTransform); bgImg.raycastTarget = false;
 
-        // Dim
         var dim = Img(canvasRT, "Dim", new Color(0, 0, 0, 0.30f)); Stretch(dim.rectTransform); dim.raycastTarget = false;
 
-        // NPC portrait (left)
         var npcImg = Img(canvasRT, "NPC_Portrait", Color.white);
         if (npcSpr != null) npcImg.sprite = npcSpr;
         npcImg.preserveAspect = true; npcImg.raycastTarget = false;
@@ -624,7 +592,6 @@ public static class InteriorBuilder
         npcRT.anchorMin = new Vector2(0, 0); npcRT.anchorMax = new Vector2(0.35f, 0.85f);
         npcRT.offsetMin = new Vector2(20, 220); npcRT.offsetMax = new Vector2(-10, -20);
 
-        // Phisherman portrait (right)
         var phImg = Img(canvasRT, "Player_Portrait", Color.white);
         if (phSpr != null) phImg.sprite = phSpr;
         phImg.preserveAspect = true; phImg.raycastTarget = false;
@@ -632,7 +599,6 @@ public static class InteriorBuilder
         phRT.anchorMin = new Vector2(0.65f, 0); phRT.anchorMax = new Vector2(1, 0.85f);
         phRT.offsetMin = new Vector2(10, 220); phRT.offsetMax = new Vector2(-20, -20);
 
-        // Dialogue panel (bottom 22%)
         var dp = Img(canvasRT, "DialoguePanel", new Color(0.06f, 0.08f, 0.16f, 0.94f));
         var dpRT = dp.rectTransform;
         dpRT.anchorMin = new Vector2(0, 0); dpRT.anchorMax = new Vector2(1, 0.22f); dpRT.offsetMin = dpRT.offsetMax = Vector2.zero;
@@ -652,41 +618,33 @@ public static class InteriorBuilder
         var hintTxt = Txt(dpRT, "Hint", "Tap to continue...", 18, new Color(1, 1, 1, 0.45f), TextAlignmentOptions.MidlineRight);
         var htRT = hintTxt.rectTransform; htRT.anchorMin = new Vector2(0, 0); htRT.anchorMax = new Vector2(1, 0); htRT.pivot = new Vector2(0.5f, 0); htRT.sizeDelta = new Vector2(0, 32); htRT.anchoredPosition = new Vector2(0, 6);
 
-        // Full-screen advance button
         var advGo = new GameObject("AdvanceBtn", typeof(RectTransform)); advGo.transform.SetParent(canvasRT, false); Stretch(advGo.GetComponent<RectTransform>());
         var advImg2 = advGo.AddComponent<Image>(); advImg2.color = new Color(0, 0, 0, 0); advImg2.raycastTarget = true;
         var advBtn = advGo.AddComponent<Button>(); advBtn.targetGraphic = advImg2;
 
-        // ── Choice panel (pre-minigame) ───────────────────────
         var choicePanel = MakeButtonPanel(dpRT, "ChoicePanel");
         var playBtn = MakeSmallButton(choicePanel.GetComponent<RectTransform>(), "PlayBtn", "Let's do it!", 26, Hex("#2ECC71"), Color.white, new Vector2(0, 0), new Vector2(0.48f, 1));
         var backBtn = MakeSmallButton(choicePanel.GetComponent<RectTransform>(), "BackBtn", "Maybe later", 26, Hex("#636E72"), Color.white, new Vector2(0.52f, 0), new Vector2(1, 1));
 
-        // ── Retry panel (post-lose) ───────────────────────────
         var retryPanel = MakeButtonPanel(dpRT, "RetryPanel");
         var retryBtn = MakeSmallButton(retryPanel.GetComponent<RectTransform>(), "RetryBtn", "Try again!", 26, Hex("#FF9F1C"), Color.white, new Vector2(0, 0), new Vector2(0.48f, 1));
         var giveUpBtn = MakeSmallButton(retryPanel.GetComponent<RectTransform>(), "GiveUpBtn", "Give up", 26, Hex("#636E72"), Color.white, new Vector2(0.52f, 0), new Vector2(1, 1));
 
-        // ── Manager ───────────────────────────────────────────
         var mgrGo = new GameObject("DialogueManager"); var mgr = mgrGo.AddComponent<InteriorDialogueManager>();
         mgr.npcName = npcName;
         mgr.npcSprite = npcSpr;
         mgr.minigameScene = minigame;
         mgr.returnScene = returnScene;
-
         mgr.dialoguePanel = dp.gameObject;
         mgr.speakerNameText = speakerTxt;
         mgr.dialogueBodyText = bodyTxt;
         mgr.continueHint = hintTxt;
-
         mgr.choicePanel = choicePanel;
         mgr.playButton = playBtn.GetComponent<Button>();
         mgr.backButton = backBtn.GetComponent<Button>();
-
         mgr.retryPanel = retryPanel;
         mgr.retryButton = retryBtn.GetComponent<Button>();
         mgr.giveUpButton = giveUpBtn.GetComponent<Button>();
-
         mgr.advanceButton = advBtn;
         mgr.npcPortrait = npcImg;
         mgr.playerPortrait = phImg;
@@ -698,26 +656,21 @@ public static class InteriorBuilder
         if (phTalk1 != null) talks.Add(phTalk1); if (phTalk2 != null) talks.Add(phTalk2); if (phTalk3 != null) talks.Add(phTalk3);
         mgr.phishermanTalkFrames = talks.ToArray(); mgr.talkFps = 6f;
 
-        // Dialogue arrays
         mgr.introLines = ToLines(introLines);
         mgr.winLines = ToLines(winLines);
         mgr.loseLines = ToLines(loseLines);
 
-        // Wire all buttons
         UnityEventTools.AddPersistentListener(advBtn.onClick, mgr.AdvanceLine);
         UnityEventTools.AddPersistentListener(playBtn.GetComponent<Button>().onClick, mgr.OnPlay);
         UnityEventTools.AddPersistentListener(backBtn.GetComponent<Button>().onClick, mgr.OnBack);
         UnityEventTools.AddPersistentListener(retryBtn.GetComponent<Button>().onClick, mgr.OnRetry);
         UnityEventTools.AddPersistentListener(giveUpBtn.GetComponent<Button>().onClick, mgr.OnGiveUp);
 
-        // Save
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, scenePath);
         AddToBuild(scenePath);
         Debug.Log($"[InteriorBuilder] Built → {scenePath}");
     }
-
-    // ── Helpers ───────────────────────────────────────────────
 
     static InteriorDialogueManager.DialogueLine[] ToLines((string speaker, string text)[] raw)
     {
@@ -727,7 +680,6 @@ public static class InteriorBuilder
         return arr;
     }
 
-    /// Creates a horizontal button-pair container pinned to the bottom of the dialogue panel.
     static GameObject MakeButtonPanel(RectTransform parent, string name)
     {
         var go = new GameObject(name, typeof(RectTransform)); go.transform.SetParent(parent, false);

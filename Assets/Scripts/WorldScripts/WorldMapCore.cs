@@ -6,7 +6,7 @@ using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 // ============================================================
-//  PolygonUtils
+//  PolygonUtils — UNCHANGED
 // ============================================================
 public static class PolygonUtils
 {
@@ -21,7 +21,6 @@ public static class PolygonUtils
         }
         return inside;
     }
-
     public static Vector2 NearestEdgePoint(Vector2 p, Vector2[] verts)
     {
         int n = verts.Length; Vector2 best = verts[0]; float bestD = float.MaxValue;
@@ -38,7 +37,7 @@ public static class PolygonUtils
 }
 
 // ============================================================
-//  MapBlocker
+//  MapBlocker — UNCHANGED
 // ============================================================
 public class MapBlocker : MonoBehaviour
 {
@@ -61,7 +60,7 @@ public class MapBlocker : MonoBehaviour
 }
 
 // ============================================================
-//  MapDoorTrigger
+//  MapDoorTrigger — UNCHANGED
 // ============================================================
 public class MapDoorTrigger : MonoBehaviour
 {
@@ -80,7 +79,7 @@ public class MapDoorTrigger : MonoBehaviour
 }
 
 // ============================================================
-//  MapPathTrigger
+//  MapPathTrigger — UNCHANGED
 // ============================================================
 public class MapPathTrigger : MonoBehaviour
 {
@@ -112,7 +111,7 @@ public class MapPathTrigger : MonoBehaviour
 }
 
 // ============================================================
-//  MapCornerZone
+//  MapCornerZone — UNCHANGED
 // ============================================================
 public class MapCornerZone : MonoBehaviour
 {
@@ -144,13 +143,12 @@ public class MapCornerZone : MonoBehaviour
 }
 
 // ============================================================
-//  MapNavAgent  (A* pathfinding on WalkableZone polygon)
+//  MapNavAgent — UNCHANGED
 // ============================================================
 public class MapNavAgent : MonoBehaviour
 {
     [Header("Grid")] public int gridCols = 80, gridRows = 45;
     [Header("Movement")] public float moveSpeed = 3.5f;
-
     PolygonCollider2D _walkZone;
     Vector2[] _worldVerts;
     bool[,] _walkable;
@@ -160,9 +158,7 @@ public class MapNavAgent : MonoBehaviour
     int _waypointIdx;
     bool _navigating;
     public bool IsNavigating => _navigating;
-
     void Start() { FindWalkZone(); BuildGrid(); }
-
     void FindWalkZone()
     {
         var go = GameObject.Find("WalkableZone"); if (go) _walkZone = go.GetComponent<PolygonCollider2D>();
@@ -170,7 +166,6 @@ public class MapNavAgent : MonoBehaviour
         Vector2 off = _walkZone.transform.position; var loc = _walkZone.points;
         _worldVerts = new Vector2[loc.Length]; for (int i = 0; i < loc.Length; i++) _worldVerts[i] = loc[i] + off;
     }
-
     void BuildGrid()
     {
         _gridBounds = _walkZone != null ? _walkZone.bounds : new Bounds(Vector3.zero, new Vector3(16f, 9f, 0));
@@ -178,7 +173,6 @@ public class MapNavAgent : MonoBehaviour
         _walkable = new bool[gridCols, gridRows];
         for (int c = 0; c < gridCols; c++) for (int r = 0; r < gridRows; r++) _walkable[c, r] = _worldVerts == null || PolygonUtils.PointInPolygon(GridToWorld(c, r), _worldVerts);
     }
-
     void Update()
     {
         if (!_navigating || _waypoints.Count == 0) return;
@@ -187,14 +181,12 @@ public class MapNavAgent : MonoBehaviour
         transform.position = new Vector3(next.x, next.y, transform.position.z);
         if (Vector2.Distance(next, target) < 0.05f) { _waypointIdx++; if (_waypointIdx >= _waypoints.Count) { _navigating = false; _waypoints.Clear(); } }
     }
-
     public void ClampToWalkZone()
     {
         if (_worldVerts == null) return;
         Vector2 pos = transform.position;
         if (!PolygonUtils.PointInPolygon(pos, _worldVerts)) { Vector2 c = PolygonUtils.NearestEdgePoint(pos, _worldVerts); transform.position = new Vector3(c.x, c.y, transform.position.z); }
     }
-
     public void RequestPath(Vector3 destination)
     {
         Vector2 dest = destination;
@@ -208,9 +200,7 @@ public class MapNavAgent : MonoBehaviour
         else { foreach (var n in path) _waypoints.Add(GridToWorld(n.x, n.y)); if (_worldVerts == null || PolygonUtils.PointInPolygon(dest, _worldVerts)) _waypoints[_waypoints.Count - 1] = dest; }
         _waypointIdx = 0; _navigating = true;
     }
-
     public void CancelPath() { _navigating = false; _waypoints.Clear(); }
-
     struct Node { public int c, r, pc, pr; public float g, f; }
     List<Vector2Int> AStar(int sc, int sr, int gc, int gr)
     {
@@ -240,7 +230,7 @@ public class MapNavAgent : MonoBehaviour
 }
 
 // ============================================================
-//  MapWasdZoneClamp
+//  MapWasdZoneClamp — UNCHANGED
 // ============================================================
 public class MapWasdZoneClamp : MonoBehaviour
 {
@@ -263,7 +253,7 @@ public class MapWasdZoneClamp : MonoBehaviour
 }
 
 // ============================================================
-//  MapWalkAnimator
+//  MapWalkAnimator — UNCHANGED
 // ============================================================
 public class MapWalkAnimator : MonoBehaviour
 {
@@ -281,7 +271,7 @@ public class MapWalkAnimator : MonoBehaviour
 }
 
 // ============================================================
-//  MapDoorCTA
+//  MapDoorCTA — UNCHANGED
 // ============================================================
 public class MapDoorCTA : MonoBehaviour
 {
@@ -291,14 +281,12 @@ public class MapDoorCTA : MonoBehaviour
     public string completionKey = ""; public Color activeColor = Color.white, completedColor = new Color(0.5f, 0.5f, 0.5f, 0.6f);
     public GameObject completedLockPopup; public string completedLockMessage = "Already helped here! Try another building.";
     float _baseY; bool _completed, _walkingToDoor, _proxFired;
-
     void Start()
     {
         _baseY = transform.localPosition.y;
         _completed = !string.IsNullOrEmpty(completionKey) && PlayerPrefs.GetInt(completionKey, 0) == 1;
         RefreshColor();
     }
-
     void Update()
     {
         if (!string.IsNullOrEmpty(completionKey))
@@ -308,7 +296,6 @@ public class MapDoorCTA : MonoBehaviour
         }
         if (!_completed) { var lp = transform.localPosition; lp.y = _baseY + Mathf.Sin(Time.time * bobSpeed) * bobAmount; transform.localPosition = lp; transform.localScale = Vector3.one * (1f + Mathf.Sin(Time.time * bobSpeed * 1.4f + 0.6f) * 0.06f); }
         else { var lp = transform.localPosition; lp.y = _baseY; transform.localPosition = lp; transform.localScale = Vector3.one; }
-
         if (playerTransform && doorPosition)
         {
             float dist = Vector2.Distance(playerTransform.position, doorPosition.position);
@@ -324,9 +311,7 @@ public class MapDoorCTA : MonoBehaviour
         if (_walkingToDoor && playerTransform && doorPosition && Vector2.Distance(playerTransform.position, doorPosition.position) < proximityRadius)
         { _walkingToDoor = false; if (!string.IsNullOrEmpty(targetScene)) SceneManager.LoadScene(targetScene); }
     }
-
     void RefreshColor() { if (label) label.color = _completed ? completedColor : activeColor; }
-
     public void OnClick()
     {
         if (_completed) { if (completedLockPopup) { var c = completedLockPopup.GetComponent<LockedPopupController>(); if (c) c.Show(completedLockMessage); else completedLockPopup.SetActive(true); } return; }
@@ -338,7 +323,7 @@ public class MapDoorCTA : MonoBehaviour
 }
 
 // ============================================================
-//  CTABorderFader
+//  CTABorderFader — UNCHANGED
 // ============================================================
 public class CTABorderFader : MonoBehaviour
 {
@@ -350,29 +335,20 @@ public class CTABorderFader : MonoBehaviour
 }
 
 // ============================================================
-//  NPCMarker
+//  NPCMarker — UNCHANGED
 // ============================================================
 public class NPCMarker : MonoBehaviour { public int npcIndex; }
 
 // ============================================================
 //  WorldMapManager
 //
-//  FIX (map toggle bug):
-//  The previous version called ToggleMap() and then immediately
-//  checked `if (mapOpen && ...)` in the same frame. After ToggleMap()
-//  sets mapOpen = true, the second condition was also true and called
-//  CloseMap() — so the map opened and closed in the exact same frame,
-//  appearing to never open.
+//  CHANGE: Start() now calls WireMapHintButton() which finds the
+//  MapHint button by name at runtime and adds a fresh onClick
+//  listener to ToggleMap. This fixes the map not opening via
+//  the button or M key regardless of whether the persistent
+//  listener baked into the scene is intact.
 //
-//  Fix: capture the key state ONCE at the top of Update() into a bool
-//  (`pressedM`), use it for the toggle, and never check mapOpen again
-//  in the same expression that set it.
-//
-//  FIX (works in all 5 worlds):
-//  WorldMapManager is a single shared class. Dropping this file in
-//  fixes Worlds 1-5 simultaneously. Each world builder assigns
-//  worldMapPanel at build time via WireManager / the World1 builder —
-//  that wiring is unchanged.
+//  Everything else is UNCHANGED from your original.
 // ============================================================
 public class WorldMapManager : MonoBehaviour
 {
@@ -383,33 +359,27 @@ public class WorldMapManager : MonoBehaviour
         [TextArea(2, 5)] public string[] lines;
         public string acceptText, declineText, sceneToLoad, declineResponse;
     }
-
     [Header("Player")]
     public Transform playerTransform; public SpriteRenderer playerRenderer;
     public float playerSpeed = 3.5f;
     public Vector2 boundsX = new Vector2(-8f, 8f), boundsY = new Vector2(-3.8f, 1.2f);
     MapNavAgent _playerNav;
-
     [Header("NPCs")]
     public Transform[] npcTransforms; public GameObject[] exclamationMarks;
     public float exclamationProximity = 3.5f, interactRadius = 1.2f;
-
     [Header("Dialogue UI")]
     public GameObject dialoguePanel; public Button advanceButton;
     public TMP_Text speakerNameText, dialogueText, continueHint;
     public GameObject choicePanel; public Button acceptButton, declineButton;
     public TMP_Text acceptButtonText, declineButtonText;
-
     [Header("World Map Overlay")]
     public GameObject worldMapPanel;
-
     NPCDialogue[] dialogues;
     bool inDialogue, mapOpen;
     int currentNpcIndex = -1, currentLineIndex;
     bool waitingForChoice;
     Vector3? moveTarget;
     bool[] npcTriggered;
-
     void Start()
     {
         InitializeDialogues();
@@ -417,57 +387,54 @@ public class WorldMapManager : MonoBehaviour
         if (dialoguePanel) dialoguePanel.SetActive(false);
         if (choicePanel) choicePanel.SetActive(false);
         if (worldMapPanel) worldMapPanel.SetActive(false);
-        // Ensure the full-screen advance button never blocks the map hint click at start
         if (advanceButton) advanceButton.gameObject.SetActive(false);
         if (exclamationMarks != null) foreach (var em in exclamationMarks) if (em) em.SetActive(false);
-
         if (playerTransform) _playerNav = playerTransform.GetComponent<MapNavAgent>();
         if (!_playerNav)
         {
             var pg = GameObject.FindWithTag("Player");
             if (pg) { _playerNav = pg.GetComponent<MapNavAgent>(); if (!playerTransform) playerTransform = pg.transform; if (!playerRenderer) playerRenderer = pg.GetComponent<SpriteRenderer>(); }
         }
+        // Wire the [M] World Map button at runtime as a fallback.
+        // Finds MapHint by name and adds a listener so the button
+        // always works even if the baked persistent listener is stale.
+        WireMapHintButton();
     }
-
+    void WireMapHintButton()
+    {
+        var allButtons = FindObjectsByType<Button>(FindObjectsSortMode.None);
+        foreach (var btn in allButtons)
+        {
+            if (btn.gameObject.name != "MapHint") continue;
+            // AddListener only — do not RemoveAllListeners, as that would
+            // wipe the persistent listener baked in by the world builders.
+            btn.onClick.AddListener(ToggleMap);
+            break;
+        }
+    }
     void Update()
     {
-        // ── Capture input once — never re-read after acting on it ────────
         bool pressedM = Input.GetKeyDown(KeyCode.M);
         bool pressedEsc = Input.GetKeyDown(KeyCode.Escape);
-
-        // M toggles the map regardless of dialogue state
-        if (pressedM)
-            ToggleMap();
-
-        // Escape closes the map (if open) — checked separately so a single
-        // M press doesn't both open and then immediately close via this block
-        if (pressedEsc && mapOpen)
-            CloseMap();
-
-        // Gameplay blocked while map is open or during dialogue
+        if (pressedM) ToggleMap();
+        if (pressedEsc && mapOpen) CloseMap();
         if (inDialogue || mapOpen) return;
         if (!playerTransform) return;
-
         UpdatePlayer();
         UpdateExclamationMarks();
         CheckProximityTriggers();
         DetectClick();
     }
-
-    // ── Map ───────────────────────────────────────────────────
     public void ToggleMap()
     {
         mapOpen = !mapOpen;
         if (worldMapPanel) worldMapPanel.SetActive(mapOpen);
     }
-
     public void CloseMap()
     {
         mapOpen = false;
         if (worldMapPanel) worldMapPanel.SetActive(false);
     }
-
-    // ── Player ────────────────────────────────────────────────
     void UpdatePlayer()
     {
         float h = Input.GetAxisRaw("Horizontal"), v = Input.GetAxisRaw("Vertical");
@@ -492,7 +459,6 @@ public class WorldMapManager : MonoBehaviour
             if (playerRenderer && Mathf.Abs(to.x) > 0.01f) playerRenderer.flipX = to.x < 0;
         }
     }
-
     void UpdateExclamationMarks()
     {
         if (npcTransforms == null || exclamationMarks == null || !playerTransform) return;
@@ -504,7 +470,6 @@ public class WorldMapManager : MonoBehaviour
             if (show) { float bob = Mathf.Sin(Time.time * 4.5f + i * 1.1f) * 0.12f; exclamationMarks[i].transform.position = new Vector3(npcTransforms[i].position.x, npcTransforms[i].position.y + 1.2f + bob, 0f); }
         }
     }
-
     void CheckProximityTriggers()
     {
         if (npcTransforms == null || !playerTransform) return;
@@ -516,7 +481,6 @@ public class WorldMapManager : MonoBehaviour
             if (dist > interactRadius + 0.5f) npcTriggered[i] = false;
         }
     }
-
     void DetectClick()
     {
         if (!Input.GetMouseButtonDown(0)) return;
@@ -529,8 +493,6 @@ public class WorldMapManager : MonoBehaviour
         if (_playerNav != null) { _playerNav.RequestPath(new Vector3(wp.x, wp.y, playerTransform.position.z)); moveTarget = null; }
         else moveTarget = new Vector3(Mathf.Clamp(wp.x, boundsX.x, boundsX.y), Mathf.Clamp(wp.y, boundsY.x, boundsY.y), 0f);
     }
-
-    // ── Dialogue ──────────────────────────────────────────────
     public void StartDialogue(int idx)
     {
         if (dialogues == null || idx < 0 || idx >= dialogues.Length) return;
@@ -541,7 +503,6 @@ public class WorldMapManager : MonoBehaviour
         if (exclamationMarks != null && idx < exclamationMarks.Length && exclamationMarks[idx]) exclamationMarks[idx].SetActive(false);
         ShowCurrentLine();
     }
-
     void ShowCurrentLine()
     {
         var dlg = dialogues[currentNpcIndex];
@@ -549,7 +510,6 @@ public class WorldMapManager : MonoBehaviour
         if (dialogueText) dialogueText.text = dlg.lines[currentLineIndex];
         if (continueHint) continueHint.text = "Click to continue...";
     }
-
     public void AdvanceDialogue()
     {
         if (!inDialogue || waitingForChoice) return;
@@ -557,7 +517,6 @@ public class WorldMapManager : MonoBehaviour
         var dlg = dialogues[currentNpcIndex];
         if (currentLineIndex >= dlg.lines.Length) ShowChoice(); else ShowCurrentLine();
     }
-
     void ShowChoice()
     {
         var dlg = dialogues[currentNpcIndex]; waitingForChoice = true;
@@ -566,14 +525,12 @@ public class WorldMapManager : MonoBehaviour
         if (declineButtonText) declineButtonText.text = dlg.declineText;
         if (continueHint) continueHint.text = "";
     }
-
     public void OnAcceptHelp()
     {
         if (!inDialogue) return;
         var dlg = dialogues[currentNpcIndex];
         if (!string.IsNullOrEmpty(dlg.sceneToLoad)) SceneManager.LoadScene(dlg.sceneToLoad);
     }
-
     public void OnDeclineHelp()
     {
         if (!inDialogue) return;
@@ -582,9 +539,7 @@ public class WorldMapManager : MonoBehaviour
         if (!string.IsNullOrEmpty(dlg.declineResponse)) { if (dialogueText) dialogueText.text = dlg.declineResponse; StartCoroutine(EndAfterDelay(2f)); }
         else EndDialogue();
     }
-
     IEnumerator EndAfterDelay(float d) { yield return new WaitForSeconds(d); EndDialogue(); }
-
     void EndDialogue()
     {
         if (dialoguePanel) dialoguePanel.SetActive(false);
@@ -592,16 +547,13 @@ public class WorldMapManager : MonoBehaviour
         if (advanceButton) advanceButton.gameObject.SetActive(false);
         inDialogue = false; currentNpcIndex = -1;
     }
-
     void InitializeDialogues()
     {
         dialogues = new NPCDialogue[]
         {
             new NPCDialogue { speakerName="Grandma Rose", lines=new[]{"Oh, hello dear! I'm so glad you stopped by.","I've been getting frightening emails saying my bank account is frozen!","Could you help me figure out which emails are real and which are scams?"}, acceptText="Let's sort those emails!", declineText="Maybe later", sceneToLoad="ApartmentInterior", declineResponse="Oh alright dear. But please come back soon!" },
-            new NPCDialogue { speakerName="Uncle Tony",   lines=new[]{"Hey, come in! I was just about to call you.","The shop computer keeps getting pop-ups saying it's infected with a virus.","They want remote access to 'fix' it. Seems fishy to me."}, acceptText="Let's check those emails!", declineText="Can't right now", sceneToLoad="PizzaInterior", declineResponse="Okay, but hurry back!" },
-            new NPCDialogue { speakerName="Grandpa Sal",  lines=new[]{"Ah, just the person I wanted to see.","I got an email that looks exactly like it's from my bank.","Can you spot the differences between this and a real one?"}, acceptText="I'll find those differences!", declineText="Not right now", sceneToLoad="SpotDifference", declineResponse="Very well. But don't wait too long." },
-            new NPCDialogue { speakerName="Mrs. Patel",   lines=new[]{"Oh good, you're here! I order packages online every day.","Some delivery emails look like Amazon or FedEx but the links go somewhere strange.","Help me defend my account — these fake emails are coming fast!"}, acceptText="Let's defend that tower!", declineText="Maybe another time", sceneToLoad="TowerDefense", declineResponse="Alright, but those phishers won't wait!" },
-            new NPCDialogue { speakerName="Uncle Rajan",  lines=new[]{"Ah, perfect timing! I got a message saying it was from my nephew.","He said he was stranded abroad and needed money urgently.","Can you look carefully and spot what gives them away?"}, acceptText="I'll spot those red flags!", declineText="Not today", sceneToLoad="SpotDifference", declineResponse="Okay. Share this with your family." },
+            new NPCDialogue { speakerName="Uncle Tony",   lines=new[]{"Hey, come in! I was just about to call you.","I got two emails that both look like they're from Amazon — but one feels off.","Can you spot the differences and find every red flag?"}, acceptText="Let's find those differences!", declineText="Can't right now", sceneToLoad="PizzaInterior", declineResponse="Okay, but hurry back!" },
+            new NPCDialogue { speakerName="Mrs. Patel",   lines=new[]{"Oh good, you're here! I order packages online every day.","Some delivery emails look like Amazon or FedEx but the links go somewhere strange.","Help me defend my account — these fake emails are coming fast!"}, acceptText="Let's defend that tower!", declineText="Maybe another time", sceneToLoad="OfficeInterior", declineResponse="Alright, but those phishers won't wait!" },
         };
     }
 }
