@@ -632,20 +632,20 @@ public static class InteriorBuilder
         phRT.anchorMin = new Vector2(0.65f, 0); phRT.anchorMax = new Vector2(1, 0.85f);
         phRT.offsetMin = new Vector2(10, 220); phRT.offsetMax = new Vector2(-20, -20);
 
-        // Dialogue panel (bottom 22%)
+        // Dialogue panel (bottom 22% * 1.20 = 26.4% — Task 4A: taller to fit larger text)
         var dp = Img(canvasRT, "DialoguePanel", new Color(0.06f, 0.08f, 0.16f, 0.94f));
         var dpRT = dp.rectTransform;
-        dpRT.anchorMin = new Vector2(0, 0); dpRT.anchorMax = new Vector2(1, 0.22f); dpRT.offsetMin = dpRT.offsetMax = Vector2.zero;
+        dpRT.anchorMin = new Vector2(0, 0); dpRT.anchorMax = new Vector2(1, 0.264f); dpRT.offsetMin = dpRT.offsetMax = Vector2.zero;
 
         var dbord = Img(dpRT, "Border", accent); var dbrRT = dbord.rectTransform;
         dbrRT.anchorMin = new Vector2(0, 1); dbrRT.anchorMax = new Vector2(1, 1); dbrRT.pivot = new Vector2(0.5f, 1); dbrRT.sizeDelta = new Vector2(0, 4); dbord.raycastTarget = false;
 
         var nameBar = Img(dpRT, "NameBar", new Color(accent.r, accent.g, accent.b, 0.25f)); var nbRT = nameBar.rectTransform;
         nbRT.anchorMin = new Vector2(0, 1); nbRT.anchorMax = new Vector2(0.30f, 1); nbRT.pivot = new Vector2(0, 1); nbRT.sizeDelta = new Vector2(0, 44);
-        var speakerTxt = Txt(nbRT, "SpeakerName", npcName, 28, accent, TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
+        var speakerTxt = Txt(nbRT, "SpeakerName", npcName, 26, accent, TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
         Stretch(speakerTxt.rectTransform); speakerTxt.rectTransform.offsetMin = new Vector2(16, 0);
 
-        var bodyTxt = Txt(dpRT, "BodyText", "...", 24, Color.white, TextAlignmentOptions.TopLeft);
+        var bodyTxt = Txt(dpRT, "BodyText", "...", 22, Color.white, TextAlignmentOptions.TopLeft);
         bodyTxt.textWrappingMode = TextWrappingModes.Normal;
         var btRT = bodyTxt.rectTransform; btRT.anchorMin = Vector2.zero; btRT.anchorMax = Vector2.one; btRT.offsetMin = new Vector2(24, 40); btRT.offsetMax = new Vector2(-24, -52);
 
@@ -659,13 +659,13 @@ public static class InteriorBuilder
 
         // ── Choice panel (pre-minigame) ───────────────────────
         var choicePanel = MakeButtonPanel(dpRT, "ChoicePanel");
-        var playBtn = MakeSmallButton(choicePanel.GetComponent<RectTransform>(), "PlayBtn", "Let's do it!", 26, Hex("#2ECC71"), Color.white, new Vector2(0, 0), new Vector2(0.48f, 1));
-        var backBtn = MakeSmallButton(choicePanel.GetComponent<RectTransform>(), "BackBtn", "Maybe later", 26, Hex("#636E72"), Color.white, new Vector2(0.52f, 0), new Vector2(1, 1));
+        var playBtn = MakeSmallButton(choicePanel.GetComponent<RectTransform>(), "PlayBtn", "Let's do it!", 22, Hex("#2ECC71"), Color.white, new Vector2(0, 0), new Vector2(0.48f, 1));
+        var backBtn = MakeSmallButton(choicePanel.GetComponent<RectTransform>(), "BackBtn", "Maybe later", 22, Hex("#636E72"), Color.white, new Vector2(0.52f, 0), new Vector2(1, 1));
 
         // ── Retry panel (post-lose) ───────────────────────────
         var retryPanel = MakeButtonPanel(dpRT, "RetryPanel");
-        var retryBtn = MakeSmallButton(retryPanel.GetComponent<RectTransform>(), "RetryBtn", "Try again!", 26, Hex("#FF9F1C"), Color.white, new Vector2(0, 0), new Vector2(0.48f, 1));
-        var giveUpBtn = MakeSmallButton(retryPanel.GetComponent<RectTransform>(), "GiveUpBtn", "Give up", 26, Hex("#636E72"), Color.white, new Vector2(0.52f, 0), new Vector2(1, 1));
+        var retryBtn = MakeSmallButton(retryPanel.GetComponent<RectTransform>(), "RetryBtn", "Try again!", 22, Hex("#FF9F1C"), Color.white, new Vector2(0, 0), new Vector2(0.48f, 1));
+        var giveUpBtn = MakeSmallButton(retryPanel.GetComponent<RectTransform>(), "GiveUpBtn", "Give up", 22, Hex("#636E72"), Color.white, new Vector2(0.52f, 0), new Vector2(1, 1));
 
         // ── Manager ───────────────────────────────────────────
         var mgrGo = new GameObject("DialogueManager"); var mgr = mgrGo.AddComponent<InteriorDialogueManager>();

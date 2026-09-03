@@ -164,6 +164,24 @@ public class EmailSwiperManager : MonoBehaviour
     private Email[] emails;
     private int _worldTheme = 1;
 
+    // ===================================================================
+    //  Per-world theme chrome (Task 3) — built once in Start(), toggled by
+    //  world rather than per-card since the world theme is fixed for the
+    //  whole session.
+    // ===================================================================
+    Image _chromeDotRed, _chromeDotYellow, _chromeDotGreen;
+    TMP_Text _forumTimestamp;
+
+    Image _phoneHeaderBar;
+    TMP_Text _phoneHeaderText, _deliveredText;
+    Transform _chatBubbleContainer;
+    readonly List<GameObject> _chatBubbleObjs = new List<GameObject>();
+
+    TMP_Text _socialTimestamp;
+
+    Image _securityBanner, _securityGlow;
+    TMP_Text _securityBannerText, _watermarkText;
+
     // iMessage colors
     static readonly Color iMsgBubbleIn = new Color(0.90f, 0.90f, 0.92f);
     static readonly Color iMsgBubbleOut = new Color(0.00f, 0.48f, 1.00f);
@@ -177,7 +195,7 @@ public class EmailSwiperManager : MonoBehaviour
     static readonly Color FBMuted = new Color(0.40f, 0.40f, 0.45f);
 
     // Website colors
-    static readonly Color WebBg = new Color(0.97f, 0.97f, 1.00f);
+    static readonly Color WebBg = new Color(0.961f, 0.961f, 0.961f); // #f5f5f5
 
     // SMS / Social legacy
     static readonly Color SMSBg = new Color(0.96f, 0.96f, 0.98f);
@@ -206,6 +224,8 @@ public class EmailSwiperManager : MonoBehaviour
             case 5: InitializeCombinedContent(); break;
             default: InitializeEmails(); break;
         }
+
+        BuildThemeChrome();
 
         score = 0; streak = 0; cracks = 0;
         correctCount = 0; wonEarly = false;
@@ -331,7 +351,7 @@ public class EmailSwiperManager : MonoBehaviour
         currentIndex = idx;
         var e = emails[idx];
         ApplyCardLayout(e);
-        ApplyRandomBorderTheme();
+        ApplyThemeBorder();
         if (cardCanvasGroup != null) cardCanvasGroup.alpha = 1f;
         swipeCard.ResetPosition();
         swipeCard.Unlock();
@@ -348,14 +368,225 @@ public class EmailSwiperManager : MonoBehaviour
             case CardLayout.Website: ApplyWebsiteLayout(e); break;
             default: ApplyEmailLayout(e); break;
         }
+        if (_worldTheme == 5) ApplySecurityChrome(e);
+    }
+
+    // ===================================================================
+    //  Theme chrome (Task 3) — built once here since the world theme is
+    //  fixed for the whole session; per-card content (URL text, phone
+    //  header sender, chat bubbles, banner wording) still updates inside
+    //  the relevant ApplyXLayout method on every LoadCard.
+    // ===================================================================
+    void BuildThemeChrome()
+    {
+        var crt = cardBorderRT; // the 620x660 EmailCard rect built by EmailSwiperBuilder
+        if (crt == null) return;
+
+        if (_worldTheme == 2)
+        {
+            // Browser chrome dots — sit in the gap between the border stripe
+            // and the avatar row, top-left.
+            (float x, Color col)[] dots = { (20, new Color(1.00f, 0.373f, 0.341f)), (38, new Color(1.00f, 0.741f, 0.180f)), (56, new Color(0.157f, 0.784f, 0.251f)) };
+            Image[] dotImgs = new Image[3];
+            for (int i = 0; i < 3; i++)
+            {
+                var img = MakeImage(crt, "ChromeDot" + i, dots[i].col);
+                var rt = img.rectTransform; rt.anchorMin = rt.anchorMax = new Vector2(0, 1); rt.pivot = new Vector2(0, 1);
+                rt.sizeDelta = new Vector2(12, 12); rt.anchoredPosition = new Vector2(dots[i].x, -18);
+                dotImgs[i] = img;
+            }
+            _chromeDotRed = dotImgs[0]; _chromeDotYellow = dotImgs[1]; _chromeDotGreen = dotImgs[2];
+
+            _forumTimestamp = MakeText(crt, "ForumTimestamp", "", 13, FBMuted, TextAlignmentOptions.MidlineRight);
+            var ftrt = _forumTimestamp.rectTransform; ftrt.anchorMin = ftrt.anchorMax = new Vector2(1, 1); ftrt.pivot = new Vector2(1, 1);
+            ftrt.sizeDelta = new Vector2(140, 20); ftrt.anchoredPosition = new Vector2(-20, -18);
+        }
+        else if (_worldTheme == 3)
+        {
+            _phoneHeaderBar = MakeImage(crt, "PhoneHeaderBar", new Color(0.11f, 0.11f, 0.12f));
+            var hbrt = _phoneHeaderBar.rectTransform; hbrt.anchorMin = new Vector2(0, 1); hbrt.anchorMax = new Vector2(1, 1); hbrt.pivot = new Vector2(0.5f, 1); hbrt.sizeDelta = new Vector2(0, 40); hbrt.anchoredPosition = Vector2.zero;
+
+            _phoneHeaderText = MakeText(_phoneHeaderBar.rectTransform, "PhoneHeaderText", "", 18, Color.white, TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
+            var phtrt = _phoneHeaderText.rectTransform; phtrt.anchorMin = new Vector2(0, 0); phtrt.anchorMax = new Vector2(1, 1); phtrt.offsetMin = new Vector2(16, 0); phtrt.offsetMax = new Vector2(-90, 0);
+
+            float[] barHeights = { 6f, 9f, 12f, 15f };
+            for (int i = 0; i < barHeights.Length; i++)
+            {
+                var bar = MakeImage(_phoneHeaderBar.rectTransform, "SignalBar" + i, Color.white);
+                var brt = bar.rectTransform; brt.anchorMin = brt.anchorMax = new Vector2(1, 0.5f); brt.pivot = new Vector2(1, 0.5f);
+                brt.sizeDelta = new Vector2(3, barHeights[i]); brt.anchoredPosition = new Vector2(-(56f - i * 6f), 2f);
+            }
+            var battOutline = MakeImage(_phoneHeaderBar.rectTransform, "BatteryOutline", Color.white);
+            var borT = battOutline.rectTransform; borT.anchorMin = borT.anchorMax = new Vector2(1, 0.5f); borT.pivot = new Vector2(1, 0.5f);
+            borT.sizeDelta = new Vector2(20, 10); borT.anchoredPosition = new Vector2(-16, 2);
+            var battFill = MakeImage(borT, "Fill", new Color(0.18f, 0.80f, 0.44f));
+            var bfrt = battFill.rectTransform; bfrt.anchorMin = Vector2.zero; bfrt.anchorMax = Vector2.one; bfrt.offsetMin = new Vector2(2, 2); bfrt.offsetMax = new Vector2(-2, -2);
+
+            _deliveredText = MakeText(crt, "DeliveredText", "Delivered", 13, FBMuted, TextAlignmentOptions.MidlineRight);
+            var dtrt = _deliveredText.rectTransform; dtrt.anchorMin = dtrt.anchorMax = new Vector2(1, 0); dtrt.pivot = new Vector2(1, 0);
+            dtrt.sizeDelta = new Vector2(120, 20); dtrt.anchoredPosition = new Vector2(-20, 14);
+
+            // Bubble container mirrors cardBody's own rect exactly (same offsets
+            // the builder gave it), so bubbles occupy the same area the plain
+            // body text used to.
+            var containerGo = new GameObject("ChatBubbleContainer", typeof(RectTransform));
+            containerGo.transform.SetParent(crt, false);
+            var crRT = containerGo.GetComponent<RectTransform>();
+            if (cardBody != null)
+            {
+                var bodyRT = cardBody.rectTransform;
+                crRT.anchorMin = bodyRT.anchorMin; crRT.anchorMax = bodyRT.anchorMax;
+                crRT.offsetMin = bodyRT.offsetMin; crRT.offsetMax = bodyRT.offsetMax;
+            }
+            _chatBubbleContainer = crRT;
+        }
+        else if (_worldTheme == 4)
+        {
+            _socialTimestamp = MakeText(crt, "SocialTimestamp", "", 13, FBMuted, TextAlignmentOptions.MidlineRight);
+            var strt = _socialTimestamp.rectTransform; strt.anchorMin = strt.anchorMax = new Vector2(1, 1); strt.pivot = new Vector2(1, 1);
+            strt.sizeDelta = new Vector2(140, 20); strt.anchoredPosition = new Vector2(-20, -18);
+        }
+        else if (_worldTheme == 5)
+        {
+            // Red glow: a slightly larger red panel layered behind CardBg.
+            _securityGlow = MakeImage(crt, "SecurityGlow", new Color(0.90f, 0.15f, 0.15f, 0.55f));
+            var glrt = _securityGlow.rectTransform; glrt.anchorMin = Vector2.zero; glrt.anchorMax = Vector2.one; glrt.offsetMin = new Vector2(-8, -8); glrt.offsetMax = new Vector2(8, 8);
+            _securityGlow.transform.SetAsFirstSibling();
+
+            _watermarkText = MakeText(crt, "Watermark", "CONFIDENTIAL", 54, new Color(0.5f, 0.5f, 0.5f, 0.10f), TextAlignmentOptions.Center, FontStyles.Bold);
+            var wmrt = _watermarkText.rectTransform; wmrt.anchorMin = Vector2.zero; wmrt.anchorMax = Vector2.one; wmrt.offsetMin = Vector2.zero; wmrt.offsetMax = Vector2.zero;
+            _watermarkText.transform.localEulerAngles = new Vector3(0, 0, 28f);
+            _watermarkText.transform.SetSiblingIndex(2); // just above CardBg+glow, below everything else
+
+            _securityBanner = MakeImage(crt, "SecurityBanner", new Color(0.80f, 0.10f, 0.10f));
+            var sbrt = _securityBanner.rectTransform; sbrt.anchorMin = new Vector2(0, 1); sbrt.anchorMax = new Vector2(1, 1); sbrt.pivot = new Vector2(0.5f, 1); sbrt.sizeDelta = new Vector2(0, 34); sbrt.anchoredPosition = Vector2.zero;
+            _securityBannerText = MakeText(_securityBanner.rectTransform, "Text", "SECURITY ALERT", 18, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
+            var sbtrt = _securityBannerText.rectTransform; sbtrt.anchorMin = Vector2.zero; sbtrt.anchorMax = Vector2.one; sbtrt.offsetMin = sbtrt.offsetMax = Vector2.zero;
+
+            // Simple shield: rounded body + a diamond point at the bottom,
+            // built from plain UI primitives (no sprite needed).
+            var shieldGo = new GameObject("Shield", typeof(RectTransform)); shieldGo.transform.SetParent(_securityBanner.rectTransform, false);
+            var shRT = shieldGo.GetComponent<RectTransform>(); shRT.anchorMin = shRT.anchorMax = new Vector2(0, 0.5f); shRT.pivot = new Vector2(0.5f, 0.5f);
+            shRT.sizeDelta = new Vector2(18, 18); shRT.anchoredPosition = new Vector2(20, 0);
+            var shieldImg = shieldGo.AddComponent<Image>(); shieldImg.sprite = circleSprite; shieldImg.color = Color.white; shieldImg.raycastTarget = false;
+            var pointGo = new GameObject("Point", typeof(RectTransform)); pointGo.transform.SetParent(shieldGo.transform, false);
+            var ptRT = pointGo.GetComponent<RectTransform>(); ptRT.anchorMin = ptRT.anchorMax = new Vector2(0.5f, 0f); ptRT.pivot = new Vector2(0.5f, 0.5f);
+            ptRT.sizeDelta = new Vector2(9, 9); ptRT.anchoredPosition = new Vector2(0, -3); ptRT.localEulerAngles = new Vector3(0, 0, 45f);
+            var ptImg = pointGo.AddComponent<Image>(); ptImg.color = Color.white; ptImg.raycastTarget = false;
+        }
+    }
+
+    // Real (non-comic) border colour per world, used instead of the random
+    // FishSchemes comic border so World 2-5 read as their own theme rather
+    // than World 1's aquarium look.
+    void ApplyThemeBorder()
+    {
+        if (cardBorderRT == null) return;
+        bool hasOverride = true;
+        Color overrideCol;
+        switch (_worldTheme)
+        {
+            case 2: overrideCol = new Color(0.80f, 0.80f, 0.80f); break;   // thin grey — website chrome
+            case 3: overrideCol = new Color(0, 0, 0, 0); break;             // no frame — phone screen
+            case 4: overrideCol = new Color(0, 0, 0, 0); break;             // no frame — feed card
+            case 5: overrideCol = new Color(0.20f, 0.20f, 0.20f); break;    // dark border — security alert
+            default: overrideCol = Color.clear; hasOverride = false; break;
+        }
+        if (!hasOverride) { ApplyRandomBorderTheme(); return; }
+        foreach (Transform child in cardBorderRT)
+        {
+            string n = child.gameObject.name;
+            if (n != "BorderTop" && n != "BorderBottom" && n != "BorderLeft" && n != "BorderRight") continue;
+            var parentImg = child.GetComponent<Image>();
+            if (parentImg != null) parentImg.color = overrideCol;
+            foreach (Transform stripe in child)
+            {
+                var img = stripe.GetComponent<Image>();
+                if (img != null) img.color = overrideCol;
+            }
+        }
+    }
+
+    void ApplySecurityChrome(Email e)
+    {
+        if (_securityBannerText != null)
+            _securityBannerText.text = e.isScam ? "⚠  PHISHING DETECTED" : "✓  VERIFIED SAFE";
+        if (_securityBanner != null)
+            _securityBanner.color = e.isScam ? new Color(0.80f, 0.10f, 0.10f) : new Color(0.10f, 0.45f, 0.20f);
+    }
+
+    // Rebuilds the SMS chat bubble stack for the given email body inside
+    // _chatBubbleContainer. Bubble size is measured with TMP's own
+    // GetPreferredValues so bubbles hug their text instead of using a
+    // fixed size.
+    void RebuildChatBubbles(string body)
+    {
+        if (_chatBubbleContainer == null) return;
+        for (int i = _chatBubbleObjs.Count - 1; i >= 0; i--)
+            if (_chatBubbleObjs[i] != null) Destroy(_chatBubbleObjs[i]);
+        _chatBubbleObjs.Clear();
+
+        float containerWidth = _chatBubbleContainer.GetComponent<RectTransform>().rect.width;
+        if (containerWidth <= 1f) containerWidth = 576f; // fallback before first layout pass
+        float maxBubbleWidth = containerWidth * 0.78f;
+        const float pad = 12f, spacing = 10f;
+        float y = 0f;
+
+        var lines = body.Split('\n');
+        foreach (var rawLine in lines)
+        {
+            if (string.IsNullOrWhiteSpace(rawLine)) continue;
+            bool incoming = rawLine.StartsWith("THEM: ");
+            bool outgoing = rawLine.StartsWith("YOU: ");
+            string text = incoming ? rawLine.Substring(6) : outgoing ? rawLine.Substring(5) : rawLine;
+
+            if (!incoming && !outgoing)
+            {
+                var tsGo = new GameObject("Timestamp", typeof(RectTransform)); tsGo.transform.SetParent(_chatBubbleContainer, false);
+                var tsRT = tsGo.GetComponent<RectTransform>(); tsRT.anchorMin = tsRT.anchorMax = new Vector2(0, 1); tsRT.pivot = new Vector2(0, 1);
+                tsRT.sizeDelta = new Vector2(containerWidth, 22); tsRT.anchoredPosition = new Vector2(0, -y);
+                var tsTxt = MakeText(tsGo.transform, "T", text, 13, new Color(0.55f, 0.55f, 0.58f), TextAlignmentOptions.Center);
+                Stretch(tsTxt.rectTransform);
+                _chatBubbleObjs.Add(tsGo);
+                y += 22f + spacing;
+                continue;
+            }
+
+            var bubbleGo = new GameObject(incoming ? "InBubble" : "OutBubble", typeof(RectTransform));
+            bubbleGo.transform.SetParent(_chatBubbleContainer, false);
+            var bubbleImg = bubbleGo.AddComponent<Image>();
+            bubbleImg.color = incoming ? new Color(0.10f, 0.45f, 0.91f, 0.15f) : new Color(0.90f, 0.90f, 0.92f);
+            bubbleImg.raycastTarget = false;
+
+            var txtGo = new GameObject("Text", typeof(RectTransform)); txtGo.transform.SetParent(bubbleGo.transform, false);
+            var txt = txtGo.AddComponent<TextMeshProUGUI>();
+            txt.text = text; txt.fontSize = 17; txt.color = new Color(0.08f, 0.08f, 0.10f);
+            txt.alignment = TextAlignmentOptions.TopLeft; txt.textWrappingMode = TextWrappingModes.Normal; txt.raycastTarget = false;
+            var measureRT = txt.rectTransform; measureRT.sizeDelta = new Vector2(maxBubbleWidth - pad * 2f, 1000f);
+            Vector2 pref = txt.GetPreferredValues(text, maxBubbleWidth - pad * 2f, 0f);
+            float bubbleW = Mathf.Min(maxBubbleWidth, pref.x + pad * 2f);
+            float bubbleH = pref.y + pad * 2f;
+
+            var bRT = bubbleGo.GetComponent<RectTransform>();
+            bRT.pivot = new Vector2(incoming ? 0f : 1f, 1f);
+            bRT.anchorMin = bRT.anchorMax = new Vector2(incoming ? 0f : 1f, 1f);
+            bRT.sizeDelta = new Vector2(bubbleW, bubbleH);
+            bRT.anchoredPosition = new Vector2(0, -y);
+
+            measureRT.anchorMin = Vector2.zero; measureRT.anchorMax = Vector2.one;
+            measureRT.offsetMin = new Vector2(pad, pad); measureRT.offsetMax = new Vector2(-pad, -pad);
+
+            _chatBubbleObjs.Add(bubbleGo);
+            y += bubbleH + spacing;
+        }
     }
 
     void ApplyEmailLayout(Email e)
     {
-        if (cardSender != null) { cardSender.text = e.senderName; cardSender.fontSize = 22; cardSender.color = new Color(0.10f, 0.10f, 0.20f); }
-        if (cardEmail != null) { cardEmail.text = e.senderEmail; cardEmail.fontSize = 16; cardEmail.color = new Color(0.40f, 0.40f, 0.50f); cardEmail.gameObject.SetActive(true); }
-        if (cardSubject != null) { cardSubject.text = e.subject; cardSubject.fontSize = 24; cardSubject.color = new Color(0.10f, 0.10f, 0.20f); cardSubject.fontStyle = FontStyles.Bold; cardSubject.gameObject.SetActive(true); }
-        if (cardBody != null) { cardBody.text = e.body; cardBody.fontSize = 19; cardBody.color = new Color(0.10f, 0.10f, 0.20f); cardBody.alignment = TextAlignmentOptions.TopLeft; }
+        if (cardSender != null) { cardSender.text = e.senderName; cardSender.fontSize = 18; cardSender.color = new Color(0.10f, 0.10f, 0.20f); }
+        if (cardEmail != null) { cardEmail.text = e.senderEmail; cardEmail.fontSize = 15; cardEmail.color = new Color(0.40f, 0.40f, 0.50f); cardEmail.gameObject.SetActive(true); }
+        if (cardSubject != null) { cardSubject.text = e.subject; cardSubject.fontSize = 20; cardSubject.color = new Color(0.10f, 0.10f, 0.20f); cardSubject.fontStyle = FontStyles.Bold; cardSubject.gameObject.SetActive(true); }
+        if (cardBody != null) { cardBody.text = e.body; cardBody.fontSize = 17; cardBody.color = new Color(0.10f, 0.10f, 0.20f); cardBody.alignment = TextAlignmentOptions.TopLeft; }
         if (cardAvatar != null) { cardAvatar.color = e.avatarColor; cardAvatar.gameObject.SetActive(true); }
         if (cardAvatarLetter != null) cardAvatarLetter.text = string.IsNullOrEmpty(e.senderName) ? "?" : e.senderName[0].ToString().ToUpper();
         SetCardBg(Color.white);
@@ -364,9 +595,9 @@ public class EmailSwiperManager : MonoBehaviour
     void ApplyWebsiteLayout(Email e)
     {
         // World 2 – website / forum look
-        if (cardSender != null) { cardSender.text = e.senderName; cardSender.fontSize = 20; cardSender.color = new Color(0.10f, 0.10f, 0.20f); }
-        if (cardEmail != null) { cardEmail.text = "🔒 " + e.senderEmail; cardEmail.fontSize = 13; cardEmail.color = new Color(0.18f, 0.55f, 0.18f); cardEmail.gameObject.SetActive(true); }
-        if (cardSubject != null) { cardSubject.text = e.subject; cardSubject.fontSize = 21; cardSubject.color = new Color(0.08f, 0.08f, 0.18f); cardSubject.fontStyle = FontStyles.Bold; cardSubject.gameObject.SetActive(true); }
+        if (cardSender != null) { cardSender.text = e.senderName; cardSender.fontSize = 18; cardSender.color = new Color(0.10f, 0.10f, 0.20f); }
+        if (cardEmail != null) { cardEmail.text = "🔒 " + e.senderEmail; cardEmail.fontSize = 15; cardEmail.color = new Color(0.46f, 0.46f, 0.46f); cardEmail.gameObject.SetActive(true); }
+        if (cardSubject != null) { cardSubject.text = e.subject; cardSubject.fontSize = 20; cardSubject.color = new Color(0.08f, 0.08f, 0.18f); cardSubject.fontStyle = FontStyles.Bold; cardSubject.gameObject.SetActive(true); }
         if (cardBody != null)
         {
             // Wrap body in a styled "web page" look
@@ -375,6 +606,7 @@ public class EmailSwiperManager : MonoBehaviour
         }
         if (cardAvatar != null) { cardAvatar.color = e.avatarColor; cardAvatar.gameObject.SetActive(true); }
         if (cardAvatarLetter != null) cardAvatarLetter.text = string.IsNullOrEmpty(e.senderName) ? "?" : e.senderName[0].ToString().ToUpper();
+        if (_forumTimestamp != null) _forumTimestamp.text = e.timestamp;
         SetCardBg(WebBg);
     }
 
@@ -383,55 +615,67 @@ public class EmailSwiperManager : MonoBehaviour
     // ---------------------------------------------------------------
     void ApplySMSLayout(Email e)
     {
+        // World 3 builds a dedicated dark phone-header chrome bar (Task 3); World 5
+        // (mixed content) doesn't, so it falls back to the original plain-text bubble
+        // rendering further below rather than trying to use chrome that doesn't exist.
+        bool bubbleMode = _chatBubbleContainer != null;
+
         // Header: contact name centred like iMessage
         if (cardSender != null)
         {
             cardSender.text = e.senderName;
-            cardSender.fontSize = 17;
+            cardSender.fontSize = 18;
             cardSender.color = new Color(0.08f, 0.08f, 0.10f);
             cardSender.fontStyle = FontStyles.Bold;
             cardSender.alignment = TextAlignmentOptions.Center;
+            // Nudge down to clear the dark phone header bar when it's actually built.
+            cardSender.rectTransform.anchoredPosition = bubbleMode ? new Vector2(94, -58) : new Vector2(94, -46);
         }
         if (cardEmail != null) cardEmail.gameObject.SetActive(false);
         if (cardSubject != null) cardSubject.gameObject.SetActive(false);
 
-        // Avatar becomes the contact icon circle at top-centre
+        // Avatar becomes the contact icon circle, nudged down to clear the header bar
         if (cardAvatar != null)
         {
             cardAvatar.color = e.avatarColor;
             cardAvatar.gameObject.SetActive(true);
+            cardAvatar.rectTransform.anchoredPosition = bubbleMode ? new Vector2(24, -54) : new Vector2(24, -44);
         }
         if (cardAvatarLetter != null)
             cardAvatarLetter.text = string.IsNullOrEmpty(e.senderName) ? "?" : e.senderName[0].ToString().ToUpper();
 
-        // Build iMessage bubble layout in body
-        if (cardBody != null)
+        if (bubbleMode)
         {
+            // Real chat bubbles replace the old plain-text rich-text rendering (Task 3).
+            if (cardBody != null) cardBody.gameObject.SetActive(false);
+            if (_phoneHeaderText != null) _phoneHeaderText.text = "FROM: " + e.senderEmail;
+            RebuildChatBubbles(e.body);
+        }
+        else if (cardBody != null)
+        {
+            cardBody.gameObject.SetActive(true);
             var lines = e.body.Split('\n');
             var sb = new System.Text.StringBuilder();
             foreach (var line in lines)
             {
                 if (line.StartsWith("THEM: "))
                 {
-                    // Incoming: left-aligned, grey bubble style
                     sb.AppendLine($"<align=left><color=#1C1C1E><size=90%>{line.Substring(6)}</size></color></align>");
                     sb.AppendLine();
                 }
                 else if (line.StartsWith("YOU: "))
                 {
-                    // Outgoing: right-aligned, blue bubble style
                     sb.AppendLine($"<align=right><color=#0A84FF><size=90%>{line.Substring(5)}</size></color></align>");
                     sb.AppendLine();
                 }
                 else if (!string.IsNullOrWhiteSpace(line))
                 {
-                    // Timestamp / system message
                     sb.AppendLine($"<align=center><color=#8E8E93><size=75%>{line}</size></color></align>");
                     sb.AppendLine();
                 }
             }
             cardBody.text = sb.ToString();
-            cardBody.fontSize = 16;
+            cardBody.fontSize = 17;
             cardBody.alignment = TextAlignmentOptions.TopLeft;
             cardBody.color = Color.black;
         }
@@ -447,7 +691,7 @@ public class EmailSwiperManager : MonoBehaviour
         if (cardSender != null)
         {
             cardSender.text = e.senderName;
-            cardSender.fontSize = 18;
+            cardSender.fontSize = 18; // Task 4B target — matches existing size, no change needed
             cardSender.color = new Color(0.06f, 0.06f, 0.09f);
             cardSender.fontStyle = FontStyles.Bold;
         }
@@ -455,14 +699,14 @@ public class EmailSwiperManager : MonoBehaviour
         {
             // Show handle/page name in muted colour
             cardEmail.text = e.senderEmail;
-            cardEmail.fontSize = 13;
+            cardEmail.fontSize = 15;
             cardEmail.color = FBMuted;
             cardEmail.gameObject.SetActive(true);
         }
         if (cardSubject != null)
         {
             cardSubject.text = e.subject;
-            cardSubject.fontSize = 19;
+            cardSubject.fontSize = 20;
             cardSubject.color = new Color(0.06f, 0.06f, 0.09f);
             cardSubject.fontStyle = FontStyles.Bold;
             cardSubject.gameObject.SetActive(true);
@@ -472,13 +716,14 @@ public class EmailSwiperManager : MonoBehaviour
             // Facebook post body: add "Like · Comment · Share" footer
             string postBody = e.body + "\n\n<size=75%><color=#0866FF>👍 Like   💬 Comment   ↗ Share</color></size>";
             cardBody.text = postBody;
-            cardBody.fontSize = 16;
+            cardBody.fontSize = 17;
             cardBody.color = new Color(0.08f, 0.08f, 0.12f);
             cardBody.alignment = TextAlignmentOptions.TopLeft;
         }
         if (cardAvatar != null) { cardAvatar.color = e.avatarColor; cardAvatar.gameObject.SetActive(true); }
         if (cardAvatarLetter != null)
             cardAvatarLetter.text = string.IsNullOrEmpty(e.senderName) ? "?" : e.senderName[0].ToString().ToUpper();
+        if (_socialTimestamp != null) _socialTimestamp.text = e.timestamp;
         SetCardBg(FBCard);
     }
 
@@ -813,6 +1058,7 @@ public class EmailSwiperManager : MonoBehaviour
 
     public static Image MakeImage(Transform parent, string name, Color color) { var go = new GameObject(name, typeof(RectTransform)); go.transform.SetParent(parent, false); var img = go.AddComponent<Image>(); img.color = color; return img; }
     public static TMP_Text MakeText(Transform parent, string name, string content, int size, Color color, TextAlignmentOptions align, FontStyles style = FontStyles.Normal) { var go = new GameObject(name, typeof(RectTransform)); go.transform.SetParent(parent, false); var t = go.AddComponent<TextMeshProUGUI>(); t.text = content; t.fontSize = size; t.color = color; t.alignment = align; t.fontStyle = style; t.raycastTarget = false; return t; }
+    static void Stretch(RectTransform r) { r.anchorMin = Vector2.zero; r.anchorMax = Vector2.one; r.offsetMin = r.offsetMax = Vector2.zero; }
 
     // ===================================================================
     //  Content

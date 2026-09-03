@@ -205,13 +205,13 @@ public static class TowerDefenseBuilder
         hhrt.anchorMin = new Vector2(0, 0); hhrt.anchorMax = new Vector2(0, 1); hhrt.pivot = new Vector2(0, 0.5f); hhrt.sizeDelta = new Vector2(280, 0); hhrt.anchoredPosition = new Vector2(30, 0);
         var hlg = hh.AddComponent<HorizontalLayoutGroup>(); hlg.childAlignment = TextAnchor.MiddleLeft; hlg.spacing = 6; hlg.childForceExpandWidth = hlg.childForceExpandHeight = false; hlg.childControlWidth = hlg.childControlHeight = false;
 
-        var scoreTxt = UTxt(hud.rectTransform, "ScoreText", "Score: 0", 40, ScoreGold, TextAlignmentOptions.Center, FontStyles.Bold);
+        var scoreTxt = UTxt(hud.rectTransform, "ScoreText", "Score: 0", 24, ScoreGold, TextAlignmentOptions.Center, FontStyles.Bold);
         var srt = scoreTxt.rectTransform; srt.anchorMin = new Vector2(0.5f, 0); srt.anchorMax = new Vector2(0.5f, 1); srt.pivot = new Vector2(0.5f, 0.5f); srt.sizeDelta = new Vector2(360, 0);
 
         var waveTxt = UTxt(hud.rectTransform, "WaveText", "", 30, WaveWhite, TextAlignmentOptions.MidlineRight, FontStyles.Bold);
         var wrt = waveTxt.rectTransform; wrt.anchorMin = new Vector2(1, 0); wrt.anchorMax = new Vector2(1, 1); wrt.pivot = new Vector2(1, 0.5f); wrt.sizeDelta = new Vector2(260, 0); wrt.anchoredPosition = new Vector2(-30, 0);
 
-        var comboTxt = UTxt(parent, "ComboText", "", 44, StreakOrange, TextAlignmentOptions.Center, FontStyles.Bold);
+        var comboTxt = UTxt(parent, "ComboText", "", 28, StreakOrange, TextAlignmentOptions.Center, FontStyles.Bold);
         var crt = comboTxt.rectTransform; crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.5f); crt.pivot = new Vector2(0.5f, 0.5f); crt.sizeDelta = new Vector2(500, 70); crt.anchoredPosition = new Vector2(0, -280); comboTxt.raycastTarget = false;
 
         mgr.heartsContainer = hh.transform;
@@ -294,7 +294,7 @@ public static class TowerDefenseBuilder
         var card = UImg(ov.rectTransform, "Card", new Color(HudBg.r, HudBg.g, HudBg.b, 0.95f));
         var crt = card.rectTransform; crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.5f); crt.pivot = new Vector2(0.5f, 0.5f); crt.sizeDelta = new Vector2(900, 320);
         var accent = UImg(crt, "AccentBar", ScoreGold); var art = accent.rectTransform; art.anchorMin = new Vector2(0, 1); art.anchorMax = new Vector2(1, 1); art.pivot = new Vector2(0.5f, 1); art.sizeDelta = new Vector2(0, 6); accent.raycastTarget = false;
-        var body = UTxt(crt, "Body", "...", 30, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
+        var body = UTxt(crt, "Body", "...", 22, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
         body.textWrappingMode = TextWrappingModes.Normal;
         var brt = body.rectTransform; brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one; brt.offsetMin = new Vector2(48, 30); brt.offsetMax = new Vector2(-48, -30);
         mgr.objectiveBodyText = body;

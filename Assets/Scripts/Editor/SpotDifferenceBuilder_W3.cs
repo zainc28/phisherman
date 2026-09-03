@@ -212,6 +212,7 @@ public static class SpotDifferenceBuilder_W3
 
         var header = AddImg(rt, "Header", isScam ? Hex("#222222") : Hex("#1A1A1A"));
         AnchorTopStretch(header.rectTransform, 54); header.raycastTarget = false;
+        AddPhoneStatusIcons(header.rectTransform);
         var contactName = AddTxt(header.rectTransform, "ContactName",
             isScam ? "RBC Bank (1-888-555-0147)" : "RBC Royal Bank",
             20, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
@@ -350,6 +351,29 @@ public static class SpotDifferenceBuilder_W3
         var trt = txt.rectTransform; trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
         trt.offsetMin = new Vector2(10, 8); trt.offsetMax = new Vector2(-10, -8); txt.raycastTarget = false;
         go.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+    }
+
+    // Phone status icons (Task 4: SMS/Phone chrome) — decorative only, not a
+    // counted red flag, so it's added to the header, never wrapped in AddMarker.
+    static void AddPhoneStatusIcons(RectTransform header)
+    {
+        float[] heights = { 6f, 9f, 12f, 15f };
+        for (int i = 0; i < heights.Length; i++)
+        {
+            var barGo = NewGO("SignalBar" + i, header);
+            var brt = barGo.GetComponent<RectTransform>();
+            brt.anchorMin = brt.anchorMax = new Vector2(1, 0.5f); brt.pivot = new Vector2(1, 0.5f);
+            brt.sizeDelta = new Vector2(3, heights[i]);
+            brt.anchoredPosition = new Vector2(-(56f - i * 6f), 0f);
+            var barImg = barGo.AddComponent<Image>(); barImg.color = Color.white; barImg.raycastTarget = false;
+        }
+        var battOutline = AddImg(header, "BatteryOutline", Color.white);
+        var boRT = battOutline.rectTransform; boRT.anchorMin = boRT.anchorMax = new Vector2(1, 0.5f); boRT.pivot = new Vector2(1, 0.5f);
+        boRT.sizeDelta = new Vector2(20, 10); boRT.anchoredPosition = new Vector2(-16, 0);
+        battOutline.raycastTarget = false;
+        var battFill = AddImg(boRT, "Fill", Hex("#2ECC71"));
+        var bfRT = battFill.rectTransform; bfRT.anchorMin = Vector2.zero; bfRT.anchorMax = Vector2.one;
+        bfRT.offsetMin = new Vector2(2, 2); bfRT.offsetMax = new Vector2(-2, -2); battFill.raycastTarget = false;
     }
 
     static void TimestampRow(Transform parent, string text)

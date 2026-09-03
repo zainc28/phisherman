@@ -32,6 +32,11 @@ public class PlayerController : MonoBehaviour
     float _animTimer;
     bool _walkFrame;
 
+    // Smoothed WASD move direction — eases toward the input (or toward zero
+    // when keys are released) over ~0.1s instead of snapping instantly, so
+    // starting/stopping doesn't look choppy.
+    Vector2 _smoothMoveDir;
+
     void Start()
     {
         _sr = GetComponent<SpriteRenderer>();
@@ -56,8 +61,8 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
-        float h = Input.GetAxisRaw("Horizontal");
-        float v = Input.GetAxisRaw("Vertical");
+        float h = Input.GetAxis("Horizontal");
+        float v = Input.GetAxis("Vertical");
         bool wasdActive = Mathf.Abs(h) > 0.01f || Mathf.Abs(v) > 0.01f;
 
         // ── Click to move ────────────────────────────────────
@@ -82,21 +87,25 @@ public class PlayerController : MonoBehaviour
 
         if (wasdActive) _clickTarget = null;
 
+        // Ease the move direction toward the input (or toward zero once keys are
+        // released) over ~0.1s instead of snapping instantly to it/from it.
+        Vector2 targetDir = wasdActive ? new Vector2(h, v) : Vector2.zero;
+        if (targetDir.magnitude > 1f) targetDir.Normalize();
+        float smoothT = 1f - Mathf.Exp(-Time.deltaTime / 0.1f);
+        _smoothMoveDir = Vector2.Lerp(_smoothMoveDir, targetDir, smoothT);
+
         bool moving = false;
 
-        if (wasdActive)
+        if (wasdActive || _smoothMoveDir.magnitude > 0.02f)
         {
-            Vector2 dir = new Vector2(h, v);
-            if (dir.magnitude > 1f) dir.Normalize();
-
             Vector3 newPos = transform.position;
-            newPos.x = Mathf.Clamp(newPos.x + dir.x * moveSpeed * Time.deltaTime, boundsX.x, boundsX.y);
-            newPos.y = Mathf.Clamp(newPos.y + dir.y * moveSpeed * Time.deltaTime, boundsY.x, boundsY.y);
+            newPos.x = Mathf.Clamp(newPos.x + _smoothMoveDir.x * moveSpeed * Time.deltaTime, boundsX.x, boundsX.y);
+            newPos.y = Mathf.Clamp(newPos.y + _smoothMoveDir.y * moveSpeed * Time.deltaTime, boundsY.x, boundsY.y);
 
             if (IsInsideZone(newPos))
                 transform.position = newPos;
 
-            if (_sr != null && Mathf.Abs(h) > 0.01f) _sr.flipX = h < 0;
+            if (_sr != null && Mathf.Abs(_smoothMoveDir.x) > 0.01f) _sr.flipX = _smoothMoveDir.x < 0;
             moving = true;
         }
         else if (_clickTarget.HasValue)

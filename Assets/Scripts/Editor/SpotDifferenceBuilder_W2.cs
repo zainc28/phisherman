@@ -291,6 +291,10 @@ public static class SpotDifferenceBuilder_W2
 
     static void BuildLoginBody(Transform content, SpotDifferenceManager manager, bool isScam)
     {
+        // ── Browser chrome bar (Task 4: Website/Forum theme) — decorative
+        // only, not a counted red flag, so it's never wrapped in AddMarker. ──
+        AddBrowserChrome(content, isScam);
+
         // ── Bank header bar ──
         var headerGo = NewGO("BankHeader", content);
         headerGo.AddComponent<LayoutElement>().preferredHeight = 56;
@@ -417,6 +421,31 @@ public static class SpotDifferenceBuilder_W2
                 AddMarker(phoneLine, manager, "Fake support number in fine print",
                     "'Not affiliated with TD Bank N.A.' — hidden in tiny italic text. The number connects to scammers who will ask for even more information to 'verify' your account.");
         }
+    }
+
+    static void AddBrowserChrome(Transform content, bool isScam)
+    {
+        var chromeGo = NewGO("BrowserChrome", content);
+        chromeGo.AddComponent<LayoutElement>().preferredHeight = 30;
+        var chromeImg = chromeGo.AddComponent<Image>(); chromeImg.color = Hex("#E8E8E8"); chromeImg.raycastTarget = false;
+        var chromeRT = chromeGo.GetComponent<RectTransform>();
+
+        float[] dotX = { 14f, 30f, 46f };
+        Color[] dotCol = { Hex("#FF5F57"), Hex("#FFBD2E"), Hex("#28C840") };
+        for (int i = 0; i < 3; i++)
+        {
+            var dotGo = NewGO("Dot" + i, chromeRT);
+            var dotRT = dotGo.GetComponent<RectTransform>();
+            dotRT.anchorMin = dotRT.anchorMax = new Vector2(0f, 0.5f); dotRT.pivot = new Vector2(0.5f, 0.5f);
+            dotRT.sizeDelta = new Vector2(10, 10); dotRT.anchoredPosition = new Vector2(dotX[i], 0);
+            var dotImg = dotGo.AddComponent<Image>(); dotImg.sprite = TryGetCircle(); dotImg.color = dotCol[i]; dotImg.raycastTarget = false;
+        }
+
+        // Real panel gets a professional blue accent; scam panel gets a subtle red warning stripe.
+        var accent = AddImg(chromeRT, "Accent", isScam ? ClassifiedRed : Hex("#1A73E8"));
+        var arT = accent.rectTransform; arT.anchorMin = new Vector2(0, 0); arT.anchorMax = new Vector2(1, 0);
+        arT.pivot = new Vector2(0.5f, 0); arT.sizeDelta = new Vector2(0, 3); arT.anchoredPosition = Vector2.zero;
+        accent.raycastTarget = false;
     }
 
     static GameObject InputField(Transform parent, string placeholder)

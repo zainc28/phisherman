@@ -199,6 +199,17 @@ public static class SpotDifferenceBuilder_W4
         var logoBar = NewGO("LogoBar", content); logoBar.AddComponent<LayoutElement>().preferredHeight = 60;
         var logoImg = logoBar.AddComponent<Image>(); logoImg.color = isScam ? Hex("#1A5FCC") : FBBlue; logoImg.raycastTarget = false;
         var logoTxt = AddTxt(logoBar.transform, "Logo", "facebook", 38, Color.white, TextAlignmentOptions.Center, FontStyles.Bold); Stretch(logoTxt.rectTransform); logoTxt.raycastTarget = false;
+        if (!isScam)
+        {
+            // Task 4: verified checkmark — real page only, scam page has no verification.
+            var badgeGo = NewGO("VerifiedBadge", logoBar.transform);
+            var badgeRT = badgeGo.GetComponent<RectTransform>();
+            badgeRT.anchorMin = badgeRT.anchorMax = new Vector2(1f, 1f); badgeRT.pivot = new Vector2(1f, 1f);
+            badgeRT.sizeDelta = new Vector2(24, 24); badgeRT.anchoredPosition = new Vector2(-10, -8);
+            var badgeImg = badgeGo.AddComponent<Image>(); badgeImg.sprite = TryGetCircle(); badgeImg.color = Color.white; badgeImg.raycastTarget = false;
+            var checkTxt = AddTxt(badgeGo.transform, "Check", "✓", 16, FBBlue, TextAlignmentOptions.Center, FontStyles.Bold);
+            Stretch(checkTxt.rectTransform); checkTxt.raycastTarget = false;
+        }
         if (isScam) AddMarker(logoBar, manager, "Slightly wrong shade of blue", "The scam page uses a slightly darker blue (#1A5FCC) compared to Facebook's exact brand blue (#1877F2). Scammers often get brand colours slightly wrong when copying a page.");
         Spacer(content, 8);
 

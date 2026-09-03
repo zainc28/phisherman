@@ -5,7 +5,7 @@ using UnityEngine;
 // ============================================================
 public class MapWalkAnimator : MonoBehaviour
 {
-    public Sprite idleSprite, walkSprite; public float fps = 2f;
+    public Sprite idleSprite, walkSprite; public float fps = 8f;
     SpriteRenderer _sr; MapNavAgent _nav; float _timer; bool _walkFrame; Vector3 _lastPos;
     void Start() { _sr = GetComponent<SpriteRenderer>(); _nav = GetComponent<MapNavAgent>(); _lastPos = transform.position; }
     void Update()

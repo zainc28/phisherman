@@ -95,8 +95,8 @@ public class FishUnit : MonoBehaviour
         logSR.sprite = logSprite;
         logSR.color = Color.white;
         logSR.sortingOrder = 3;
-        // Log reduced to 60% of original (was 1.6 x 0.85)
-        logGO.transform.localScale = new Vector3(0.96f, 0.51f, 1f);
+        // Log: 0.96 x 0.51 +20% (Task 4C) = 1.152 x 0.612
+        logGO.transform.localScale = new Vector3(1.152f, 0.612f, 1f);
 
         var canvasGO = new GameObject("LabelCanvas");
         canvasGO.transform.SetParent(logRoot, false);
@@ -113,7 +113,7 @@ public class FishUnit : MonoBehaviour
         var textGO = new GameObject("Label"); textGO.transform.SetParent(canvasGO.transform, false);
         labelTMP = textGO.AddComponent<TextMeshProUGUI>();
         labelTMP.text = labelText;
-        labelTMP.fontSize = 26;
+        labelTMP.fontSize = 18;
         labelTMP.color = Color.white;
         labelTMP.fontStyle = FontStyles.Bold;
         labelTMP.alignment = TextAlignmentOptions.Center;

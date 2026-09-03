@@ -30,6 +30,7 @@ public static class WorldMapBuilder
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
         // Use disk-based save (same as Worlds 2-5) so the polygon is preserved
         // regardless of which scene happens to be open in the editor right now.
+        // DO NOT reset PolygonCollider2D points — manually edited in Editor.
         var savedVerts = SharedWorldBuilderUtils.SaveWalkableZone(ScenePath, "WorldMapBuilder", out var savedZonePos);
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         if (savedVerts != null) { var zGo = new GameObject("WalkableZone"); zGo.transform.position = savedZonePos; var pc2 = zGo.AddComponent<PolygonCollider2D>(); pc2.isTrigger = true; pc2.SetPath(0, savedVerts); Debug.Log($"[WorldMapBuilder] Restored WalkableZone: {savedVerts.Length} verts."); }
@@ -47,14 +48,15 @@ public static class WorldMapBuilder
         var playerGo = new GameObject("Phisherman"); playerGo.tag = "Player";
         playerGo.transform.position = new Vector3(0f, -1.5f, 0f); playerGo.transform.localScale = new Vector3(PlayerScale, PlayerScale, 1f);
         var playerSR = playerGo.AddComponent<SpriteRenderer>(); playerSR.sprite = phisherman; playerSR.color = Color.white; playerSR.sortingOrder = 10;
-        var anim = playerGo.AddComponent<MapWalkAnimator>(); anim.idleSprite = phisherman; anim.walkSprite = phishermanWalk ?? phisherman; anim.fps = 2f;
+        var anim = playerGo.AddComponent<MapWalkAnimator>(); anim.idleSprite = phisherman; anim.walkSprite = phishermanWalk ?? phisherman; anim.fps = 8f;
         playerGo.AddComponent<MapWasdZoneClamp>();
         var nav = playerGo.AddComponent<MapNavAgent>(); nav.gridCols = 80; nav.gridRows = 45; nav.moveSpeed = SharedSpeed;
         var mover = playerGo.AddComponent<PlayerController>(); mover.moveSpeed = SharedSpeed;
         var mgrGo = new GameObject("GameManager"); var manager = mgrGo.AddComponent<WorldMapManager>(); manager.playerSpeed = SharedSpeed;
         var hud1 = mgrGo.AddComponent<LevelSystemHUD>(); AssignStickerSprites(hud1);
         Transform playerT = playerGo.transform;
-        AddDoorCTA("Door_LeftHouse", playerT, -4.0f, 0.4f, "ApartmentInterior", "EmailSwiper", "Grandma Rose", Hex("#FF9F1C"));
+        // CTA badge label shortened to "Rose" (was "Grandma Rose") — the full name overflowed the badge border.
+        AddDoorCTA("Door_LeftHouse", playerT, -4.0f, 0.4f, "ApartmentInterior", "EmailSwiper", "Rose", Hex("#FF9F1C"));
         AddDoorCTA("Door_CentreHouse", playerT, 0.2f, 1.2f, "PizzaInterior", "EmailSwiper", "Uncle Tony", Hex("#FF6B6B"));
         AddDoorCTA("Door_RightHouse", playerT, 4.3f, 0.2f, "OfficeInterior", "TowerDefense", "Mrs. Patel", Hex("#4ECDC4"));
         var canvasGo = new GameObject("Canvas"); var canvas = canvasGo.AddComponent<Canvas>(); canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -62,6 +64,8 @@ public static class WorldMapBuilder
         canvasGo.AddComponent<GraphicRaycaster>(); var canvasRT = canvasGo.GetComponent<RectTransform>();
         var (dialogPanel, advBtn, nameText, bodyText, hintText, choicePanel, acceptBtn, acceptTxt, declineBtn, declineTxt) = BuildDialoguePanel(canvasRT);
         BuildMapHint(canvasRT, manager);
+        SharedWorldBuilderUtils.AddFishMenuButton(canvasRT);
+        var announcer1 = mgrGo.AddComponent<WorldUnlockAnnouncer>(); announcer1.canvasRT = canvasRT; announcer1.circleSprite = circle; announcer1.myWorldNumber = 1;
         var mapPanel = BuildWorldMapPanel(canvasRT, manager);
         var lockedPopup = BuildLockedPopup(canvasRT);
         AddWorldCTA("WorldCTA_World2", playerT, "WorldMap2", "World 2", Hex("#2BB3A3"), lockedPopup, requiresWorldComplete: 1, isLeft: true, canvasRT: canvasRT);
@@ -258,6 +262,15 @@ public static class WorldMapBuilder
 // ============================================================
 internal static class SharedWorldBuilderUtils
 {
+    // DO NOT reset PolygonCollider2D points — manually edited in Editor.
+    // SaveWalkableZone/RestoreWalkableZone are called by every world builder
+    // (World 1-5) as the very first and very last steps of Build(), around the
+    // NewScene() call that wipes everything else. This round-trips whatever
+    // shape the WalkableZone polygon currently has — including hand-edited
+    // points added in the Scene view — so rebuilding a scene from the
+    // Phisherman menu never overwrites a manually shaped collider. Only a
+    // scene with no WalkableZone yet (first-ever build) falls back to the
+    // default rectangle.
     internal static Vector2[] SaveWalkableZone(string scenePath, string builderTag, out Vector3 pos)
     {
         pos = Vector3.zero;
@@ -451,6 +464,73 @@ internal static class SharedWorldBuilderUtils
         var t = MakeTxt(go.transform, "T", msg, 20, col, TextAlignmentOptions.Center, style); Stretch(t.rectTransform);
     }
 
+    // ============================================================
+    //  AddFishMenuButton
+    //  Top-left fish icon button, drawn entirely from UI Image
+    //  primitives (squashed ellipse body + a 45°-rotated square for
+    //  the tail). Opens a "Return to Main Menu?" popup that pauses
+    //  the game while shown. Added to all 5 world map scenes only —
+    //  not minigame or interior scenes.
+    // ============================================================
+    internal static void AddFishMenuButton(RectTransform canvasRT)
+    {
+        Color teal = Hex("#00E5FF");
+
+        // ---- Popup (built first so the fish button can wire directly to it) ----
+        var overlay = MakeImg(canvasRT, "ReturnToMenuOverlay", new Color(0, 0, 0, 0.65f));
+        Stretch(overlay.rectTransform); overlay.raycastTarget = true;
+        var popupLogic = overlay.gameObject.AddComponent<ReturnToMenuPopup>();
+        popupLogic.overlayRoot = overlay.gameObject;
+
+        var cardGo = new GameObject("Card", typeof(RectTransform)); cardGo.transform.SetParent(overlay.rectTransform, false);
+        var crt = cardGo.GetComponent<RectTransform>(); crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.5f); crt.pivot = new Vector2(0.5f, 0.5f); crt.sizeDelta = new Vector2(320, 160);
+
+        var border = MakeImg(crt, "Border", teal); var bdrt = border.rectTransform; bdrt.anchorMin = Vector2.zero; bdrt.anchorMax = Vector2.one; bdrt.offsetMin = new Vector2(-4, -4); bdrt.offsetMax = new Vector2(4, 4); border.raycastTarget = false;
+        var fill = MakeImg(crt, "Fill", Hex("#0D2137")); Stretch(fill.rectTransform); fill.raycastTarget = false;
+
+        var msg = MakeTxt(crt, "Msg", "Return to Main Menu?", 22, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
+        var mrt = msg.rectTransform; mrt.anchorMin = new Vector2(0, 0.52f); mrt.anchorMax = new Vector2(1, 1); mrt.offsetMin = new Vector2(16, 0); mrt.offsetMax = new Vector2(-16, -18);
+
+        var yesGo = MakeBtn(crt, "YesBtn", "Yes", 20, Hex("#2ECC71"), Color.white);
+        var yrt = yesGo.GetComponent<RectTransform>(); yrt.anchorMin = new Vector2(0.08f, 0.14f); yrt.anchorMax = new Vector2(0.48f, 0.46f); yrt.offsetMin = yrt.offsetMax = Vector2.zero;
+        var noGo = MakeBtn(crt, "NoBtn", "No", 20, Hex("#E74C3C"), Color.white);
+        var nrt = noGo.GetComponent<RectTransform>(); nrt.anchorMin = new Vector2(0.52f, 0.14f); nrt.anchorMax = new Vector2(0.92f, 0.46f); nrt.offsetMin = nrt.offsetMax = Vector2.zero;
+
+        UnityEventTools.AddPersistentListener(yesGo.GetComponent<Button>().onClick, popupLogic.OnYes);
+        UnityEventTools.AddPersistentListener(noGo.GetComponent<Button>().onClick, popupLogic.OnNo);
+
+        overlay.gameObject.SetActive(false);
+
+        // ---- Fish button ----
+        var fishGo = new GameObject("FishMenuButton", typeof(RectTransform)); fishGo.transform.SetParent(canvasRT, false);
+        var frt = fishGo.GetComponent<RectTransform>(); frt.anchorMin = new Vector2(0, 1); frt.anchorMax = new Vector2(0, 1); frt.pivot = new Vector2(0, 1); frt.sizeDelta = new Vector2(52, 36); frt.anchoredPosition = new Vector2(12, -12);
+
+        // Tail first so the body (drawn after) overlaps and covers half of it,
+        // leaving only the pointed left edge visible as a tail fin.
+        var tailGo = new GameObject("FishTail", typeof(RectTransform)); tailGo.transform.SetParent(frt, false);
+        var tailImg = tailGo.AddComponent<Image>(); tailImg.color = teal; tailImg.raycastTarget = false;
+        var tailRT = tailGo.GetComponent<RectTransform>(); tailRT.anchorMin = tailRT.anchorMax = new Vector2(0.5f, 0.5f); tailRT.pivot = new Vector2(0.5f, 0.5f);
+        tailRT.sizeDelta = new Vector2(14, 14); tailRT.anchoredPosition = new Vector2(-15, 0); tailRT.localEulerAngles = new Vector3(0, 0, 45f);
+
+        var bodyGo = new GameObject("FishBody", typeof(RectTransform)); bodyGo.transform.SetParent(frt, false);
+        var bodyImg = bodyGo.AddComponent<Image>(); bodyImg.sprite = GetCircle(); bodyImg.color = teal; bodyImg.raycastTarget = false;
+        var bodyRT = bodyGo.GetComponent<RectTransform>(); bodyRT.anchorMin = bodyRT.anchorMax = new Vector2(0.5f, 0.5f); bodyRT.pivot = new Vector2(0.5f, 0.5f);
+        bodyRT.sizeDelta = new Vector2(36, 22); bodyRT.anchoredPosition = new Vector2(6, 0);
+
+        // Full-size invisible hit area + hover scale, matching MenuHoverButton's
+        // use of unscaledDeltaTime so hovering still animates while paused.
+        var hitImg = fishGo.AddComponent<Image>(); hitImg.color = new Color(0, 0, 0, 0); hitImg.raycastTarget = true;
+        var fishBtn = fishGo.AddComponent<Button>(); fishBtn.targetGraphic = hitImg;
+        fishGo.AddComponent<MenuHoverButton>();
+        // Persistent listener — a plain AddListener() here would be silently
+        // dropped on scene save/reload since it's a runtime-only registration.
+        UnityEventTools.AddPersistentListener(fishBtn.onClick, popupLogic.Open);
+
+        overlay.transform.SetAsLastSibling();
+    }
+
+    internal static Sprite GetCircle() { try { return AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd"); } catch { return null; } }
+
     internal static Sprite FindSprite(string name) { foreach (var g in AssetDatabase.FindAssets(name + " t:Texture2D")) { var p = AssetDatabase.GUIDToAssetPath(g); if (System.IO.Path.GetFileNameWithoutExtension(p).ToLower() == name.ToLower()) { var s = AssetDatabase.LoadAssetAtPath<Sprite>(p); if (s != null) return s; var reps = AssetDatabase.LoadAllAssetRepresentationsAtPath(p); foreach (var r in reps) { if (r is Sprite sp) return sp; } } } return null; }
     internal static Image MakeImg(Transform p, string n, Color c) { var go = new GameObject(n, typeof(RectTransform)); go.transform.SetParent(p, false); var img = go.AddComponent<Image>(); img.color = c; return img; }
     internal static TMP_Text MakeTxt(Transform p, string n, string text, int size, Color col, TextAlignmentOptions align, FontStyles style = FontStyles.Normal) { var go = new GameObject(n, typeof(RectTransform)); go.transform.SetParent(p, false); var t = go.AddComponent<TextMeshProUGUI>(); t.text = text; t.fontSize = size; t.color = col; t.alignment = align; t.fontStyle = style; t.raycastTarget = false; return t; }
@@ -470,7 +550,7 @@ internal static class SharedWorldBuilderUtils
         var playerGo = new GameObject("Phisherman"); playerGo.tag = "Player";
         playerGo.transform.position = new Vector3(0f, -1.5f, 0f); playerGo.transform.localScale = new Vector3(playerScale, playerScale, 1f);
         var playerSR = playerGo.AddComponent<SpriteRenderer>(); playerSR.sprite = phisherman; playerSR.color = Color.white; playerSR.sortingOrder = 10;
-        var anim = playerGo.AddComponent<MapWalkAnimator>(); anim.idleSprite = phisherman; anim.walkSprite = phishermanWalk ?? phisherman; anim.fps = 2f;
+        var anim = playerGo.AddComponent<MapWalkAnimator>(); anim.idleSprite = phisherman; anim.walkSprite = phishermanWalk ?? phisherman; anim.fps = 8f;
         playerGo.AddComponent<MapWasdZoneClamp>();
         var nav = playerGo.AddComponent<MapNavAgent>(); nav.gridCols = 80; nav.gridRows = 45; nav.moveSpeed = sharedSpeed;
         // ADDED: PlayerController for WASD movement, same as World 1
@@ -495,6 +575,7 @@ public static class World2Builder
     public static void Build()
     {
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
+        // DO NOT reset PolygonCollider2D points — manually edited in Editor.
         var savedVerts = SharedWorldBuilderUtils.SaveWalkableZone(ScenePath, "World2Builder", out var savedPos);
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         SharedWorldBuilderUtils.RestoreWalkableZone("World2Builder", savedVerts, savedPos);
@@ -514,6 +595,8 @@ public static class World2Builder
 
         // CHANGED: BuildMapHint now wires the click listener
         SharedWorldBuilderUtils.BuildMapHint(canvasRT, manager);
+        SharedWorldBuilderUtils.AddFishMenuButton(canvasRT);
+        var announcer2 = manager.gameObject.AddComponent<WorldUnlockAnnouncer>(); announcer2.canvasRT = canvasRT; announcer2.circleSprite = SharedWorldBuilderUtils.GetCircle(); announcer2.myWorldNumber = 2;
 
         var mapPanel = SharedWorldBuilderUtils.BuildWorldMapPanel(canvasRT, manager, Hex("#1A6E9E"));
 
@@ -555,6 +638,7 @@ public static class World3Builder
     public static void Build()
     {
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
+        // DO NOT reset PolygonCollider2D points — manually edited in Editor.
         var savedVerts = SharedWorldBuilderUtils.SaveWalkableZone(ScenePath, "World3Builder", out var savedPos);
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         SharedWorldBuilderUtils.RestoreWalkableZone("World3Builder", savedVerts, savedPos);
@@ -572,6 +656,8 @@ public static class World3Builder
         var (dialogPanel, advBtn, nameText, bodyText, hintText, choicePanel, acceptBtn, acceptTxt, declineBtn, declineTxt) = SharedWorldBuilderUtils.BuildDialoguePanel(canvasRT, Hex("#FFD93D"));
 
         SharedWorldBuilderUtils.BuildMapHint(canvasRT, manager);
+        SharedWorldBuilderUtils.AddFishMenuButton(canvasRT);
+        var announcer3 = manager.gameObject.AddComponent<WorldUnlockAnnouncer>(); announcer3.canvasRT = canvasRT; announcer3.circleSprite = SharedWorldBuilderUtils.GetCircle(); announcer3.myWorldNumber = 3;
 
         var mapPanel = SharedWorldBuilderUtils.BuildWorldMapPanel(canvasRT, manager, Hex("#1A6E9E"));
 
@@ -609,6 +695,7 @@ public static class World4Builder
     public static void Build()
     {
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
+        // DO NOT reset PolygonCollider2D points — manually edited in Editor.
         var savedVerts = SharedWorldBuilderUtils.SaveWalkableZone(ScenePath, "World4Builder", out var savedPos);
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         SharedWorldBuilderUtils.RestoreWalkableZone("World4Builder", savedVerts, savedPos);
@@ -626,6 +713,8 @@ public static class World4Builder
         var (dialogPanel, advBtn, nameText, bodyText, hintText, choicePanel, acceptBtn, acceptTxt, declineBtn, declineTxt) = SharedWorldBuilderUtils.BuildDialoguePanel(canvasRT, Hex("#FFD93D"));
 
         SharedWorldBuilderUtils.BuildMapHint(canvasRT, manager);
+        SharedWorldBuilderUtils.AddFishMenuButton(canvasRT);
+        var announcer4 = manager.gameObject.AddComponent<WorldUnlockAnnouncer>(); announcer4.canvasRT = canvasRT; announcer4.circleSprite = SharedWorldBuilderUtils.GetCircle(); announcer4.myWorldNumber = 4;
 
         var mapPanel = SharedWorldBuilderUtils.BuildWorldMapPanel(canvasRT, manager, Hex("#1A6E9E"));
 
@@ -663,6 +752,7 @@ public static class World5Builder
     public static void Build()
     {
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
+        // DO NOT reset PolygonCollider2D points — manually edited in Editor.
         var savedVerts = SharedWorldBuilderUtils.SaveWalkableZone(ScenePath, "World5Builder", out var savedPos);
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         SharedWorldBuilderUtils.RestoreWalkableZone("World5Builder", savedVerts, savedPos);
@@ -680,6 +770,8 @@ public static class World5Builder
         var (dialogPanel, advBtn, nameText, bodyText, hintText, choicePanel, acceptBtn, acceptTxt, declineBtn, declineTxt) = SharedWorldBuilderUtils.BuildDialoguePanel(canvasRT, Hex("#FFD93D"));
 
         SharedWorldBuilderUtils.BuildMapHint(canvasRT, manager);
+        SharedWorldBuilderUtils.AddFishMenuButton(canvasRT);
+        var announcer5 = manager.gameObject.AddComponent<WorldUnlockAnnouncer>(); announcer5.canvasRT = canvasRT; announcer5.circleSprite = SharedWorldBuilderUtils.GetCircle(); announcer5.myWorldNumber = 5;
 
         var mapPanel = SharedWorldBuilderUtils.BuildWorldMapPanel(canvasRT, manager, Hex("#1A6E9E"));
 
@@ -687,7 +779,8 @@ public static class World5Builder
         // but we still need one for the door "already completed" messages.
         var lockedPopup = SharedWorldBuilderUtils.BuildLockedPopup(canvasRT, "You've already helped here! Explore the other houses.", Hex("#A29BFE"));
 
-        SharedWorldBuilderUtils.AddDoorCTA("Door_W5_House1", playerT, -4.0f, 0.4f, "GrandpaErnestInterior", "Grandpa Ernest", Hex("#3498DB"), lockedPopup);
+        // CTA badge label shortened to "Ernest" (was "Grandpa Ernest") — the full name overflowed the badge border.
+        SharedWorldBuilderUtils.AddDoorCTA("Door_W5_House1", playerT, -4.0f, 0.4f, "GrandpaErnestInterior", "Ernest", Hex("#3498DB"), lockedPopup);
         SharedWorldBuilderUtils.AddDoorCTA("Door_W5_House2", playerT, 0.2f, 1.2f, "AuntPriyaInterior", "Aunt Priya", Hex("#1ABC9C"), lockedPopup);
         SharedWorldBuilderUtils.AddDoorCTA("Door_W5_House3", playerT, 4.3f, 0.2f, "UncleDiegoInterior", "Uncle Diego", Hex("#E74C3C"), lockedPopup);
 

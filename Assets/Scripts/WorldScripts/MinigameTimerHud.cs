@@ -67,7 +67,7 @@ public class MinigameTimerHUD : MonoBehaviour
         textRT.offsetMin = new Vector2(iconSprite != null ? 46 : 10, 4);
         textRT.offsetMax = new Vector2(-10, -4);
         _timerText = textRT.gameObject.AddComponent<TextMeshProUGUI>();
-        _timerText.fontSize = 26;
+        _timerText.fontSize = 22;
         _timerText.fontStyle = FontStyles.Bold;
         _timerText.color = Color.white;
         _timerText.alignment = TextAlignmentOptions.MidlineRight;

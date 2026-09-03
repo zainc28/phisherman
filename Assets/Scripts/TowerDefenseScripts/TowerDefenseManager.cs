@@ -96,7 +96,13 @@ public class TowerDefenseManager : MonoBehaviour
     private bool gameEnded;
 
     private const int LaneCount = 7;
-    private const float LaneSpread = 1.6f;
+    // Task 4C: spawn lanes now span an absolute 15%-85% band of screen height
+    // (camera orthoSize=5 -> world Y spans ±5) instead of a narrow band around
+    // the tower, so enemies spread across nearly the full vertical view and
+    // lanes end up far enough apart that the now-larger fish/log sprites don't
+    // visually overlap between adjacent lanes.
+    private const float SpawnYMin = -3.5f;
+    private const float SpawnYMax = 3.5f;
     private bool[] laneOccupied = new bool[LaneCount];
 
     private struct NetFishState
@@ -527,9 +533,7 @@ public class TowerDefenseManager : MonoBehaviour
 
             int lane = GetFreeLane();
             laneOccupied[lane] = true;
-            const float TowerY = -0.3f;
-            float laneY = TowerY + Mathf.Lerp(-LaneSpread * 0.5f, LaneSpread * 0.5f,
-                          (float)lane / (LaneCount - 1));
+            float laneY = Mathf.Lerp(SpawnYMin, SpawnYMax, (float)lane / (LaneCount - 1));
 
             bool isScam = Random.value < ScamRatio;
             ED data = isScam
@@ -644,13 +648,13 @@ public class TowerDefenseManager : MonoBehaviour
                   fishNormalSprite, fishHappySprite, fishPuffedSprite, logSprite,
                   NeutralFishColor);
 
-        // Hanging fish: 2x bigger (0.80 scale), log 60% of original (0.96 x 0.51)
+        // Hanging fish: 0.80 scale +25% (Task 4C) = 1.00
         if (hangingFishSprite != null)
         {
             var hfGo = new GameObject("HangingFish");
             hfGo.transform.SetParent(go.transform, false);
             hfGo.transform.localPosition = new Vector3(0f, 0.30f, 0.01f);
-            hfGo.transform.localScale = new Vector3(0.80f, 0.80f, 1f); // was 0.40f — now 2x
+            hfGo.transform.localScale = new Vector3(1.00f, 1.00f, 1f); // was 0.80f — Task 4C: fish sprite +25%
             var hfSR = hfGo.AddComponent<SpriteRenderer>();
             hfSR.sprite = hangingFishSprite;
             hfSR.color = Color.white;

@@ -26,19 +26,23 @@ public static class MainMenuBuilder
     static readonly Color PanelBg = new Color(0.04f, 0.06f, 0.13f, 0.98f);
     static readonly Color CardBg = new Color(0.05f, 0.08f, 0.17f, 0.97f);
     static readonly Color StoryC = Hex("#00E5FF");
-    static readonly Color ArcadeC = Hex("#FFD93D");
-    static readonly Color SettingC = Hex("#A29BFE");
+    static readonly Color ArcadeC = Hex("#CC44FF");
+    static readonly Color SettingC = Hex("#FF8C00");
     static readonly Color ExitC = Hex("#636E72");
     static readonly Color ResetC = Hex("#E74C3C");
     static readonly Color EmailC = Hex("#FF6B6B");
     static readonly Color SpotC = Hex("#FFD93D");
     static readonly Color TowerC = Hex("#2ECC71");
 
-    // ── Underwater-cyberpunk main menu background (Task 2 redesign) ──
-    static readonly Color BgDeep = Hex("#080f1e");
+    // ── Underwater-cyberpunk main menu background (Task 3 redesign) ──
+    static readonly Color BgDeep = Hex("#060d1a");
     static readonly Color AccentCyan = Hex("#00E5FF");      // same as StoryC — title / button border / glow
     static readonly Color MenuBtnFill = Hex("#0d2137");     // main button fill + scanline grid lines
-    static readonly Color ExitDark = Hex("#3a0f0f");
+    static readonly Color ExitDark = Hex("#1a0808");
+    static readonly Color ExitBorder = Hex("#cc2222");
+    static readonly Color PurpleAccent = Hex("#8b00ff");
+    static readonly Color BlueAccent = Hex("#0066ff");
+    static readonly Color GoldAccent = Hex("#ffd700");
 
     [MenuItem("Phisherman/Build Main Menu Scene")]
     public static void Build()
@@ -75,19 +79,37 @@ public static class MainMenuBuilder
         Sprite circleSpr = GetCircle();
         Sprite triSpr = GetTriangleSprite();
 
-        // Layer 3: subtle digital scanline grid, 40px apart at reference resolution
-        BuildScanlineGrid(cRT, new Color(MenuBtnFill.r, MenuBtnFill.g, MenuBtnFill.b, 0.30f));
+        // Layer 2: animated diagonal gradient sweep, loops left-to-right every 8s
+        var sweepGo = new GameObject("GradientSweep", typeof(RectTransform));
+        sweepGo.transform.SetParent(cRT, false);
+        var sweepImg = sweepGo.AddComponent<Image>(); sweepImg.color = new Color(MenuBtnFill.r * 1.3f, MenuBtnFill.g * 1.3f, MenuBtnFill.b * 1.3f, 0.55f); sweepImg.raycastTarget = false;
+        var sweepRT = sweepGo.GetComponent<RectTransform>();
+        sweepRT.anchorMin = sweepRT.anchorMax = new Vector2(0.5f, 0.5f);
+        sweepRT.sizeDelta = new Vector2(500f, 2400f);
+        sweepRT.localEulerAngles = new Vector3(0, 0, -20f);
+        sweepGo.AddComponent<MenuGradientSweep>();
 
-        // Layer 2: decorative fish silhouettes tucked into the corners
-        Color fishCol = new Color(AccentCyan.r, AccentCyan.g, AccentCyan.b, 0.06f);
+        // Layer 3: subtle digital scanline grid — horizontal + vertical, 60px apart
+        BuildScanlineGrid(cRT, new Color(MenuBtnFill.r, MenuBtnFill.g, MenuBtnFill.b, 0.40f));
+
+        // Layer 4: glowing orbs, very low opacity
+        BuildGlowOrbs(cRT, circleSpr);
+
+        // Layer 2b: decorative fish silhouettes tucked into the corners — 2 of the
+        // 4 get a gentle floating drift.
+        Color fishTeal = new Color(AccentCyan.r, AccentCyan.g, AccentCyan.b, 0.08f);
+        Color fishPurple = new Color(PurpleAccent.r, PurpleAccent.g, PurpleAccent.b, 0.06f);
         var fishLayerGo = new GameObject("FishLayer", typeof(RectTransform));
         fishLayerGo.transform.SetParent(cRT, false);
         var fishRT = fishLayerGo.GetComponent<RectTransform>();
         Stretch(fishRT);
         var fishCG = fishLayerGo.AddComponent<CanvasGroup>(); fishCG.blocksRaycasts = false; fishCG.interactable = false;
-        BuildFishSilhouette(fishRT, circleSpr, triSpr, new Vector2(0.07f, 0.87f), 220f, 78f, 8f, false, fishCol);
-        BuildFishSilhouette(fishRT, circleSpr, triSpr, new Vector2(0.93f, 0.15f), 260f, 92f, -6f, true, fishCol);
-        BuildFishSilhouette(fishRT, circleSpr, triSpr, new Vector2(0.90f, 0.82f), 170f, 60f, 4f, true, fishCol);
+        BuildFishSilhouette(fishRT, circleSpr, triSpr, new Vector2(0.06f, 0.88f), 160f, 56f, 8f, false, fishTeal);
+        var fishB = BuildFishSilhouette(fishRT, circleSpr, triSpr, new Vector2(0.93f, 0.14f), 200f, 70f, -6f, true, fishPurple);
+        BuildFishSilhouette(fishRT, circleSpr, triSpr, new Vector2(0.90f, 0.85f), 140f, 50f, 4f, true, fishTeal);
+        var fishD = BuildFishSilhouette(fishRT, circleSpr, triSpr, new Vector2(0.07f, 0.12f), 180f, 63f, -4f, false, fishPurple);
+        var driftB = fishB.gameObject.AddComponent<MenuFloatDrift>(); driftB.amplitude = 0.3f; driftB.period = 3f;
+        var driftD = fishD.gameObject.AddComponent<MenuFloatDrift>(); driftD.amplitude = 0.3f; driftD.period = 3f;
 
         // Layer 1: bubbles drifting upward forever (runtime coroutine-driven component)
         var bubbleLayerGo = new GameObject("BubbleField", typeof(RectTransform));
@@ -97,6 +119,8 @@ public static class MainMenuBuilder
         var bubbleField = bubbleLayerGo.AddComponent<MenuBubbleField>();
         bubbleField.bubbleSprite = circleSpr;
         bubbleField.tint = Color.white;
+        bubbleField.bubbleCount = 12;
+        bubbleField.sizeRange = new Vector2(8f, 20f);
 
         // Manager
         var mgr = new GameObject("MainMenuManager").AddComponent<MainMenuManager>();
@@ -107,16 +131,25 @@ public static class MainMenuBuilder
         mainPanel.transform.SetParent(cRT, false);
         Stretch(mainPanel.GetComponent<RectTransform>());
 
-        // Title, with a slightly larger low-opacity copy behind it for a soft glow feel
-        var titleGlow = MkTxt(mainPanel.transform, "TitleGlow", "PHISHERMAN", 80, new Color(AccentCyan.r, AccentCyan.g, AccentCyan.b, 0.35f), TextAlignmentOptions.Center, FontStyles.Bold);
-        titleGlow.textWrappingMode = TextWrappingModes.NoWrap;
-        SetAnch(titleGlow.rectTransform, 0.17f, 0.822f, 0.83f, 0.978f);
+        // Fishing hook — built before the title so it renders behind it
+        BuildFishingHook(mainPanel.transform);
 
-        var titleTxt = MkTxt(mainPanel.transform, "TitleText", "PHISHERMAN", 72, AccentCyan, TextAlignmentOptions.Center, FontStyles.Bold);
+        // Title: white front layer + cyan glow layer offset 2px down-right
+        var titleGlow = MkTxt(mainPanel.transform, "TitleGlow", "PHISHERMAN", 82, new Color(AccentCyan.r, AccentCyan.g, AccentCyan.b, 0.3f), TextAlignmentOptions.Center, FontStyles.Bold);
+        titleGlow.textWrappingMode = TextWrappingModes.NoWrap;
+        SetAnch(titleGlow.rectTransform, 0.20f, 0.83f, 0.80f, 0.97f, ox: 2, oy: -2, ox2: 2, oy2: -2);
+
+        var titleTxt = MkTxt(mainPanel.transform, "TitleText", "PHISHERMAN", 78, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
         titleTxt.textWrappingMode = TextWrappingModes.NoWrap;
+        titleTxt.characterSpacing = 6f;
         SetAnch(titleTxt.rectTransform, 0.20f, 0.83f, 0.80f, 0.97f);
 
-        var tagTxt = MkTxt(mainPanel.transform, "Tagline", "An Educational Anti-Phishing Adventure", 18, new Color(1, 1, 1, 0.70f), TextAlignmentOptions.Center);
+        // Divider — gradient transparent -> teal -> transparent
+        var divider = MkImg(mainPanel.transform, "TitleDivider", AccentCyan);
+        divider.sprite = GetHorizontalFadeSprite(); divider.raycastTarget = false;
+        var divRT = divider.rectTransform; divRT.anchorMin = new Vector2(0.20f, 0.825f); divRT.anchorMax = new Vector2(0.80f, 0.825f); divRT.pivot = new Vector2(0.5f, 0.5f); divRT.sizeDelta = new Vector2(0, 3);
+
+        var tagTxt = MkTxt(mainPanel.transform, "Tagline", "An Educational Anti-Phishing Adventure", 19, Hex("#7ecfdf"), TextAlignmentOptions.Center, FontStyles.Italic);
         SetAnch(tagTxt.rectTransform, 0.15f, 0.78f, 0.85f, 0.83f);
 
         // Three main buttons — fixed 440x70 px, 18px gap, centered as a block
@@ -132,22 +165,20 @@ public static class MainMenuBuilder
         float y2Max = (blockTop - 2f * BtnH - 2f * BtnGap) / RefH;
         float y2Min = (blockTop - 3f * BtnH - 2f * BtnGap) / RefH;
 
-        MkMainBtn(mainPanel.transform, "StoryBtn", "STORY MODE", bx0, y0Min, bx1, y0Max);
-        MkMainBtn(mainPanel.transform, "ArcadeBtn", "ARCADE MODE", bx0, y1Min, bx1, y1Max);
-        MkMainBtn(mainPanel.transform, "SettingsBtn", "SETTINGS", bx0, y2Min, bx1, y2Max);
+        MkMainBtn(mainPanel.transform, "StoryBtn", "STORY MODE", StoryC, bx0, y0Min, bx1, y0Max);
+        MkMainBtn(mainPanel.transform, "ArcadeBtn", "ARCADE MODE", ArcadeC, bx0, y1Min, bx1, y1Max);
+        MkMainBtn(mainPanel.transform, "SettingsBtn", "SETTINGS", SettingC, bx0, y2Min, bx1, y2Max);
 
-        MkExitBtn(mainPanel.transform, "ExitBtn", "EXIT GAME");
+        MkExitBtn(mainPanel.transform, "ExitBtn", "EXIT");
 
-        var verTxt = MkTxt(mainPanel.transform, "Ver", "v0.1 - Research Prototype", 13, new Color(0.62f, 0.62f, 0.68f, 1f), TextAlignmentOptions.Left);
+        var verTxt = MkTxt(mainPanel.transform, "Ver", "v0.1 - Research Prototype", 12, Hex("#445566"), TextAlignmentOptions.Left);
         SetAnch(verTxt.rectTransform, 0.01f, 0.008f, 0.35f, 0.045f, ox: 12);
 
         // ── Arcade panel ──────────────────────────────────────
         var arcadePanel = MkPanel(cRT, "ArcadePanel", 0.07f, 0.06f, 0.93f, 0.94f);
         {
             var pRT = arcadePanel.GetComponent<RectTransform>();
-            TopBar(pRT, ArcadeC);
-            MkTxt(arcadePanel.transform, "Title", "ARCADE MODE", 48, ArcadeC, TextAlignmentOptions.Center, FontStyles.Bold)
-                .rectTransform.With(r => SetAnch(r, 0f, 0.88f, 1f, 1f));
+            BuildPanelHeader(pRT, "ARCADE MODE");
             MkTxt(arcadePanel.transform, "Sub", "Choose a minigame — no story progress required.", 21, new Color(1, 1, 1, 0.46f), TextAlignmentOptions.Center)
                 .rectTransform.With(r => SetAnch(r, 0.05f, 0.82f, 0.95f, 0.89f));
             MkCard(pRT, "EmailCard", "Email Swiper", "Sort real vs phishing emails.\nSwipe SCAM or SAFE.", EmailC, "fish", 0.02f, 0.13f, 0.33f, 0.80f);
@@ -161,9 +192,7 @@ public static class MainMenuBuilder
         var settingsPanel = MkPanel(cRT, "SettingsPanel", 0.15f, 0.06f, 0.85f, 0.94f);
         {
             var pRT = settingsPanel.GetComponent<RectTransform>();
-            TopBar(pRT, SettingC);
-            MkTxt(settingsPanel.transform, "Title", "SETTINGS", 48, SettingC, TextAlignmentOptions.Center, FontStyles.Bold)
-                .rectTransform.With(r => SetAnch(r, 0f, 0.88f, 1f, 1f));
+            BuildPanelHeader(pRT, "SETTINGS");
             MkVolRow(pRT, "MasterVolumeRow", "Master Volume", SettingC, 0.73f, 0.82f);
             MkVolRow(pRT, "MusicVolumeRow", "Music Volume", SettingC, 0.60f, 0.69f);
             MkVolRow(pRT, "SFXVolumeRow", "SFX Volume", SettingC, 0.47f, 0.56f);
@@ -268,8 +297,8 @@ public static class MainMenuBuilder
         MkHover(go, 1.025f, 0.975f);
     }
 
-    // ── Main menu button — fixed 440x70, uniform 2px cyan border, centered label ──
-    static void MkMainBtn(Transform parent, string name, string label, float xMin, float yMin, float xMax, float yMax)
+    // ── Main menu button — fixed 440x70, three layers (glow / fill+accent bar / border) + chevron ──
+    static void MkMainBtn(Transform parent, string name, string label, Color accentCol, float xMin, float yMin, float xMax, float yMax)
     {
         var go = new GameObject(name, typeof(RectTransform));
         go.transform.SetParent(parent, false);
@@ -277,29 +306,60 @@ public static class MainMenuBuilder
         rt.anchorMin = new Vector2(xMin, yMin); rt.anchorMax = new Vector2(xMax, yMax);
         rt.offsetMin = rt.offsetMax = Vector2.zero;
 
-        // Border layer (full rect, cyan) + fill layer inset 2px = crisp 2px border
-        var border = go.AddComponent<Image>(); border.color = AccentCyan;
+        // Layer 1: outer glow, +6px each side, behind everything
+        var glowGo = new GameObject("Glow", typeof(RectTransform)); glowGo.transform.SetParent(go.transform, false);
+        var glowImg = glowGo.AddComponent<Image>(); glowImg.color = new Color(accentCol.r, accentCol.g, accentCol.b, 0.15f); glowImg.raycastTarget = false;
+        var glowRT = glowGo.GetComponent<RectTransform>(); glowRT.anchorMin = Vector2.zero; glowRT.anchorMax = Vector2.one; glowRT.offsetMin = new Vector2(-6, -6); glowRT.offsetMax = new Vector2(6, 6);
 
+        // Layer 3 (border): full-rect accent colour behind an inset fill — a crisp 1.5px border.
+        // This IS the button's own Image/Button target.
+        var border = go.AddComponent<Image>(); border.color = accentCol;
+
+        // Layer 2 (background): dark fill inset 1.5px
         var fillGo = new GameObject("Fill", typeof(RectTransform)); fillGo.transform.SetParent(go.transform, false);
-        var fillRT = fillGo.GetComponent<RectTransform>();
-        fillRT.anchorMin = Vector2.zero; fillRT.anchorMax = Vector2.one;
-        fillRT.offsetMin = new Vector2(2, 2); fillRT.offsetMax = new Vector2(-2, -2);
-        var fillImg = fillGo.AddComponent<Image>(); fillImg.color = new Color(MenuBtnFill.r, MenuBtnFill.g, MenuBtnFill.b, 0.92f); fillImg.raycastTarget = false;
+        var fillImg = fillGo.AddComponent<Image>(); fillImg.color = MenuBtnFill; fillImg.raycastTarget = false;
+        var fillRT = fillGo.GetComponent<RectTransform>(); fillRT.anchorMin = Vector2.zero; fillRT.anchorMax = Vector2.one; fillRT.offsetMin = new Vector2(1.5f, 1.5f); fillRT.offsetMax = new Vector2(-1.5f, -1.5f);
 
-        var lbl = MkTxt(go.transform, "Label", label, 22, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
-        Stretch(lbl.rectTransform); lbl.raycastTarget = false;
+        // Left accent bar, 6px wide, full height
+        var accGo = new GameObject("AccentBar", typeof(RectTransform)); accGo.transform.SetParent(go.transform, false);
+        var accImg = accGo.AddComponent<Image>(); accImg.color = accentCol; accImg.raycastTarget = false;
+        var accRT = accGo.GetComponent<RectTransform>(); accRT.anchorMin = Vector2.zero; accRT.anchorMax = new Vector2(0, 1); accRT.pivot = new Vector2(0, 0.5f); accRT.sizeDelta = new Vector2(6, 0);
+
+        // Label — left aligned, 20px left padding to clear the accent bar
+        var lbl = MkTxt(go.transform, "Label", label, 24, Color.white, TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
+        var lblRT = lbl.rectTransform; lblRT.anchorMin = Vector2.zero; lblRT.anchorMax = Vector2.one; lblRT.offsetMin = new Vector2(20, 0); lblRT.offsetMax = new Vector2(-40, 0);
+        lbl.raycastTarget = false;
+
+        BuildChevron(go.transform, accentCol);
 
         var btn = go.AddComponent<Button>(); btn.targetGraphic = border;
         var cb = btn.colors;
-        cb.normalColor = AccentCyan;
-        cb.highlightedColor = new Color(Mathf.Min(1f, AccentCyan.r * 1.3f), Mathf.Min(1f, AccentCyan.g * 1.3f), Mathf.Min(1f, AccentCyan.b * 1.3f), 1f);
-        cb.pressedColor = new Color(AccentCyan.r * 0.65f, AccentCyan.g * 0.65f, AccentCyan.b * 0.65f, 1f);
+        cb.normalColor = accentCol;
+        cb.highlightedColor = new Color(Mathf.Min(1f, accentCol.r * 1.3f), Mathf.Min(1f, accentCol.g * 1.3f), Mathf.Min(1f, accentCol.b * 1.3f), 1f);
+        cb.pressedColor = new Color(accentCol.r * 0.65f, accentCol.g * 0.65f, accentCol.b * 0.65f, 1f);
         cb.colorMultiplier = 1f; btn.colors = cb;
 
         MkHover(go, 1.03f, 0.975f);
     }
 
-    // ── Exit button — fixed 160x44, pinned bottom-right ──
+    // ── Chevron ">" — two thin rectangles forming an arrow, right side of a button ──
+    static void BuildChevron(Transform parent, Color col)
+    {
+        var root = new GameObject("Chevron", typeof(RectTransform)); root.transform.SetParent(parent, false);
+        var rrt = root.GetComponent<RectTransform>();
+        rrt.anchorMin = rrt.anchorMax = new Vector2(1f, 0.5f); rrt.pivot = new Vector2(1f, 0.5f);
+        rrt.sizeDelta = new Vector2(20, 20); rrt.anchoredPosition = new Vector2(-20, 0);
+
+        var top = MkImg(rrt, "Top", col); top.raycastTarget = false;
+        var trt = top.rectTransform; trt.anchorMin = trt.anchorMax = new Vector2(0.5f, 0.5f);
+        trt.sizeDelta = new Vector2(3, 13); trt.anchoredPosition = new Vector2(-3, 3.2f); trt.localEulerAngles = new Vector3(0, 0, 45f);
+
+        var bot = MkImg(rrt, "Bottom", col); bot.raycastTarget = false;
+        var brt2 = bot.rectTransform; brt2.anchorMin = brt2.anchorMax = new Vector2(0.5f, 0.5f);
+        brt2.sizeDelta = new Vector2(3, 13); brt2.anchoredPosition = new Vector2(-3, -3.2f); brt2.localEulerAngles = new Vector3(0, 0, -45f);
+    }
+
+    // ── Exit button — fixed 140x40, pinned bottom-right, dark bg + distinct red border ──
     static void MkExitBtn(Transform parent, string name, string label)
     {
         var go = new GameObject(name, typeof(RectTransform));
@@ -307,22 +367,41 @@ public static class MainMenuBuilder
         var rt = go.GetComponent<RectTransform>();
         rt.anchorMin = rt.anchorMax = new Vector2(1f, 0f);
         rt.pivot = new Vector2(1f, 0f);
-        rt.sizeDelta = new Vector2(160, 44);
+        rt.sizeDelta = new Vector2(140, 40);
         rt.anchoredPosition = new Vector2(-24, 24);
 
-        var img = go.AddComponent<Image>(); img.color = ExitDark;
+        var border = go.AddComponent<Image>(); border.color = ExitBorder;
+
+        var fillGo = new GameObject("Fill", typeof(RectTransform)); fillGo.transform.SetParent(go.transform, false);
+        var fillImg = fillGo.AddComponent<Image>(); fillImg.color = ExitDark; fillImg.raycastTarget = false;
+        var fillRT = fillGo.GetComponent<RectTransform>(); fillRT.anchorMin = Vector2.zero; fillRT.anchorMax = Vector2.one; fillRT.offsetMin = new Vector2(1.5f, 1.5f); fillRT.offsetMax = new Vector2(-1.5f, -1.5f);
+
         var lbl = MkTxt(go.transform, "Label", label, 16, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
         Stretch(lbl.rectTransform); lbl.raycastTarget = false;
 
-        var btn = go.AddComponent<Button>(); btn.targetGraphic = img;
+        var btn = go.AddComponent<Button>(); btn.targetGraphic = border;
         var cb = btn.colors;
-        cb.normalColor = ExitDark;
-        cb.highlightedColor = new Color(Mathf.Min(1f, ExitDark.r * 1.8f), Mathf.Min(1f, ExitDark.g * 1.8f), Mathf.Min(1f, ExitDark.b * 1.8f), 1f);
-        cb.pressedColor = new Color(ExitDark.r * 0.6f, ExitDark.g * 0.6f, ExitDark.b * 0.6f, 1f);
+        cb.normalColor = ExitBorder;
+        cb.highlightedColor = new Color(Mathf.Min(1f, ExitBorder.r * 1.3f), Mathf.Min(1f, ExitBorder.g * 1.3f), Mathf.Min(1f, ExitBorder.b * 1.3f), 1f);
+        cb.pressedColor = new Color(ExitBorder.r * 0.65f, ExitBorder.g * 0.65f, ExitBorder.b * 0.65f, 1f);
         cb.colorMultiplier = 1f; btn.colors = cb;
     }
 
-    // ── Scanline grid (Layer 3) — thin horizontal lines, 40px apart at 1920x1080 ──
+    // ── Shared panel header — dark bar + glow-style title, "same style as main title" but smaller/teal ──
+    static void BuildPanelHeader(RectTransform pRT, string title)
+    {
+        var header = MkImg(pRT, "HeaderBar", BgDeep);
+        var hrt = header.rectTransform; hrt.anchorMin = new Vector2(0, 1); hrt.anchorMax = new Vector2(1, 1); hrt.pivot = new Vector2(0.5f, 1); hrt.sizeDelta = new Vector2(0, 90);
+        header.raycastTarget = false;
+
+        var glowT = MkTxt(header.rectTransform, "TitleGlow", title, 34, new Color(AccentCyan.r, AccentCyan.g, AccentCyan.b, 0.30f), TextAlignmentOptions.Center, FontStyles.Bold);
+        var glrt = glowT.rectTransform; glrt.anchorMin = Vector2.zero; glrt.anchorMax = Vector2.one; glrt.offsetMin = new Vector2(1, -1); glrt.offsetMax = new Vector2(1, -1);
+
+        var frontT = MkTxt(header.rectTransform, "Title", title, 32, AccentCyan, TextAlignmentOptions.Center, FontStyles.Bold);
+        Stretch(frontT.rectTransform);
+    }
+
+    // ── Scanline grid (Layer 3) — horizontal + vertical lines, 60px apart at 1920x1080 ──
     static void BuildScanlineGrid(RectTransform canvasRT, Color lineCol)
     {
         var gridGo = new GameObject("ScanlineGrid", typeof(RectTransform));
@@ -331,12 +410,12 @@ public static class MainMenuBuilder
         Stretch(grt);
         var cg = gridGo.AddComponent<CanvasGroup>(); cg.blocksRaycasts = false; cg.interactable = false;
 
-        const float refH = 1080f, spacing = 40f;
-        int lines = Mathf.FloorToInt(refH / spacing);
-        for (int i = 0; i <= lines; i++)
+        const float refW = 1920f, refH = 1080f, spacing = 60f;
+        int hLines = Mathf.FloorToInt(refH / spacing);
+        for (int i = 0; i <= hLines; i++)
         {
             float frac = (i * spacing) / refH;
-            var line = MkImg(grt, "Line_" + i, lineCol);
+            var line = MkImg(grt, "HLine_" + i, lineCol);
             line.raycastTarget = false;
             var lrt = line.rectTransform;
             lrt.anchorMin = new Vector2(0f, frac);
@@ -344,10 +423,65 @@ public static class MainMenuBuilder
             lrt.pivot = new Vector2(0.5f, 0.5f);
             lrt.sizeDelta = new Vector2(0f, 1.5f);
         }
+        int vLines = Mathf.FloorToInt(refW / spacing);
+        for (int i = 0; i <= vLines; i++)
+        {
+            float frac = (i * spacing) / refW;
+            var line = MkImg(grt, "VLine_" + i, lineCol);
+            line.raycastTarget = false;
+            var lrt = line.rectTransform;
+            lrt.anchorMin = new Vector2(frac, 0f);
+            lrt.anchorMax = new Vector2(frac, 1f);
+            lrt.pivot = new Vector2(0.5f, 0.5f);
+            lrt.sizeDelta = new Vector2(1.5f, 0f);
+        }
+    }
+
+    // ── Glowing orbs (Layer 4) — large low-opacity circles at fixed decorative positions ──
+    static void BuildGlowOrbs(RectTransform canvasRT, Sprite circleSpr)
+    {
+        var orbsGo = new GameObject("GlowOrbs", typeof(RectTransform));
+        orbsGo.transform.SetParent(canvasRT, false);
+        Stretch(orbsGo.GetComponent<RectTransform>());
+        var cg = orbsGo.AddComponent<CanvasGroup>(); cg.blocksRaycasts = false; cg.interactable = false;
+
+        (Vector2 pos, float size, Color col, float alpha)[] orbs =
+        {
+            (new Vector2(0.12f, 0.75f), 260f, AccentCyan, 0.08f),
+            (new Vector2(0.85f, 0.65f), 340f, PurpleAccent, 0.06f),
+            (new Vector2(0.30f, 0.20f), 220f, BlueAccent, 0.10f),
+            (new Vector2(0.70f, 0.90f), 300f, AccentCyan, 0.07f),
+            (new Vector2(0.92f, 0.30f), 380f, PurpleAccent, 0.09f),
+        };
+        for (int i = 0; i < orbs.Length; i++)
+        {
+            var img = MkImg(orbsGo.transform, "Orb" + i, new Color(orbs[i].col.r, orbs[i].col.g, orbs[i].col.b, orbs[i].alpha));
+            img.sprite = circleSpr; img.raycastTarget = false;
+            var rt = img.rectTransform; rt.anchorMin = rt.anchorMax = orbs[i].pos; rt.sizeDelta = new Vector2(orbs[i].size, orbs[i].size);
+        }
+    }
+
+    // ── Fishing hook — vertical line from the top + a J-curve, sits behind the title ──
+    static void BuildFishingHook(Transform parent)
+    {
+        Color hookCol = new Color(GoldAccent.r, GoldAccent.g, GoldAccent.b, 0.9f);
+
+        var line = MkImg(parent, "HookLine", hookCol); line.raycastTarget = false;
+        var lrt = line.rectTransform; lrt.anchorMin = lrt.anchorMax = new Vector2(0.5f, 1f); lrt.pivot = new Vector2(0.5f, 1f);
+        lrt.sizeDelta = new Vector2(3, 80); lrt.anchoredPosition = Vector2.zero;
+
+        var curve1 = MkImg(parent, "HookCurve1", hookCol); curve1.raycastTarget = false;
+        var c1rt = curve1.rectTransform; c1rt.anchorMin = c1rt.anchorMax = new Vector2(0.5f, 1f); c1rt.pivot = new Vector2(0.5f, 0.5f);
+        c1rt.sizeDelta = new Vector2(28, 5); c1rt.anchoredPosition = new Vector2(6, -84); c1rt.localEulerAngles = new Vector3(0, 0, -55f);
+
+        var curve2 = MkImg(parent, "HookCurve2", hookCol); curve2.raycastTarget = false;
+        var c2rt = curve2.rectTransform; c2rt.anchorMin = c2rt.anchorMax = new Vector2(0.5f, 1f); c2rt.pivot = new Vector2(0.5f, 0.5f);
+        c2rt.sizeDelta = new Vector2(24, 5); c2rt.anchoredPosition = new Vector2(14, -98); c2rt.localEulerAngles = new Vector3(0, 0, -110f);
     }
 
     // ── Fish silhouette (Layer 2) — ellipse body + triangle tail, purely decorative ──
-    static void BuildFishSilhouette(RectTransform canvasRT, Sprite bodySpr, Sprite tailSpr,
+    // Returns the group's Transform so callers can optionally attach MenuFloatDrift.
+    static Transform BuildFishSilhouette(RectTransform canvasRT, Sprite bodySpr, Sprite tailSpr,
         Vector2 anchorPos, float bodyW, float bodyH, float rotation, bool flipX, Color col)
     {
         var group = new GameObject("FishSilhouette", typeof(RectTransform));
@@ -373,6 +507,8 @@ public static class MainMenuBuilder
         trt.anchorMin = trt.anchorMax = new Vector2(0.5f, 0.5f);
         trt.sizeDelta = new Vector2(tailW, tailH);
         trt.anchoredPosition = new Vector2(-(bodyW * 0.5f + tailW * 0.35f), 0f);
+
+        return group.transform;
     }
 
     // ── Volume row ────────────────────────────────────────────
@@ -393,11 +529,6 @@ public static class MainMenuBuilder
         var go = new GameObject(name, typeof(RectTransform)); go.transform.SetParent(cRT, false);
         go.GetComponent<RectTransform>().With(r => { r.anchorMin = new Vector2(xMin, yMin); r.anchorMax = new Vector2(xMax, yMax); r.offsetMin = r.offsetMax = Vector2.zero; });
         go.AddComponent<Image>().color = PanelBg; return go;
-    }
-
-    static void TopBar(RectTransform p, Color col)
-    {
-        MkImg(p, "TopBar", col).With(i => { i.raycastTarget = false; i.rectTransform.anchorMin = new Vector2(0, 1); i.rectTransform.anchorMax = new Vector2(1, 1); i.rectTransform.pivot = new Vector2(0.5f, 1); i.rectTransform.sizeDelta = new Vector2(0, 5); });
     }
 
     static void MkHover(GameObject go, float h, float p, float spd = 10f)
@@ -444,6 +575,29 @@ public static class MainMenuBuilder
         tex.Apply();
         _triangleSprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
         return _triangleSprite;
+    }
+
+    // Procedurally builds a 1px-tall horizontal alpha ramp (0 -> 1 -> 0) so the
+    // title divider can fade transparent -> teal -> transparent without art.
+    static Sprite _fadeSprite;
+    static Sprite GetHorizontalFadeSprite()
+    {
+        if (_fadeSprite != null) return _fadeSprite;
+        const int size = 64;
+        var tex = new Texture2D(size, 1, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+        tex.wrapMode = TextureWrapMode.Clamp;
+        var px = new Color[size];
+        for (int x = 0; x < size; x++)
+        {
+            float fx = x / (float)(size - 1);
+            float a = Mathf.Clamp01(1f - Mathf.Abs(fx - 0.5f) * 2f);
+            px[x] = new Color(1f, 1f, 1f, a);
+        }
+        tex.SetPixels(px);
+        tex.Apply();
+        _fadeSprite = Sprite.Create(tex, new Rect(0, 0, size, 1), new Vector2(0.5f, 0.5f));
+        return _fadeSprite;
     }
 }
 
