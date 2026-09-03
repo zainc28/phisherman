@@ -3,74 +3,24 @@ using System.Collections.Generic;
 using System.Text;
 using TMPro;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 // =============================================================================
 // SpotDifferenceManager.cs
-// DifferenceMarker + PanelClickReceiver + SpotDifferenceManager
+//
+// DifferenceMarker and PanelClickReceiver now live in their own files
+// (DifferenceMarker.cs, PanelClickReceiver.cs, same folder). Splitting them
+// out gives each a stable script identity — see the note in WorldMapCore.cs
+// for why that matters: a scene's component references a script by the GUID
+// of its .cs file plus a per-class local ID, and multiple classes sharing one
+// file meant every scene built against this file could turn into "Missing
+// Script" the moment the file's content changed again later. That's exactly
+// what silently broke red-flag click detection in every SpotDifference
+// scene — the hotspot positioning/parenting/raycasting was already correct.
+//
 // Commentator removed. Sounds wired: splash on find, shark_music BGM, impact on all lives lost.
 // =============================================================================
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DifferenceMarker
-// ─────────────────────────────────────────────────────────────────────────────
-
-[RequireComponent(typeof(Image))]
-public class DifferenceMarker : MonoBehaviour, IPointerDownHandler
-{
-    [Tooltip("Short label shown in the found popup")]
-    public string flagName;
-
-    [TextArea(3, 6)]
-    public string explanation;
-
-    [HideInInspector] public bool found;
-    [HideInInspector] public SpotDifferenceManager manager;
-    [HideInInspector] public Image penCircleImage;
-    [HideInInspector] public GameObject stickyNote;
-
-    private Image _hitZone;
-
-    public static int LastMarkerClickFrame { get; private set; } = -1;
-
-    private static readonly Color HiddenColor = new Color(1f, 0f, 0f, 0f);
-    private static readonly Color FoundWaterColor = new Color(0.15f, 0.50f, 0.90f, 0.22f);
-
-    void Awake()
-    {
-        _hitZone = GetComponent<Image>();
-        _hitZone.color = HiddenColor;
-        _hitZone.raycastTarget = true;
-    }
-
-    public void OnPointerDown(PointerEventData eventData)
-    {
-        LastMarkerClickFrame = Time.frameCount;
-        if (found) return;
-        found = true;
-        _hitZone.color = FoundWaterColor;
-        if (penCircleImage != null) penCircleImage.gameObject.SetActive(true);
-        if (stickyNote != null) stickyNote.SetActive(true);
-        manager?.OnDifferenceFound(this);
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PanelClickReceiver
-// ─────────────────────────────────────────────────────────────────────────────
-
-public class PanelClickReceiver : MonoBehaviour, IPointerDownHandler
-{
-    public SpotDifferenceManager manager;
-
-    public void OnPointerDown(PointerEventData eventData)
-    {
-        if (DifferenceMarker.LastMarkerClickFrame == Time.frameCount) return;
-        manager?.OnWrongClick();
-    }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SpotDifferenceManager

@@ -132,9 +132,9 @@ public static class MainMenuBuilder
         float y2Max = (blockTop - 2f * BtnH - 2f * BtnGap) / RefH;
         float y2Min = (blockTop - 3f * BtnH - 2f * BtnGap) / RefH;
 
-        MkMainBtn(mainPanel.transform, "StoryBtn", "📖  STORY MODE", bx0, y0Min, bx1, y0Max);
-        MkMainBtn(mainPanel.transform, "ArcadeBtn", "🕹  ARCADE MODE", bx0, y1Min, bx1, y1Max);
-        MkMainBtn(mainPanel.transform, "SettingsBtn", "⚙  SETTINGS", bx0, y2Min, bx1, y2Max);
+        MkMainBtn(mainPanel.transform, "StoryBtn", "STORY MODE", bx0, y0Min, bx1, y0Max);
+        MkMainBtn(mainPanel.transform, "ArcadeBtn", "ARCADE MODE", bx0, y1Min, bx1, y1Max);
+        MkMainBtn(mainPanel.transform, "SettingsBtn", "SETTINGS", bx0, y2Min, bx1, y2Max);
 
         MkExitBtn(mainPanel.transform, "ExitBtn", "EXIT GAME");
 

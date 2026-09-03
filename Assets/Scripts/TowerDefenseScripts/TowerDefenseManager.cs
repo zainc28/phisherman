@@ -69,6 +69,10 @@ public class TowerDefenseManager : MonoBehaviour
     public GameObject gameOverPanel;
     public GameObject winPanel;
 
+    [Header("Objective")]
+    public GameObject objectivePanel;
+    public TMP_Text objectiveBodyText;
+
     [Header("Tutorial UI")]
     public TMP_Text tutorialTitleText;
     public TMP_Text tutorialBodyText;
@@ -126,7 +130,7 @@ public class TowerDefenseManager : MonoBehaviour
         new ED("T7@kLz!9Rp",   false), new ED("Sun$Rise2024!", false),
         new ED("Wr9#mK!6Lp",   false), new ED("Cat!Rain$42X",  false),
         new ED("Gr@pe!Vine88", false), new ED("Z3br@Dance#7",  false),
-        new ED("16+ chars ✓",  false), new ED("Unique/site ✓", false),
+        new ED("16+ chars ✓",  false),
         new ED("PassManager ✓",false), new ED("Mix of all 4",  false),
         new ED("Tr0ub4dor&3",  false), new ED("correct-horse-battery", false),
         new ED("M@pl3Syrup!9", false),
@@ -438,9 +442,50 @@ public class TowerDefenseManager : MonoBehaviour
     public void OnTutorialNext()
     {
         tutStep++;
-        if (tutStep >= tutTitles.Length) { tutorialPanel.SetActive(false); StartGame(); }
+        if (tutStep >= tutTitles.Length) { tutorialPanel.SetActive(false); StartCoroutine(ShowObjectiveThenStart()); }
         else ShowTutStep(tutStep);
     }
+
+    // =================================================================
+    //  Objective intro — brief reminder shown once before gameplay starts
+    // =================================================================
+
+    IEnumerator ShowObjectiveThenStart()
+    {
+        if (objectivePanel != null)
+        {
+            if (objectiveBodyText != null) objectiveBodyText.text = ObjectiveTextForTheme(_worldTheme);
+            objectivePanel.SetActive(true);
+            var cg = objectivePanel.GetComponent<CanvasGroup>();
+            if (cg != null)
+            {
+                cg.alpha = 0f;
+                float fi = 0f;
+                while (fi < 0.2f) { fi += Time.deltaTime; cg.alpha = Mathf.Clamp01(fi / 0.2f); yield return null; }
+                cg.alpha = 1f;
+            }
+
+            yield return new WaitForSeconds(3f);
+
+            if (cg != null)
+            {
+                float fo = 0f;
+                while (fo < 0.25f) { fo += Time.deltaTime; cg.alpha = 1f - Mathf.Clamp01(fo / 0.25f); yield return null; }
+            }
+            objectivePanel.SetActive(false);
+        }
+
+        StartGame();
+    }
+
+    static string ObjectiveTextForTheme(int theme) => theme switch
+    {
+        2 => "OBJECTIVE\nBlock suspicious links and fake websites!\nLet legitimate URLs pass safely.\nSurvive for 60 seconds to win!",
+        3 => "OBJECTIVE\nStop social engineering attempts!\nReal messages from friends are safe.\nSurvive for 60 seconds to win!",
+        4 => "OBJECTIVE\nIdentify fake tech support scams!\nLegitimate system alerts are safe.\nSurvive for 60 seconds to win!",
+        5 => "OBJECTIVE\nFinal challenge — mixed phishing threats!\nTrust nothing without verification.\nSurvive for 60 seconds to win!",
+        _ => "OBJECTIVE\nShoot the WEAK passwords before they reach you!\nLet the STRONG passwords pass safely through.\nSurvive for 60 seconds to win!",
+    };
 
     // =================================================================
     //  Game start

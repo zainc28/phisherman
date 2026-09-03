@@ -242,9 +242,12 @@ public static class SpotDifferenceBuilder_W4
         if (isScam) AddMarker(createGo, manager, "Wrong green for 'Create account' button", "Facebook's 'Create new account' button uses a specific green (#42B72A). The scam page uses a darker, slightly different green (#36A420) — another sign of imperfect copying.");
         Spacer(content, 10);
 
-        // Footer
+        // Footer — flavor text only, not a counted flag (World 4 already has
+        // its 6 flags above; the HUD/stamp text and every other world's
+        // builder consistently promise "find 6 red flags", so a 7th hotspot
+        // here would silently make the win condition impossible to reach
+        // with the count the player is actually told to look for).
         var footerTxt = AddTxt(content, "Footer", isScam ? "© 2021 Facebook Inc. All rights reserved." : "© 2024 Meta Platforms, Inc.", 13, MutedText, TextAlignmentOptions.Center); footerTxt.raycastTarget = false;
-        if (isScam) AddMarker(footerTxt.gameObject, manager, "Outdated copyright — says 'Facebook Inc.'", "Meta rebranded from 'Facebook Inc.' to 'Meta Platforms, Inc.' in October 2021. Scam pages often use old copied templates. The real page shows the current year and 'Meta Platforms, Inc.'");
     }
 
     static GameObject InputField(Transform parent, string placeholder)

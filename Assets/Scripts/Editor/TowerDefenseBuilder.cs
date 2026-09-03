@@ -147,13 +147,16 @@ public static class TowerDefenseBuilder
         var tutorial = BuildTutorialPanel(canvasRT, mgr);
         var gameOver = BuildGameOverPanel(canvasRT, mgr);
         var win = BuildWinPanel(canvasRT, mgr);
+        var objective = BuildObjectivePanel(canvasRT, mgr);
         mgr.hudPanel = hud;
         mgr.tutorialPanel = tutorial;
         mgr.gameOverPanel = gameOver;
         mgr.winPanel = win;
+        mgr.objectivePanel = objective;
 
         hud.SetActive(false); gameOver.SetActive(false);
         win.SetActive(false); tutorial.SetActive(true);
+        objective.SetActive(false);
 
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, ScenePath);
@@ -276,6 +279,25 @@ public static class TowerDefenseBuilder
         UnityEventTools.AddPersistentListener(back.GetComponent<Button>().onClick, mgr.OnReturnToMap);
         mgr.winScoreText = sTxt;
         mgr.winStarsText = stars;
+        return ov.gameObject;
+    }
+
+    // =================================================================
+    //  Objective — brief reminder shown once before gameplay starts,
+    //  matching the HUD's dark palette. Same pattern as EmailSwiperBuilder's
+    //  BuildObjectivePanel: manager fades it in, holds, fades out, then starts.
+    // =================================================================
+    static GameObject BuildObjectivePanel(RectTransform parent, TowerDefenseManager mgr)
+    {
+        var ov = UImg(parent, "ObjectiveOverlay", new Color(0, 0, 0, 0.60f)); Stretch(ov.rectTransform); ov.raycastTarget = true;
+        ov.gameObject.AddComponent<CanvasGroup>();
+        var card = UImg(ov.rectTransform, "Card", new Color(HudBg.r, HudBg.g, HudBg.b, 0.95f));
+        var crt = card.rectTransform; crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.5f); crt.pivot = new Vector2(0.5f, 0.5f); crt.sizeDelta = new Vector2(900, 320);
+        var accent = UImg(crt, "AccentBar", ScoreGold); var art = accent.rectTransform; art.anchorMin = new Vector2(0, 1); art.anchorMax = new Vector2(1, 1); art.pivot = new Vector2(0.5f, 1); art.sizeDelta = new Vector2(0, 6); accent.raycastTarget = false;
+        var body = UTxt(crt, "Body", "...", 30, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
+        body.textWrappingMode = TextWrappingModes.Normal;
+        var brt = body.rectTransform; brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one; brt.offsetMin = new Vector2(48, 30); brt.offsetMax = new Vector2(-48, -30);
+        mgr.objectiveBodyText = body;
         return ov.gameObject;
     }
 

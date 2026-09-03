@@ -175,7 +175,7 @@ public class PlayerController : MonoBehaviour
 
     static Sprite FindWalkSprite()
     {
-        var animator = FindObjectOfType<MapWalkAnimator>();
+        var animator = Object.FindFirstObjectByType<MapWalkAnimator>();
         if (animator != null && animator.walkSprite != null)
             return animator.walkSprite;
         var allRenderers = FindObjectsByType<SpriteRenderer>(FindObjectsSortMode.None);
