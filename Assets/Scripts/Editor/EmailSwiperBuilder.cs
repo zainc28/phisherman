@@ -174,6 +174,7 @@ public static class EmailSwiperBuilder
         BuildScorePopup(canvasRT, mgr);
 
         var feedback = BuildFeedbackPanel(canvasRT, mgr);
+        var objective = BuildObjectivePanel(canvasRT, mgr);
         var tutorial = BuildTutorialPanel(canvasRT, mgr);
         var result = BuildResultPanel(canvasRT, mgr);
 
@@ -183,12 +184,13 @@ public static class EmailSwiperBuilder
         mgr.resultPanel = result;
 
         grImg.gameObject.SetActive(false);
-        feedback.SetActive(false); result.SetActive(false); tutorial.SetActive(true);
+        feedback.SetActive(false); objective.SetActive(false); result.SetActive(false); tutorial.SetActive(true);
 
         // Ensure nets render on top of card overlay so they receive clicks
         mgr.leftNetRT.transform.SetAsLastSibling();
         mgr.rightNetRT.transform.SetAsLastSibling();
         feedback.transform.SetAsLastSibling();
+        objective.transform.SetAsLastSibling();
         tutorial.transform.SetAsLastSibling();
         result.transform.SetAsLastSibling();
 
@@ -445,11 +447,42 @@ public static class EmailSwiperBuilder
 
     static GameObject BuildFeedbackPanel(RectTransform parent, EmailSwiperManager mgr)
     {
-        var ov = Img(parent, "FeedbackOverlay", new Color(0, 0, 0, 0.42f)); Stretch(ov.rectTransform); ov.raycastTarget = true; ov.gameObject.AddComponent<CanvasGroup>();
-        var card = Img(ov.rectTransform, "Card", Hex("#2ECC71")); var crt = card.rectTransform; crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.55f); crt.pivot = new Vector2(0.5f, 0.5f); crt.sizeDelta = new Vector2(920, 360);
-        var title = Txt(crt, "Title", "Correct!", 50, Color.white, TextAlignmentOptions.Center, FontStyles.Bold); var trt = title.rectTransform; trt.anchorMin = new Vector2(0, 1); trt.anchorMax = new Vector2(1, 1); trt.pivot = new Vector2(0.5f, 1); trt.sizeDelta = new Vector2(-36, 76); trt.anchoredPosition = new Vector2(0, -20);
-        var body2 = Txt(crt, "Body", "Explanation...", 22, Color.white, TextAlignmentOptions.Center); body2.textWrappingMode = TextWrappingModes.Normal; var brt2 = body2.rectTransform; brt2.anchorMin = Vector2.zero; brt2.anchorMax = Vector2.one; brt2.offsetMin = new Vector2(36, 20); brt2.offsetMax = new Vector2(-36, -105);
+        var ov = Img(parent, "FeedbackOverlay", new Color(0, 0, 0, 0.55f)); Stretch(ov.rectTransform); ov.raycastTarget = true; ov.gameObject.AddComponent<CanvasGroup>();
+
+        var shadow = Img(ov.rectTransform, "CardShadow", new Color(0, 0, 0, 0.35f)); var shrt = shadow.rectTransform; shrt.anchorMin = shrt.anchorMax = new Vector2(0.5f, 0.55f); shrt.pivot = new Vector2(0.5f, 0.5f); shrt.sizeDelta = new Vector2(920, 400); shrt.anchoredPosition = new Vector2(0, -10); shadow.raycastTarget = false;
+
+        var cardRootGo = new GameObject("CardRoot", typeof(RectTransform)); cardRootGo.transform.SetParent(ov.rectTransform, false);
+        var crRT = cardRootGo.GetComponent<RectTransform>(); crRT.anchorMin = crRT.anchorMax = new Vector2(0.5f, 0.55f); crRT.pivot = new Vector2(0.5f, 0.5f); crRT.sizeDelta = new Vector2(920, 400);
+
+        var frame = Img(crRT, "CardFrame", Color.white); Stretch(frame.rectTransform); frame.raycastTarget = false;
+        var card = Img(crRT, "Card", Hex("#2ECC71")); var crt = card.rectTransform; crt.anchorMin = Vector2.zero; crt.anchorMax = Vector2.one; crt.offsetMin = new Vector2(5, 5); crt.offsetMax = new Vector2(-5, -5); card.raycastTarget = false;
+
+        // Icon badge peeking over the top edge of the card
+        var iconBg = Img(crRT, "IconBadge", Color.white); iconBg.sprite = GetCircle(); var ibrt = iconBg.rectTransform; ibrt.anchorMin = new Vector2(0.5f, 1); ibrt.anchorMax = new Vector2(0.5f, 1); ibrt.pivot = new Vector2(0.5f, 0.5f); ibrt.sizeDelta = new Vector2(86, 86); ibrt.anchoredPosition = new Vector2(0, -4); iconBg.raycastTarget = false;
+        var icon = Txt(ibrt, "IconGlyph", "✓", 46, Hex("#2ECC71"), TextAlignmentOptions.Center, FontStyles.Bold); Stretch(icon.rectTransform); icon.raycastTarget = false;
+
+        var title = Txt(card.rectTransform, "Title", "Correct!", 44, Color.white, TextAlignmentOptions.Center, FontStyles.Bold); var trt = title.rectTransform; trt.anchorMin = new Vector2(0, 1); trt.anchorMax = new Vector2(1, 1); trt.pivot = new Vector2(0.5f, 1); trt.sizeDelta = new Vector2(-36, 56); trt.anchoredPosition = new Vector2(0, -66);
+        title.gameObject.AddComponent<Outline>().effectColor = new Color(0, 0, 0, 0.35f);
+
+        var body2 = Txt(card.rectTransform, "Body", "Explanation...", 24, Color.white, TextAlignmentOptions.Center, FontStyles.Bold); body2.textWrappingMode = TextWrappingModes.Normal; var brt2 = body2.rectTransform; brt2.anchorMin = Vector2.zero; brt2.anchorMax = Vector2.one; brt2.offsetMin = new Vector2(40, 26); brt2.offsetMax = new Vector2(-40, -136);
+        body2.gameObject.AddComponent<Outline>().effectColor = new Color(0, 0, 0, 0.30f);
+
         mgr.feedbackBg = card; mgr.feedbackTitle = title; mgr.feedbackBody = body2;
+        mgr.feedbackCardRT = crRT; mgr.feedbackIcon = icon;
+        return ov.gameObject;
+    }
+
+    // =================================================================
+    //  Objective panel — brief reminder shown once before the first card
+    // =================================================================
+    static GameObject BuildObjectivePanel(RectTransform parent, EmailSwiperManager mgr)
+    {
+        var ov = Img(parent, "ObjectiveOverlay", new Color(0, 0, 0, 0.55f)); Stretch(ov.rectTransform); ov.raycastTarget = true; ov.gameObject.AddComponent<CanvasGroup>();
+        var card = Img(ov.rectTransform, "Card", Hex("#0F4A6B")); var crt = card.rectTransform; crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.5f); crt.pivot = new Vector2(0.5f, 0.5f); crt.sizeDelta = new Vector2(860, 300);
+        var accent = Img(crt, "AccentBar", Aqua); var art = accent.rectTransform; art.anchorMin = new Vector2(0, 1); art.anchorMax = new Vector2(1, 1); art.pivot = new Vector2(0.5f, 1); art.sizeDelta = new Vector2(0, 8); accent.raycastTarget = false;
+        var title = Txt(crt, "Title", "Your Mission", 38, Aqua, TextAlignmentOptions.Center, FontStyles.Bold); var trt = title.rectTransform; trt.anchorMin = new Vector2(0, 1); trt.anchorMax = new Vector2(1, 1); trt.pivot = new Vector2(0.5f, 1); trt.sizeDelta = new Vector2(-40, 70); trt.anchoredPosition = new Vector2(0, -28);
+        var body = Txt(crt, "Body", "...", 26, Color.white, TextAlignmentOptions.Center); body.textWrappingMode = TextWrappingModes.Normal; var brt = body.rectTransform; brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one; brt.offsetMin = new Vector2(44, 30); brt.offsetMax = new Vector2(-44, -104);
+        mgr.objectivePanel = ov.gameObject; mgr.objectiveBodyText = body;
         return ov.gameObject;
     }
 

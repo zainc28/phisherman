@@ -117,7 +117,7 @@ public class TowerDefenseManager : MonoBehaviour
         new ED("monkey",     true),   new ED("dragon",     true),  new ED("Dictionary wd",true),
         new ED("hello",      true),   new ED("login",      true),  new ED("admin",        true),
         new ED("Reused pass",true),   new ED("shadow",     true),  new ED("trustno1",     true),
-        new ED("12345678",   true),   new ED("Pet name!",  true),
+        new ED("12345678",   true),   new ED("Pet name!",  true),  new ED("password",     true),
     };
 
     ED[] w1Safes = {
@@ -128,6 +128,8 @@ public class TowerDefenseManager : MonoBehaviour
         new ED("Gr@pe!Vine88", false), new ED("Z3br@Dance#7",  false),
         new ED("16+ chars ✓",  false), new ED("Unique/site ✓", false),
         new ED("PassManager ✓",false), new ED("Mix of all 4",  false),
+        new ED("Tr0ub4dor&3",  false), new ED("correct-horse-battery", false),
+        new ED("M@pl3Syrup!9", false),
     };
 
     // ── WORLD 2: URLs — teach how to spot fake vs real domains ──

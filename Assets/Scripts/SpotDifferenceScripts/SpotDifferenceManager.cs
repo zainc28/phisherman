@@ -320,7 +320,17 @@ public class SpotDifferenceManager : MonoBehaviour
         if (_found >= _total)
         {
             _gameOver = true;
+            StopBGM();
             lureSimulation?.TriggerSuccess();
+
+            // Must be set here (not just left to EndGame()) — this is the
+            // "found everything" win path, which never calls EndGame().
+            // Without this, InteriorDialogueManager reads a stale/missing
+            // "interior_result" key on return and can show the lose branch,
+            // or leave the house permanently unmarked as completed.
+            PlayerPrefs.SetString("interior_result", "win");
+            PlayerPrefs.Save();
+
             Invoke(nameof(ShowResult), 0.9f);
         }
     }

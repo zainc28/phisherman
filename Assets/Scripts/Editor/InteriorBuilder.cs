@@ -74,37 +74,37 @@ public static class InteriorBuilder
             }
         );
 
-        // ── Pizza Place  (Uncle Tony → EmailSwiper) ───────────
+        // ── Pizza Place  (Uncle Tony → SpotDifference) ───────────
         BuildInterior(
             sceneName: "PizzaInterior",
             bgName: "pizza_interior",
             npcSpriteName: "uncle_1",
             npcName: "Uncle Tony",
-            minigame: "EmailSwiper",
+            minigame: "SpotDifference",
             returnScene: "WorldMap",
             accent: Hex("#FF6B6B"),
             introLines: new[]
             {
                 ("NPC",    "Hey, come in! I was just about to call you."),
                 ("Player", "What's up, Tony? You look stressed."),
-                ("NPC",    "The shop computer keeps getting pop-ups saying it's infected with a virus!"),
-                ("Player", "Let me guess — they want you to call a number and give remote access?"),
-                ("NPC",    "Exactly! They say they'll fix it for free. Seems fishy to me."),
-                ("Player", "Good instinct. That's a tech support scam. Never give access to someone who contacts you first."),
-                ("NPC",    "Can you check my inbox? There are some suspicious emails in there too."),
-                ("Player", "Absolutely. Let's sort through them together."),
+                ("NPC",    "I've got two shipping notification emails that look almost identical."),
+                ("Player", "Almost identical is exactly how these scams work."),
+                ("NPC",    "One must be fake, but they both look legit to me — same logo, same layout."),
+                ("Player", "Scammers copy the visuals perfectly. The tell is always in the small details."),
+                ("NPC",    "Can you go through them with me and find what's off?"),
+                ("Player", "Absolutely. Let's compare these side by side and find every red flag."),
             },
             winLines: new[]
             {
-                ("NPC",    "Wow, you spotted every single one! That's impressive."),
+                ("NPC",    "Wow, you spotted every single difference! That's impressive."),
                 ("Player", "Once you know the patterns, they're not hard to catch."),
-                ("NPC",    "The fake sender addresses were a dead giveaway, right?"),
+                ("NPC",    "The fake sender address was a dead giveaway, right?"),
                 ("Player", "Exactly. Real businesses never ask for login info by email."),
                 ("NPC",    "I'm sharing this with my staff. Thanks a million!"),
             },
             loseLines: new[]
             {
-                ("NPC",    "Hmm, a couple of those tripped you up, eh?"),
+                ("NPC",    "Hmm, a couple of those differences tripped you up, eh?"),
                 ("Player", "They were pretty convincing. Want me to try again?"),
                 ("NPC",    "Please! I need this place protected."),
             }
@@ -332,7 +332,7 @@ public static class InteriorBuilder
             bgName: "home_1_interior",
             npcSpriteName: "grandpas_1",
             npcName: "Grandpa Lou",
-            minigame: "SpotDifference",
+            minigame: "SpotDifference_W3",
             returnScene: "WorldMap3",
             accent: Hex("#FFD93D"),
             introLines: new[]
@@ -402,7 +402,7 @@ public static class InteriorBuilder
             bgName: "office_interior",
             npcSpriteName: "uncle_3",
             npcName: "Uncle Felix",
-            minigame: "SpotDifference",
+            minigame: "SpotDifference_W4",
             returnScene: "WorldMap4",
             accent: Hex("#A29BFE"),
             introLines: new[]
@@ -505,7 +505,7 @@ public static class InteriorBuilder
             bgName: "office_interior",
             npcSpriteName: "aunt_3",
             npcName: "Aunt Priya",
-            minigame: "SpotDifference",
+            minigame: "SpotDifference_W5",
             returnScene: "WorldMap5",
             accent: Hex("#1ABC9C"),
             introLines: new[]

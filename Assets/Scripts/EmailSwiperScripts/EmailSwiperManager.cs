@@ -97,6 +97,13 @@ public class EmailSwiperManager : MonoBehaviour
     public Image feedbackBg;
     public TMP_Text feedbackTitle;
     public TMP_Text feedbackBody;
+    public RectTransform feedbackCardRT;
+    public TMP_Text feedbackIcon;
+
+    // ===== Objective =====
+    [Header("Objective")]
+    public GameObject objectivePanel;
+    public TMP_Text objectiveBodyText;
 
     // ===== Result =====
     [Header("Result")]
@@ -278,6 +285,38 @@ public class EmailSwiperManager : MonoBehaviour
         gameRoot.SetActive(true);
         hudPanel.SetActive(true);
         UpdateAllUI();
+        StartCoroutine(ShowObjectiveThenBegin());
+    }
+
+    // ===================================================================
+    //  Objective panel — brief reminder shown before the first card
+    // ===================================================================
+    IEnumerator ShowObjectiveThenBegin()
+    {
+        if (objectivePanel != null)
+        {
+            if (objectiveBodyText != null)
+                objectiveBodyText.text = $"Identify {targetCorrectToWin} scams correctly to win!\n\nSwipe LEFT for scam, RIGHT for safe.";
+            objectivePanel.SetActive(true);
+            var cg = objectivePanel.GetComponent<CanvasGroup>();
+            if (cg != null)
+            {
+                cg.alpha = 0f;
+                float fi = 0f;
+                while (fi < 0.2f) { fi += Time.deltaTime; cg.alpha = Mathf.Clamp01(fi / 0.2f); yield return null; }
+                cg.alpha = 1f;
+            }
+
+            yield return new WaitForSeconds(2.5f);
+
+            if (cg != null)
+            {
+                float fo = 0f;
+                while (fo < 0.25f) { fo += Time.deltaTime; cg.alpha = 1f - Mathf.Clamp01(fo / 0.25f); yield return null; }
+            }
+            objectivePanel.SetActive(false);
+        }
+
         LoadCard(0);
         gameRunning = true;
         PlayBgMusic();
@@ -681,14 +720,45 @@ public class EmailSwiperManager : MonoBehaviour
     // ===================================================================
     IEnumerator ShowFeedback(bool correct, string explanation)
     {
-        feedbackPanel.SetActive(true); var cg = feedbackPanel.GetComponent<CanvasGroup>(); if (cg != null) cg.alpha = 1f;
-        feedbackBg.color = correct ? new Color(0.18f, 0.74f, 0.41f, 0.97f) : new Color(0.91f, 0.30f, 0.24f, 0.97f);
-        feedbackTitle.text = correct ? "Correct!" : "Not quite…"; feedbackBody.text = explanation;
-        feedbackPanel.transform.localScale = Vector3.one * 0.85f;
-        float t = 0f; while (t < 0.2f) { t += Time.deltaTime; feedbackPanel.transform.localScale = Vector3.one * Mathf.Lerp(0.85f, 1f, 1f - Mathf.Pow(1f - Mathf.Clamp01(t / 0.2f), 3f)); yield return null; }
+        feedbackPanel.SetActive(true);
+        var cg = feedbackPanel.GetComponent<CanvasGroup>();
+        if (cg != null) cg.alpha = 0f;
+
+        Color mainColor = correct ? new Color(0.13f, 0.68f, 0.38f, 1f) : new Color(0.86f, 0.20f, 0.20f, 1f);
+        feedbackBg.color = mainColor;
+        feedbackTitle.text = correct ? "Correct!" : "Not quite…";
+        feedbackBody.text = explanation;
+        if (feedbackIcon != null) { feedbackIcon.text = correct ? "✓" : "✗"; feedbackIcon.color = mainColor; }
+
+        // Punch-scale just the card while the backdrop fades in behind it
+        var cardT = feedbackCardRT != null ? feedbackCardRT : feedbackPanel.transform;
+        cardT.localScale = Vector3.one * 0.6f;
+        float t = 0f; const float dur = 0.32f;
+        while (t < dur)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.Clamp01(t / dur);
+            cardT.localScale = Vector3.one * Mathf.LerpUnclamped(0.6f, 1f, EaseOutBack(p));
+            if (cg != null) cg.alpha = Mathf.Clamp01(p / 0.6f);
+            yield return null;
+        }
+        cardT.localScale = Vector3.one;
+        if (cg != null) cg.alpha = 1f;
+
         yield return new WaitForSeconds(2.0f);
-        if (cg != null) { float fo = 0f; while (fo < 0.2f) { fo += Time.deltaTime; cg.alpha = 1f - fo / 0.2f; yield return null; } cg.alpha = 1f; }
-        feedbackPanel.SetActive(false); feedbackPanel.transform.localScale = Vector3.one;
+
+        if (cg != null) { float fo = 0f; while (fo < 0.2f) { fo += Time.deltaTime; cg.alpha = 1f - fo / 0.2f; yield return null; } }
+        feedbackPanel.SetActive(false);
+        cardT.localScale = Vector3.one;
+    }
+
+    // Overshoots past 1 then settles — gives the feedback card a "punch" pop on appear.
+    static float EaseOutBack(float x)
+    {
+        const float c1 = 1.70158f;
+        const float c3 = c1 + 1f;
+        float xm1 = x - 1f;
+        return 1f + c3 * xm1 * xm1 * xm1 + c1 * xm1 * xm1;
     }
 
     // ===================================================================

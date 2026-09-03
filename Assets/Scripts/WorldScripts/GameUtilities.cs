@@ -1,8 +1,5 @@
-﻿using System.Collections;
-using TMPro;
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityEngine.UI;
 
 // ============================================================
 //  DoorTrigger
@@ -51,116 +48,8 @@ public class SceneLoader : MonoBehaviour
 }
 
 // ============================================================
-//  MainMenuManager
-//  Original OnStoryModeClicked + OnArcadeModeClicked kept.
-//  Added: arcade panel, settings panel, fade in/out.
+//  MainMenuManager and SettingsManager now live in their own files:
+//  MainMenuManager.cs and SettingsManager.cs (same folder). Splitting
+//  them out gives each script a stable identity, which is what the
+//  MainMenu.unity scene's components resolve against.
 // ============================================================
-public class MainMenuManager : MonoBehaviour
-{
-    [Header("Root panels")]
-    public GameObject mainPanel;
-    public GameObject arcadePanel;
-    public GameObject settingsPanel;
-
-    [Header("Fade")]
-    public CanvasGroup canvasGroup;
-    public float fadeDuration = 0.35f;
-
-    void Start()
-    {
-        if (mainPanel != null) mainPanel.SetActive(true);
-        if (arcadePanel != null) arcadePanel.SetActive(false);
-        if (settingsPanel != null) settingsPanel.SetActive(false);
-        if (canvasGroup != null) StartCoroutine(FadeIn());
-    }
-
-    IEnumerator FadeIn()
-    {
-        canvasGroup.alpha = 0f;
-        float t = 0f;
-        while (t < fadeDuration) { t += Time.deltaTime; canvasGroup.alpha = Mathf.Clamp01(t / fadeDuration); yield return null; }
-        canvasGroup.alpha = 1f;
-    }
-
-    // ── Main buttons ───────────────────────────────────────────
-    public void OnStoryModeClicked()
-    {
-        // First time ever → show backstory cutscene, which leads to WorldMap.
-        // Every subsequent time → go straight to WorldMap.
-        string dest = PlayerPrefs.GetInt("backstory_seen", 0) == 0 ? "Backstory" : "WorldMap";
-        StartCoroutine(FadeAndLoad(dest));
-    }
-    public void OnArcadeModeClicked() { if (mainPanel != null) mainPanel.SetActive(false); if (arcadePanel != null) arcadePanel.SetActive(true); }
-    public void OnSettingsClicked() { if (mainPanel != null) mainPanel.SetActive(false); if (settingsPanel != null) settingsPanel.SetActive(true); }
-
-    // ── Arcade panel ───────────────────────────────────────────
-    public void OnPlayEmailSwiper() => StartCoroutine(FadeAndLoad("EmailSwiper"));
-    public void OnPlaySpotDiff() => StartCoroutine(FadeAndLoad("SpotDifference"));
-    public void OnPlayTowerDefense() => StartCoroutine(FadeAndLoad("TowerDefense"));
-    public void OnArcadeBack() { if (arcadePanel != null) arcadePanel.SetActive(false); if (mainPanel != null) mainPanel.SetActive(true); }
-
-    // ── Settings panel ─────────────────────────────────────────
-    public void OnSettingsBack() { if (settingsPanel != null) settingsPanel.SetActive(false); if (mainPanel != null) mainPanel.SetActive(true); }
-
-    public void OnExitClicked()
-    {
-#if UNITY_EDITOR
-        UnityEditor.EditorApplication.isPlaying = false;
-#else
-        Application.Quit();
-#endif
-    }
-
-    IEnumerator FadeAndLoad(string scene)
-    {
-        if (canvasGroup != null)
-        {
-            float t = 0f;
-            while (t < fadeDuration) { t += Time.deltaTime; canvasGroup.alpha = 1f - Mathf.Clamp01(t / fadeDuration); yield return null; }
-            canvasGroup.alpha = 0f;
-        }
-        SceneManager.LoadScene(scene);
-    }
-}
-
-// ============================================================
-//  SettingsManager  (placeholder — wire sliders/toggles later)
-// ============================================================
-public class SettingsManager : MonoBehaviour
-{
-    [Header("Volume sliders (assign in Inspector)")]
-    public Slider masterVolume;
-    public Slider musicVolume;
-    public Slider sfxVolume;
-
-    [Header("Accessibility toggles (assign in Inspector)")]
-    public Toggle largeTextToggle;
-    public Toggle highContrastToggle;
-
-    const string KeyMaster = "vol_master";
-    const string KeyMusic = "vol_music";
-    const string KeySfx = "vol_sfx";
-    const string KeyLargeText = "acc_largetext";
-    const string KeyHighContrast = "acc_highcontrast";
-
-    void Start()
-    {
-        if (masterVolume != null) { masterVolume.value = PlayerPrefs.GetFloat(KeyMaster, 1f); masterVolume.onValueChanged.AddListener(v => { AudioListener.volume = v; PlayerPrefs.SetFloat(KeyMaster, v); }); }
-        if (musicVolume != null) { musicVolume.value = PlayerPrefs.GetFloat(KeyMusic, 0.8f); musicVolume.onValueChanged.AddListener(v => PlayerPrefs.SetFloat(KeyMusic, v)); }
-        if (sfxVolume != null) { sfxVolume.value = PlayerPrefs.GetFloat(KeySfx, 1f); sfxVolume.onValueChanged.AddListener(v => PlayerPrefs.SetFloat(KeySfx, v)); }
-        if (largeTextToggle != null) { largeTextToggle.isOn = PlayerPrefs.GetInt(KeyLargeText, 0) == 1; largeTextToggle.onValueChanged.AddListener(v => PlayerPrefs.SetInt(KeyLargeText, v ? 1 : 0)); }
-        if (highContrastToggle != null) { highContrastToggle.isOn = PlayerPrefs.GetInt(KeyHighContrast, 0) == 1; highContrastToggle.onValueChanged.AddListener(v => PlayerPrefs.SetInt(KeyHighContrast, v ? 1 : 0)); }
-        AudioListener.volume = PlayerPrefs.GetFloat(KeyMaster, 1f);
-    }
-
-    public void ResetToDefaults()
-    {
-        if (masterVolume != null) masterVolume.value = 1f;
-        if (musicVolume != null) musicVolume.value = 0.8f;
-        if (sfxVolume != null) sfxVolume.value = 1f;
-        if (largeTextToggle != null) largeTextToggle.isOn = false;
-        if (highContrastToggle != null) highContrastToggle.isOn = false;
-        PlayerPrefs.DeleteKey(KeyMaster); PlayerPrefs.DeleteKey(KeyMusic); PlayerPrefs.DeleteKey(KeySfx);
-        PlayerPrefs.DeleteKey(KeyLargeText); PlayerPrefs.DeleteKey(KeyHighContrast);
-    }
-}
