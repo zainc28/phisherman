@@ -122,12 +122,12 @@ public class TowerDefenseManager : MonoBehaviour
     // ── WORLD 1: passwords — teach what makes passwords weak vs strong ──
     ED[] w1Scams = {
         new ED("password123", true),  new ED("123456",     true),  new ED("qwerty",      true),
-        new ED("iloveyou",   true),   new ED("abc123",     true),  new ED("No numbers!",  true),
-        new ED("111111",     true),   new ED("letmein",    true),  new ED("Short & easy", true),
-        new ED("monkey",     true),   new ED("dragon",     true),  new ED("Dictionary wd",true),
+        new ED("iloveyou",   true),   new ED("abc123",     true),  new ED("welcome1",    true),
+        new ED("111111",     true),   new ED("letmein",    true),  new ED("football",    true),
+        new ED("monkey",     true),   new ED("dragon",     true),  new ED("baseball",    true),
         new ED("hello",      true),   new ED("login",      true),  new ED("admin",        true),
-        new ED("Reused pass",true),   new ED("shadow",     true),  new ED("trustno1",     true),
-        new ED("12345678",   true),   new ED("Pet name!",  true),  new ED("password",     true),
+        new ED("sunshine",   true),   new ED("shadow",     true),  new ED("trustno1",     true),
+        new ED("12345678",   true),   new ED("master",     true),  new ED("password",     true),
     };
 
     ED[] w1Safes = {
@@ -136,8 +136,8 @@ public class TowerDefenseManager : MonoBehaviour
         new ED("T7@kLz!9Rp",   false), new ED("Sun$Rise2024!", false),
         new ED("Wr9#mK!6Lp",   false), new ED("Cat!Rain$42X",  false),
         new ED("Gr@pe!Vine88", false), new ED("Z3br@Dance#7",  false),
-        new ED("16+ chars ✓",  false),
-        new ED("PassManager ✓",false), new ED("Mix of all 4",  false),
+        new ED("Fx7!Ocean53#", false),
+        new ED("Jm2@Cedar81$", false), new ED("Rp5#Storm27!",  false),
         new ED("Tr0ub4dor&3",  false), new ED("correct-horse-battery", false),
         new ED("M@pl3Syrup!9", false),
     };

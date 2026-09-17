@@ -73,7 +73,9 @@ public static class EmailSwiperBuilder
     public static void Build()
     {
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
+        var permanentColliders = PermanentColliderGuard.Capture(ScenePath);
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+        PermanentColliderGuard.Restore(permanentColliders);
 
         Sprite circle = GetCircle();
 
@@ -275,7 +277,8 @@ public static class EmailSwiperBuilder
     {
         rodTipRT = null;
         var boatRoot = new GameObject("BoatRoot", typeof(RectTransform)); boatRoot.transform.SetParent(canvasRT, false);
-        var brRT = boatRoot.GetComponent<RectTransform>(); brRT.anchorMin = new Vector2(0.275f, 0.68f); brRT.anchorMax = new Vector2(0.725f, 0.99f); brRT.offsetMin = brRT.offsetMax = Vector2.zero; mgr.boatRoot = brRT;
+        // Lowered ~85px total (offsetMin/offsetMax.y) so the boat sits on top of the water — tweak this value to taste.
+        var brRT = boatRoot.GetComponent<RectTransform>(); brRT.anchorMin = new Vector2(0.275f, 0.68f); brRT.anchorMax = new Vector2(0.725f, 0.99f); brRT.offsetMin = new Vector2(0f, -85f); brRT.offsetMax = new Vector2(0f, -85f); mgr.boatRoot = brRT;
         if (boatSpr != null)
         { var boatImg = Img(brRT, "Boat", Color.white); boatImg.sprite = boatSpr; boatImg.preserveAspect = true; boatImg.raycastTarget = false; Stretch(boatImg.rectTransform); mgr.boatHullRT = boatImg.rectTransform; }
         else

@@ -192,7 +192,7 @@ public class SwipeCard : MonoBehaviour,
         if (cardBorder != null) cardBorder.color = NeutralCol;
         if (scamIndicator != null) scamIndicator.alpha = 0f;
         if (safeIndicator != null) safeIndicator.alpha = 0f;
-        UpdateRodLine(Vector2.zero);
+        UpdateRodLine();
         ShowBob(false);
     }
 
@@ -262,7 +262,7 @@ public class SwipeCard : MonoBehaviour,
         if (scamIndicator != null) scamIndicator.alpha = localDelta.x < 0 ? Mathf.Lerp(0, 1, t * IndicatorFade) : 0;
         if (safeIndicator != null) safeIndicator.alpha = localDelta.x > 0 ? Mathf.Lerp(0, 1, t * IndicatorFade) : 0;
 
-        UpdateRodLine(localDelta);
+        UpdateRodLine();
     }
 
     // ── Coroutines ────────────────────────────────────────────
@@ -279,7 +279,7 @@ public class SwipeCard : MonoBehaviour,
             cardRoot.anchoredPosition = Vector2.Lerp(start, target, Mathf.SmoothStep(0, 1, t));
             float rot = -direction.x * RotationScale * Mathf.Lerp(1, 3, t);
             cardRoot.localEulerAngles = new Vector3(0, 0, rot);
-            UpdateRodLine(cardRoot.anchoredPosition - _cardStart);
+            UpdateRodLine();
             yield return null;
         }
 
@@ -298,22 +298,30 @@ public class SwipeCard : MonoBehaviour,
             if (cardBorder != null) cardBorder.color = Color.Lerp(cardBorder.color, NeutralCol, ReturnSpeed * Time.deltaTime);
             if (scamIndicator != null) scamIndicator.alpha = Mathf.Lerp(scamIndicator.alpha, 0f, ReturnSpeed * Time.deltaTime);
             if (safeIndicator != null) safeIndicator.alpha = Mathf.Lerp(safeIndicator.alpha, 0f, ReturnSpeed * Time.deltaTime);
-            UpdateRodLine(cardRoot.anchoredPosition);
+            UpdateRodLine();
             yield return null;
         }
         ResetPosition();
     }
 
     // ── Rod line ──────────────────────────────────────────────
-    void UpdateRodLine(Vector2 cardOffset)
+    void UpdateRodLine()
     {
-        if (rodTipRT == null || rodLineRT == null) return;
+        if (rodTipRT == null || rodLineRT == null || cardRoot == null) return;
 
-        // Tip world position
+        // Tip world position (already in the card canvas's screen-space-overlay frame)
         Vector2 tipWorld = GetWorldPos(rodTipRT);
-        // Bob tracks top-centre of the card
-        Vector2 bobCanvas = _cardStart + cardOffset + new Vector2(0, 330f);
-        Vector2 bobWorld = CanvasToWorld(bobCanvas);
+
+        // Bob targets the top-centre of the card itself, read straight from its
+        // current world corners. FIX: this used to be derived by converting an
+        // anchoredPosition offset through Camera.main.ScreenToWorldPoint, but
+        // this canvas is Screen Space - Overlay (no camera projection involved),
+        // so that produced a near-origin world point unrelated to the card's
+        // actual screen position — which is what sent the rope to the bottom
+        // left of the screen instead of the card.
+        Vector3[] corners = new Vector3[4];
+        cardRoot.GetWorldCorners(corners);
+        Vector2 bobWorld = (corners[1] + corners[2]) * 0.5f; // top-left + top-right
 
         if (rodBobRT != null)
         {
@@ -346,24 +354,4 @@ public class SwipeCard : MonoBehaviour,
         return rt.position;
     }
 
-    Vector2 CanvasToWorld(Vector2 canvasPos)
-    {
-        if (rootCanvas == null) return canvasPos;
-        // Screen-space overlay: canvas pos maps 1:1 to screen at scale 1
-        float sf = rootCanvas.scaleFactor > 0 ? rootCanvas.scaleFactor : 1f;
-        // canvasPos is in reference resolution space, convert to screen then to world
-        // For screen-space overlay canvases the canvas rect IS screen coords * scaleFactor
-        Vector2 screenPos = canvasPos * sf + new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
-        if (Camera.main == null) return screenPos;
-        return Camera.main.ScreenToWorldPoint(new Vector3(screenPos.x, screenPos.y, 10f));
-    }
-
-    // Canvas-space position relative to canvas centre
-    Vector2 ToCanvasSpace(RectTransform rt)
-    {
-        if (rt == null || rootCanvas == null) return Vector2.zero;
-        Vector2 screenPos = rt.position;
-        float sf = rootCanvas.scaleFactor > 0 ? rootCanvas.scaleFactor : 1f;
-        return (screenPos - new Vector2(Screen.width * 0.5f, Screen.height * 0.5f)) / sf;
-    }
 }

@@ -104,7 +104,7 @@ public class FishUnit : MonoBehaviour
         const float k = 0.006f;
         canvasGO.transform.localScale = new Vector3(k, k, 1f);
         var c = canvasGO.AddComponent<Canvas>(); c.renderMode = RenderMode.WorldSpace; c.sortingOrder = 6;
-        canvasGO.GetComponent<RectTransform>().sizeDelta = new Vector2(260, 70);
+        canvasGO.GetComponent<RectTransform>().sizeDelta = new Vector2(300, 84);
 
         var bg = new GameObject("LabelBg"); bg.transform.SetParent(canvasGO.transform, false);
         var bgImg = bg.AddComponent<Image>(); bgImg.color = new Color(0.10f, 0.10f, 0.18f, 0.88f); bgImg.raycastTarget = false;
@@ -113,12 +113,15 @@ public class FishUnit : MonoBehaviour
         var textGO = new GameObject("Label"); textGO.transform.SetParent(canvasGO.transform, false);
         labelTMP = textGO.AddComponent<TextMeshProUGUI>();
         labelTMP.text = labelText;
-        labelTMP.fontSize = 18;
+        labelTMP.fontSize = 30;
+        labelTMP.enableAutoSizing = true;
+        labelTMP.fontSizeMin = 22;
+        labelTMP.fontSizeMax = 30;
         labelTMP.color = Color.white;
         labelTMP.fontStyle = FontStyles.Bold;
         labelTMP.alignment = TextAlignmentOptions.Center;
         labelTMP.raycastTarget = false;
-        var tRT = textGO.GetComponent<RectTransform>(); tRT.anchorMin = Vector2.zero; tRT.anchorMax = Vector2.one; tRT.offsetMin = new Vector2(4, 0); tRT.offsetMax = new Vector2(-4, 0);
+        var tRT = textGO.GetComponent<RectTransform>(); tRT.anchorMin = Vector2.zero; tRT.anchorMax = Vector2.one; tRT.offsetMin = new Vector2(6, 4); tRT.offsetMax = new Vector2(-6, -4);
     }
 
     // =================================================================

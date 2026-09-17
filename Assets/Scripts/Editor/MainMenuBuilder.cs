@@ -47,9 +47,11 @@ public static class MainMenuBuilder
     [MenuItem("Phisherman/Build Main Menu Scene")]
     public static void Build()
     {
+        var permanentColliders = PermanentColliderGuard.Capture(ScenePath);
         if (File.Exists(ScenePath)) { AssetDatabase.DeleteAsset(ScenePath); AssetDatabase.Refresh(); }
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+        PermanentColliderGuard.Restore(permanentColliders);
 
         // Camera
         var camGo = new GameObject("Main Camera"); camGo.tag = "MainCamera";
@@ -72,9 +74,20 @@ public static class MainMenuBuilder
         var cRT = cGo.GetComponent<RectTransform>();
         var rootCG = cGo.AddComponent<CanvasGroup>();
 
-        // ── Background — fully code-built underwater-cyberpunk scene, no sprites ──
-        var bgImg = MkImg(cRT, "Background", BgDeep);
+        // ── Background — main_menu_bg sprite (title is baked into the art) ──
+        // FIX: FindSprite()'s AssetDatabase.FindAssets(name + " t:Sprite") search
+        // matches against Unity's search index, which for this file was still
+        // keyed on its original import name ("ChatGPT Image Sep 16..."), not the
+        // "main_menu_bg" filename — so the name search silently found nothing.
+        // Load directly by the known asset path instead, which doesn't depend on
+        // the search index at all; fall back to the name search only if the file
+        // ever moves.
+        Sprite mainMenuBgSpr = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Sprites/Backgrounds/main_menu_bg.png");
+        if (mainMenuBgSpr == null) mainMenuBgSpr = FindSprite("main_menu_bg");
+        var bgImg = MkImg(cRT, "Background", Color.white);
+        bgImg.sprite = mainMenuBgSpr;
         Stretch(bgImg.rectTransform); bgImg.raycastTarget = false;
+        if (mainMenuBgSpr == null) Debug.LogWarning("[MainMenuBuilder] 'main_menu_bg' sprite not found at Assets/Sprites/Backgrounds/main_menu_bg.png — Background left blank.");
 
         Sprite circleSpr = GetCircle();
         Sprite triSpr = GetTriangleSprite();
@@ -134,23 +147,14 @@ public static class MainMenuBuilder
         // Fishing hook — built before the title so it renders behind it
         BuildFishingHook(mainPanel.transform);
 
-        // Title: white front layer + cyan glow layer offset 2px down-right
-        var titleGlow = MkTxt(mainPanel.transform, "TitleGlow", "PHISHERMAN", 82, new Color(AccentCyan.r, AccentCyan.g, AccentCyan.b, 0.3f), TextAlignmentOptions.Center, FontStyles.Bold);
-        titleGlow.textWrappingMode = TextWrappingModes.NoWrap;
-        SetAnch(titleGlow.rectTransform, 0.20f, 0.83f, 0.80f, 0.97f, ox: 2, oy: -2, ox2: 2, oy2: -2);
-
-        var titleTxt = MkTxt(mainPanel.transform, "TitleText", "PHISHERMAN", 78, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
-        titleTxt.textWrappingMode = TextWrappingModes.NoWrap;
-        titleTxt.characterSpacing = 6f;
-        SetAnch(titleTxt.rectTransform, 0.20f, 0.83f, 0.80f, 0.97f);
+        // Title text removed — main_menu_bg sprite has the title baked into the art.
 
         // Divider — gradient transparent -> teal -> transparent
         var divider = MkImg(mainPanel.transform, "TitleDivider", AccentCyan);
         divider.sprite = GetHorizontalFadeSprite(); divider.raycastTarget = false;
         var divRT = divider.rectTransform; divRT.anchorMin = new Vector2(0.20f, 0.825f); divRT.anchorMax = new Vector2(0.80f, 0.825f); divRT.pivot = new Vector2(0.5f, 0.5f); divRT.sizeDelta = new Vector2(0, 3);
 
-        var tagTxt = MkTxt(mainPanel.transform, "Tagline", "An Educational Anti-Phishing Adventure", 19, Hex("#7ecfdf"), TextAlignmentOptions.Center, FontStyles.Italic);
-        SetAnch(tagTxt.rectTransform, 0.15f, 0.78f, 0.85f, 0.83f);
+        // Tagline text removed (was "An Educational Anti-Phishing Adventure" under the title).
 
         // Three main buttons — fixed 440x70 px, 18px gap, centered as a block
         const float RefW = 1920f, RefH = 1080f, BtnW = 440f, BtnH = 70f, BtnGap = 18f;

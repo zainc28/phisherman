@@ -28,7 +28,9 @@ public static class BackstoryBuilder
     public static void Build()
     {
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
+        var permanentColliders = PermanentColliderGuard.Capture(ScenePath);
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+        PermanentColliderGuard.Restore(permanentColliders);
 
         Sprite back = FindSprite("phisherman_backstory_backfacing");
         Sprite front = FindSprite("phisherman_backstory_frontfacing");

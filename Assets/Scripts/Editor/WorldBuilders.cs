@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using TMPro;
 using UnityEditor;
@@ -28,13 +29,19 @@ public static class WorldMapBuilder
     public static void Build()
     {
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
-        // Use disk-based save (same as Worlds 2-5) so the polygon is preserved
-        // regardless of which scene happens to be open in the editor right now.
+        // Same save/restore as Worlds 2-5 (SharedWorldBuilderUtils). SaveWalkableZone
+        // reads from the currently-open scene if it's already this one — including
+        // any unsaved polygon edits — and only falls back to reading the saved file
+        // from disk if a different scene is open.
         // DO NOT reset PolygonCollider2D points — manually edited in Editor.
-        var savedVerts = SharedWorldBuilderUtils.SaveWalkableZone(ScenePath, "WorldMapBuilder", out var savedZonePos);
+        var savedZone = SharedWorldBuilderUtils.SaveWalkableZone(ScenePath, "WorldMapBuilder");
+        // Additional tag-based safety net for any OTHER hand-placed PolygonCollider2D
+        // objects tagged "PermanentCollider" (WalkableZone itself is already fully
+        // preserved above by name, so it's excluded here to avoid a duplicate).
+        var permanentColliders = PermanentColliderGuard.Capture(ScenePath, new HashSet<string> { "WalkableZone" });
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-        if (savedVerts != null) { var zGo = new GameObject("WalkableZone"); zGo.transform.position = savedZonePos; var pc2 = zGo.AddComponent<PolygonCollider2D>(); pc2.isTrigger = true; pc2.SetPath(0, savedVerts); Debug.Log($"[WorldMapBuilder] Restored WalkableZone: {savedVerts.Length} verts."); }
-        else { var zGo = new GameObject("WalkableZone"); var pc2 = zGo.AddComponent<PolygonCollider2D>(); pc2.isTrigger = true; pc2.SetPath(0, new Vector2[] { new Vector2(-7.5f, -4.5f), new Vector2(-7.5f, 4.5f), new Vector2(7.5f, 4.5f), new Vector2(7.5f, -4.5f) }); Debug.LogWarning("[WorldMapBuilder] No WalkableZone — placeholder created."); }
+        SharedWorldBuilderUtils.RestoreWalkableZone("WorldMapBuilder", savedZone);
+        PermanentColliderGuard.Restore(permanentColliders);
         Sprite circle = GetCircle();
         Sprite phisherman = FindSprite("phisherman"); Sprite phishermanWalk = FindSprite("phisherman_walking");
         LogFound("phisherman", phisherman); LogFound("phisherman_walking", phishermanWalk);
@@ -92,7 +99,9 @@ public static class WorldMapBuilder
         // targetScene is empty — MapDoorCTA.Update() owns proximity entry for all worlds.
         // Keeping a non-empty targetScene here would cause a double scene load.
         var dt = doorGo.AddComponent<MapDoorTrigger>(); dt.player = player; dt.targetScene = ""; dt.triggerRadius = 0.55f; dt.promptProximity = 999f; dt.prompt = null;
-        var ctaRoot = new GameObject(name + "_CTA"); ctaRoot.transform.position = new Vector3(cx, cy + 0.75f, -0.5f);
+        // Label lowered slightly further (0.55 -> 0.45) and walk-in entry radius
+        // raised ~10% (0.85 -> 0.935).
+        var ctaRoot = new GameObject(name + "_CTA"); ctaRoot.transform.position = new Vector3(cx, cy + 0.45f, -0.5f);
         var cGo = new GameObject("C"); cGo.transform.SetParent(ctaRoot.transform, false); cGo.transform.localScale = new Vector3(0.012f, 0.012f, 1f);
         var wc = cGo.AddComponent<Canvas>(); wc.renderMode = RenderMode.WorldSpace; wc.sortingOrder = 35; cGo.GetComponent<RectTransform>().sizeDelta = new Vector2(300, 70);
         var borderGo = new GameObject("Border", typeof(RectTransform)); borderGo.transform.SetParent(cGo.transform, false);
@@ -106,7 +115,7 @@ public static class WorldMapBuilder
         var tRT = tGo.GetComponent<RectTransform>(); tRT.anchorMin = Vector2.zero; tRT.anchorMax = Vector2.one; tRT.offsetMin = new Vector2(8, 4); tRT.offsetMax = new Vector2(-8, -4);
         var cta = ctaRoot.AddComponent<MapDoorCTA>(); cta.targetScene = interiorScene; cta.playerTransform = player; cta.doorPosition = doorGo.transform; cta.label = tmp;
         cta.completionKey = "completed_" + interiorScene; cta.activeColor = col; cta.completedColor = new Color(col.r * 0.35f, col.g * 0.35f, col.b * 0.35f, 0.40f);
-        cta.bobAmount = 0.16f; cta.bobSpeed = 2.8f; cta.clickRadius = 1.4f; cta.proximityRadius = 0.55f; cta.completedLockPopup = lockedPopup;
+        cta.bobAmount = 0.16f; cta.bobSpeed = 2.8f; cta.clickRadius = 1.4f; cta.proximityRadius = 0.935f; cta.completedLockPopup = lockedPopup;
         cta.completedLockMessage = "Already helped here! Try visiting another building.";
         var borderCTA = ctaRoot.AddComponent<CTABorderFader>(); borderCTA.borderImage = borderImg; borderCTA.completionKey = "completed_" + interiorScene; borderCTA.activeColor = col; borderCTA.completedColor = new Color(col.r * 0.35f, col.g * 0.35f, col.b * 0.35f, 0.40f);
     }
@@ -271,21 +280,118 @@ internal static class SharedWorldBuilderUtils
     // Phisherman menu never overwrites a manually shaped collider. Only a
     // scene with no WalkableZone yet (first-ever build) falls back to the
     // default rectangle.
-    internal static Vector2[] SaveWalkableZone(string scenePath, string builderTag, out Vector3 pos)
+    internal class WalkableZoneSnapshot
     {
-        pos = Vector3.zero;
-        if (!File.Exists(scenePath)) return null;
-        EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
-        var zone = GameObject.Find("WalkableZone"); if (zone == null) return null;
-        var pc = zone.GetComponent<PolygonCollider2D>(); if (pc == null) return null;
-        pos = zone.transform.position; var verts = pc.points.ToArray();
-        Debug.Log($"[{builderTag}] Saved WalkableZone: {verts.Length} verts."); return verts;
+        public Vector3 position;
+        public Quaternion rotation;
+        public Vector2 offset;
+        public bool isTrigger;
+        public Vector2[][] paths; // ALL paths — a single-path assumption silently drops compound shapes
     }
 
-    internal static void RestoreWalkableZone(string builderTag, Vector2[] savedVerts, Vector3 savedPos)
+    internal static WalkableZoneSnapshot SaveWalkableZone(string scenePath, string builderTag)
     {
-        if (savedVerts != null) { var zGo = new GameObject("WalkableZone"); zGo.transform.position = savedPos; var pc2 = zGo.AddComponent<PolygonCollider2D>(); pc2.isTrigger = true; pc2.SetPath(0, savedVerts); Debug.Log($"[{builderTag}] Restored WalkableZone: {savedVerts.Length} verts."); }
-        else { var zGo = new GameObject("WalkableZone"); var pc2 = zGo.AddComponent<PolygonCollider2D>(); pc2.isTrigger = true; pc2.SetPath(0, new Vector2[] { new Vector2(-7.5f, -4f), new Vector2(-7.5f, 0f), new Vector2(7.5f, 0f), new Vector2(7.5f, -4f) }); Debug.LogWarning($"[{builderTag}] No WalkableZone found -- placeholder created."); }
+        // FIX: if the scene we're about to rebuild is ALREADY the one open in the
+        // Editor, do NOT call OpenScene on it — that reloads it from disk and
+        // silently throws away any polygon edits made in the Scene view that
+        // haven't been saved (Ctrl+S) yet. Read the WalkableZone straight out of
+        // the currently-open (possibly unsaved/dirty) scene instead.
+        var activeScene = EditorSceneManager.GetActiveScene();
+        bool alreadyOpen = activeScene.IsValid() && activeScene.path == scenePath;
+        bool sceneExistsOnDisk = !string.IsNullOrEmpty(scenePath) && File.Exists(scenePath);
+
+        if (!alreadyOpen)
+        {
+            if (!sceneExistsOnDisk)
+            {
+                Debug.Log($"[{builderTag}] '{scenePath}' doesn't exist yet — first-time build, placeholder WalkableZone is expected.");
+                return null;
+            }
+            EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            activeScene = EditorSceneManager.GetActiveScene();
+        }
+
+        // FIX: GameObject.Find() silently skips INACTIVE objects, which was
+        // almost certainly why a real WalkableZone stopped being found and the
+        // build fell through to the placeholder rectangle without any error.
+        // Search every object in the scene, active or not.
+        GameObject zone = FindInSceneIncludingInactive(activeScene, "WalkableZone");
+
+        if (zone == null)
+        {
+            if (sceneExistsOnDisk)
+                throw new System.Exception($"[{builderTag}] ABORTING BUILD — '{scenePath}' already exists but no 'WalkableZone' GameObject was found in it (checked inactive objects too). Refusing to rebuild, because that would overwrite the scene with a placeholder rectangle and destroy any real hand-shaped collider. Check the object's name/hierarchy, then rebuild.");
+            return null; // scene doesn't exist on disk — legitimately first-ever build
+        }
+
+        var pc = zone.GetComponent<PolygonCollider2D>();
+        if (pc == null)
+        {
+            if (sceneExistsOnDisk)
+                throw new System.Exception($"[{builderTag}] ABORTING BUILD — found 'WalkableZone' in '{scenePath}' but it has no PolygonCollider2D component. Refusing to rebuild over it.");
+            return null;
+        }
+
+        // FIX: capture EVERY path (pc.points only ever exposes path 0 and drops
+        // pc.offset), so a compound/offset shape round-trips exactly.
+        var paths = new Vector2[pc.pathCount][];
+        for (int i = 0; i < pc.pathCount; i++) paths[i] = pc.GetPath(i);
+
+        var snap = new WalkableZoneSnapshot
+        {
+            position = zone.transform.position,
+            rotation = zone.transform.rotation,
+            offset = pc.offset,
+            isTrigger = pc.isTrigger,
+            paths = paths,
+        };
+        int totalPoints = paths.Sum(p => p.Length);
+        Debug.Log($"[{builderTag}] Saved WalkableZone: {paths.Length} path(s), {totalPoints} total point(s) (read from {(alreadyOpen ? "the already-open scene, including unsaved edits" : "disk")}).");
+        return snap;
+    }
+
+    internal static void RestoreWalkableZone(string builderTag, WalkableZoneSnapshot snap)
+    {
+        var zGo = new GameObject("WalkableZone");
+        var pc2 = zGo.AddComponent<PolygonCollider2D>();
+        if (snap != null)
+        {
+            zGo.transform.position = snap.position;
+            zGo.transform.rotation = snap.rotation;
+            pc2.isTrigger = snap.isTrigger;
+            pc2.offset = snap.offset;
+            pc2.pathCount = snap.paths.Length;
+            for (int i = 0; i < snap.paths.Length; i++) pc2.SetPath(i, snap.paths[i]);
+            int totalPoints = snap.paths.Sum(p => p.Length);
+            Debug.Log($"[{builderTag}] Restored WalkableZone: {snap.paths.Length} path(s), {totalPoints} total point(s).");
+        }
+        else
+        {
+            pc2.isTrigger = true;
+            pc2.SetPath(0, new Vector2[] { new Vector2(-7.5f, -4f), new Vector2(-7.5f, 0f), new Vector2(7.5f, 0f), new Vector2(7.5f, -4f) });
+            Debug.LogWarning($"[{builderTag}] No existing WalkableZone (first-time build) — placeholder rectangle created.");
+        }
+    }
+
+    static GameObject FindInSceneIncludingInactive(UnityEngine.SceneManagement.Scene scene, string name)
+    {
+        foreach (var root in scene.GetRootGameObjects())
+        {
+            var found = FindChildRecursive(root.transform, name);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    static GameObject FindChildRecursive(Transform t, string name)
+    {
+        if (t.name == name) return t.gameObject;
+        foreach (Transform child in t)
+        {
+            var found = FindChildRecursive(child, name);
+            if (found != null) return found;
+        }
+        return null;
     }
 
     internal static void AddDoorCTA(string name, Transform player, float cx, float cy, string interiorScene, string label, Color col, GameObject lockedPopup = null)
@@ -295,13 +401,15 @@ internal static class SharedWorldBuilderUtils
         // A non-empty targetScene on MapDoorTrigger would fire an unconditional scene load
         // on proximity, bypassing the completion check and grayout logic entirely.
         var dt = doorGo.AddComponent<MapDoorTrigger>(); dt.player = player; dt.targetScene = ""; dt.triggerRadius = 0.55f; dt.promptProximity = 999f; dt.prompt = null;
-        var ctaRoot = new GameObject(name + "_CTA"); ctaRoot.transform.position = new Vector3(cx, cy + 0.75f, -0.5f);
+        // Label lowered slightly further (0.55 -> 0.45) and walk-in entry radius
+        // raised ~10% (0.85 -> 0.935).
+        var ctaRoot = new GameObject(name + "_CTA"); ctaRoot.transform.position = new Vector3(cx, cy + 0.45f, -0.5f);
         var cGo = new GameObject("C"); cGo.transform.SetParent(ctaRoot.transform, false); cGo.transform.localScale = new Vector3(0.012f, 0.012f, 1f);
         var wc = cGo.AddComponent<Canvas>(); wc.renderMode = RenderMode.WorldSpace; wc.sortingOrder = 35; cGo.GetComponent<RectTransform>().sizeDelta = new Vector2(300, 70);
         var borderGo = new GameObject("Border", typeof(RectTransform)); borderGo.transform.SetParent(cGo.transform, false); var borderImg = borderGo.AddComponent<Image>(); borderImg.color = col; borderImg.raycastTarget = false; var brt = borderGo.GetComponent<RectTransform>(); brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one; brt.offsetMin = new Vector2(-4, -4); brt.offsetMax = new Vector2(4, 4);
         var fillGo = new GameObject("Fill", typeof(RectTransform)); fillGo.transform.SetParent(cGo.transform, false); var fillImg = fillGo.AddComponent<Image>(); fillImg.color = new Color(0.06f, 0.08f, 0.14f, 0.92f); fillImg.raycastTarget = false; var frt = fillGo.GetComponent<RectTransform>(); frt.anchorMin = Vector2.zero; frt.anchorMax = Vector2.one; frt.offsetMin = frt.offsetMax = Vector2.zero;
         var tGo = new GameObject("Label", typeof(RectTransform)); tGo.transform.SetParent(cGo.transform, false); var tmp = tGo.AddComponent<TextMeshProUGUI>(); tmp.text = label; tmp.fontSize = 38; tmp.color = col; tmp.fontStyle = FontStyles.Bold; tmp.alignment = TextAlignmentOptions.Center; tmp.raycastTarget = false; var tRT = tGo.GetComponent<RectTransform>(); tRT.anchorMin = Vector2.zero; tRT.anchorMax = Vector2.one; tRT.offsetMin = new Vector2(8, 4); tRT.offsetMax = new Vector2(-8, -4);
-        var cta = ctaRoot.AddComponent<MapDoorCTA>(); cta.targetScene = interiorScene; cta.playerTransform = player; cta.doorPosition = doorGo.transform; cta.label = tmp; cta.completionKey = "completed_" + interiorScene; cta.activeColor = col; cta.completedColor = new Color(col.r * 0.35f, col.g * 0.35f, col.b * 0.35f, 0.40f); cta.bobAmount = 0.16f; cta.bobSpeed = 2.8f; cta.clickRadius = 1.4f; cta.proximityRadius = 0.55f; cta.completedLockPopup = lockedPopup; cta.completedLockMessage = "Already helped here! Try visiting another building.";
+        var cta = ctaRoot.AddComponent<MapDoorCTA>(); cta.targetScene = interiorScene; cta.playerTransform = player; cta.doorPosition = doorGo.transform; cta.label = tmp; cta.completionKey = "completed_" + interiorScene; cta.activeColor = col; cta.completedColor = new Color(col.r * 0.35f, col.g * 0.35f, col.b * 0.35f, 0.40f); cta.bobAmount = 0.16f; cta.bobSpeed = 2.8f; cta.clickRadius = 1.4f; cta.proximityRadius = 0.935f; cta.completedLockPopup = lockedPopup; cta.completedLockMessage = "Already helped here! Try visiting another building.";
         var borderCTA = ctaRoot.AddComponent<CTABorderFader>(); borderCTA.borderImage = borderImg; borderCTA.completionKey = "completed_" + interiorScene; borderCTA.activeColor = col; borderCTA.completedColor = new Color(col.r * 0.35f, col.g * 0.35f, col.b * 0.35f, 0.40f);
     }
 
@@ -316,11 +424,13 @@ internal static class SharedWorldBuilderUtils
         string name, Transform player, string targetScene, string label,
         Color col, GameObject lockedPopup, int requiresWorldComplete,
         bool isLeft, RectTransform canvasRT, WorldMapManager manager,
-        string lockedMessage = "Finish exploring this neighbourhood first!")
+        string lockedMessage = "Finish exploring this neighbourhood first!",
+        Vector3? triggerWorldPosOverride = null,
+        Vector2? badgeAnchoredPosOverride = null)
     {
         // World-space proximity trigger
         var triggerGo = new GameObject(name + "_Trigger");
-        triggerGo.transform.position = new Vector3(isLeft ? -7.0f : 7.0f, -3.8f, 0f);
+        triggerGo.transform.position = triggerWorldPosOverride ?? new Vector3(isLeft ? -7.0f : 7.0f, -3.8f, 0f);
         var wCTA = triggerGo.AddComponent<WorldTransitionCTA>();
         wCTA.player = player;
         wCTA.targetScene = targetScene;
@@ -339,7 +449,7 @@ internal static class SharedWorldBuilderUtils
         rootRT.anchorMax = isLeft ? Vector2.zero : new Vector2(1, 0);
         rootRT.pivot = isLeft ? Vector2.zero : new Vector2(1, 0);
         rootRT.sizeDelta = new Vector2(220, 60);
-        rootRT.anchoredPosition = new Vector2(isLeft ? 24 : -24, 24);
+        rootRT.anchoredPosition = badgeAnchoredPosOverride ?? new Vector2(isLeft ? 24 : -24, 24);
 
         var cGo = new GameObject("C", typeof(RectTransform));
         cGo.transform.SetParent(root.transform, false);
@@ -576,9 +686,11 @@ public static class World2Builder
     {
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
         // DO NOT reset PolygonCollider2D points — manually edited in Editor.
-        var savedVerts = SharedWorldBuilderUtils.SaveWalkableZone(ScenePath, "World2Builder", out var savedPos);
+        var savedZone = SharedWorldBuilderUtils.SaveWalkableZone(ScenePath, "World2Builder");
+        var permanentColliders = PermanentColliderGuard.Capture(ScenePath, new HashSet<string> { "WalkableZone" });
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-        SharedWorldBuilderUtils.RestoreWalkableZone("World2Builder", savedVerts, savedPos);
+        SharedWorldBuilderUtils.RestoreWalkableZone("World2Builder", savedZone);
+        PermanentColliderGuard.Restore(permanentColliders);
 
         var bgArt = SharedWorldBuilderUtils.FindSprite("world_stage_2_background");
         if (bgArt != null) { var bgGo = new GameObject("WorldBackground"); var bgSR = bgGo.AddComponent<SpriteRenderer>(); bgSR.sprite = bgArt; bgSR.color = Color.white; bgSR.sortingOrder = -50; float camH = OrthoSize * 2f, camW = camH * AspectW; bgGo.transform.localScale = new Vector3(camW / bgArt.bounds.size.x, camH / bgArt.bounds.size.y, 1f); } else Debug.LogWarning("[World2Builder] 'world_stage_2_background' not found.");
@@ -609,13 +721,19 @@ public static class World2Builder
         SharedWorldBuilderUtils.AddDoorCTA("Door_W2_RightHouse", playerT, 4.3f, 0.2f, "OfficeW2Interior", "Mr. Frost", Hex("#4ECDC4"), lockedPopup);
 
         // CHANGED: World transition CTAs replacing AddPathFloatingText
+        // World 2 ONLY: both nudged up slightly from the default bottom-corner
+        // position so they sit on the path instead of the dark border below it.
         // Left = go back to World 1 (always unlocked — requiresWorldComplete:0)
         SharedWorldBuilderUtils.AddWorldTransitionCTA("WorldCTA_W1", playerT, "WorldMap", "World 1",
-            Hex("#2BB3A3"), lockedPopup, requiresWorldComplete: 0, isLeft: true, canvasRT: canvasRT, manager: manager);
+            Hex("#2BB3A3"), lockedPopup, requiresWorldComplete: 0, isLeft: true, canvasRT: canvasRT, manager: manager,
+            triggerWorldPosOverride: new Vector3(-7.0f, -3.3f, 0f),
+            badgeAnchoredPosOverride: new Vector2(24f, 90f));
         // Right = advance to World 3 (requires World 2 complete)
         SharedWorldBuilderUtils.AddWorldTransitionCTA("WorldCTA_W3", playerT, "WorldMap3", "World 3",
             Hex("#E74C3C"), lockedPopup, requiresWorldComplete: 2, isLeft: false, canvasRT: canvasRT, manager: manager,
-            lockedMessage: "Complete all 3 houses in this neighbourhood first!");
+            lockedMessage: "Complete all 3 houses in this neighbourhood first!",
+            triggerWorldPosOverride: new Vector3(7.0f, -3.3f, 0f),
+            badgeAnchoredPosOverride: new Vector2(-24f, 90f));
 
         // Nav hint
         // Nav hint removed — world transition CTAs in the corners already convey direction.
@@ -639,9 +757,11 @@ public static class World3Builder
     {
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
         // DO NOT reset PolygonCollider2D points — manually edited in Editor.
-        var savedVerts = SharedWorldBuilderUtils.SaveWalkableZone(ScenePath, "World3Builder", out var savedPos);
+        var savedZone = SharedWorldBuilderUtils.SaveWalkableZone(ScenePath, "World3Builder");
+        var permanentColliders = PermanentColliderGuard.Capture(ScenePath, new HashSet<string> { "WalkableZone" });
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-        SharedWorldBuilderUtils.RestoreWalkableZone("World3Builder", savedVerts, savedPos);
+        SharedWorldBuilderUtils.RestoreWalkableZone("World3Builder", savedZone);
+        PermanentColliderGuard.Restore(permanentColliders);
 
         var bgArt = SharedWorldBuilderUtils.FindSprite("world_stage_3_background");
         if (bgArt != null) { var bgGo = new GameObject("WorldBackground"); var bgSR = bgGo.AddComponent<SpriteRenderer>(); bgSR.sprite = bgArt; bgSR.color = Color.white; bgSR.sortingOrder = -50; float camH = OrthoSize * 2f, camW = camH * AspectW; bgGo.transform.localScale = new Vector3(camW / bgArt.bounds.size.x, camH / bgArt.bounds.size.y, 1f); } else Debug.LogWarning("[World3Builder] 'world_stage_3_background' not found.");
@@ -696,9 +816,11 @@ public static class World4Builder
     {
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
         // DO NOT reset PolygonCollider2D points — manually edited in Editor.
-        var savedVerts = SharedWorldBuilderUtils.SaveWalkableZone(ScenePath, "World4Builder", out var savedPos);
+        var savedZone = SharedWorldBuilderUtils.SaveWalkableZone(ScenePath, "World4Builder");
+        var permanentColliders = PermanentColliderGuard.Capture(ScenePath, new HashSet<string> { "WalkableZone" });
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-        SharedWorldBuilderUtils.RestoreWalkableZone("World4Builder", savedVerts, savedPos);
+        SharedWorldBuilderUtils.RestoreWalkableZone("World4Builder", savedZone);
+        PermanentColliderGuard.Restore(permanentColliders);
 
         var bgArt = SharedWorldBuilderUtils.FindSprite("world_stage_4_background");
         if (bgArt != null) { var bgGo = new GameObject("WorldBackground"); var bgSR = bgGo.AddComponent<SpriteRenderer>(); bgSR.sprite = bgArt; bgSR.color = Color.white; bgSR.sortingOrder = -50; float camH = OrthoSize * 2f, camW = camH * AspectW; bgGo.transform.localScale = new Vector3(camW / bgArt.bounds.size.x, camH / bgArt.bounds.size.y, 1f); } else Debug.LogWarning("[World4Builder] 'world_stage_4_background' not found.");
@@ -728,9 +850,14 @@ public static class World4Builder
         SharedWorldBuilderUtils.AddWorldTransitionCTA("WorldCTA_W3", playerT, "WorldMap3", "World 3",
             Hex("#2BB3A3"), lockedPopup, requiresWorldComplete: 0, isLeft: true, canvasRT: canvasRT, manager: manager);
         // Right = advance to World 5 (requires World 4 complete)
+        // World 4 ONLY: nudged up-left from the default bottom-right corner so it
+        // sits near the boat by the dock instead of over the water. Tweak these
+        // two override values further if it's not quite lined up.
         SharedWorldBuilderUtils.AddWorldTransitionCTA("WorldCTA_W5", playerT, "WorldMap5", "World 5",
             Hex("#A29BFE"), lockedPopup, requiresWorldComplete: 4, isLeft: false, canvasRT: canvasRT, manager: manager,
-            lockedMessage: "Complete all 3 houses in this neighbourhood first!");
+            lockedMessage: "Complete all 3 houses in this neighbourhood first!",
+            triggerWorldPosOverride: new Vector3(6.2f, -3.0f, 0f),
+            badgeAnchoredPosOverride: new Vector2(-184f, 154f));
 
         // Nav hint removed.
 
@@ -753,9 +880,11 @@ public static class World5Builder
     {
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
         // DO NOT reset PolygonCollider2D points — manually edited in Editor.
-        var savedVerts = SharedWorldBuilderUtils.SaveWalkableZone(ScenePath, "World5Builder", out var savedPos);
+        var savedZone = SharedWorldBuilderUtils.SaveWalkableZone(ScenePath, "World5Builder");
+        var permanentColliders = PermanentColliderGuard.Capture(ScenePath, new HashSet<string> { "WalkableZone" });
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-        SharedWorldBuilderUtils.RestoreWalkableZone("World5Builder", savedVerts, savedPos);
+        SharedWorldBuilderUtils.RestoreWalkableZone("World5Builder", savedZone);
+        PermanentColliderGuard.Restore(permanentColliders);
 
         var bgArt = SharedWorldBuilderUtils.FindSprite("world_stage_5_background");
         if (bgArt != null) { var bgGo = new GameObject("WorldBackground"); var bgSR = bgGo.AddComponent<SpriteRenderer>(); bgSR.sprite = bgArt; bgSR.color = Color.white; bgSR.sortingOrder = -50; float camH = OrthoSize * 2f, camW = camH * AspectW; bgGo.transform.localScale = new Vector3(camW / bgArt.bounds.size.x, camH / bgArt.bounds.size.y, 1f); } else Debug.LogWarning("[World5Builder] 'world_stage_5_background' not found.");

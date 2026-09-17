@@ -52,7 +52,9 @@ public static class SpotDifferenceBuilder_W2
     public static void Build()
     {
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
+        var permanentColliders = PermanentColliderGuard.Capture(ScenePath);
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+        PermanentColliderGuard.Restore(permanentColliders);
 
         Sprite spCircle = TryGetCircle();
         Sprite spDiverNormal = FindSprite("phisherman_underwater") ?? FindSprite("phisherman");

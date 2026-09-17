@@ -45,7 +45,9 @@ public static class TowerDefenseBuilder
     public static void Build()
     {
         if (!Directory.Exists(ScenesDir)) Directory.CreateDirectory(ScenesDir);
+        var permanentColliders = PermanentColliderGuard.Capture(ScenePath);
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+        PermanentColliderGuard.Restore(permanentColliders);
 
         Sprite white = EnsureWhitePixel();
 

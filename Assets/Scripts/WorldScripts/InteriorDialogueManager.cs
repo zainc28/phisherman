@@ -237,7 +237,13 @@ public class InteriorDialogueManager : MonoBehaviour
         if (choicePanel != null) choicePanel.SetActive(false);
         if (retryPanel != null) retryPanel.SetActive(false);
 
-        if (advanceButton != null) advanceButton.gameObject.SetActive(p != Phase.Choice && p != Phase.PostLose);
+        // FIX: PostLose still has loseLines to tap through before the retry panel
+        // shows, exactly like Intro/PostWin — only Choice skips straight to its
+        // own buttons. Disabling this for the whole PostLose phase left "tap to
+        // continue" doing nothing and the player stuck with no way back to the
+        // map. The full-screen catcher is turned off separately in
+        // ShowRetryPanel() once Retry/Give Up need the taps instead.
+        if (advanceButton != null) advanceButton.gameObject.SetActive(p != Phase.Choice);
 
         switch (p)
         {
@@ -371,6 +377,9 @@ public class InteriorDialogueManager : MonoBehaviour
     // ── Retry panel ───────────────────────────────────────────
     void ShowRetryPanel()
     {
+        // The full-screen advance button sits on top of (and would otherwise
+        // eat taps meant for) RetryBtn/GiveUpBtn — same reason Choice turns it off.
+        if (advanceButton != null) advanceButton.gameObject.SetActive(false);
         if (speakerNameText != null) speakerNameText.text = npcName;
         if (dialogueBodyText != null) dialogueBodyText.text = "Want to give it another try?";
         if (continueHint != null) continueHint.text = "";
